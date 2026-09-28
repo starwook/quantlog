@@ -1,0 +1,36 @@
+spring:
+  profiles:
+    # 다른 프로파일을 지정하지 않으면 "local" 이 기본으로 켜진다.
+    # → Spring Boot가 프로젝트 루트의 application-local.yml 을 자동으로 읽어 아래 값을 덮어쓴다.
+    # 그 파일은 .gitignore 에 있어 커밋되지 않고, 없어도 에러 없이 그냥 기본값(빈 값)으로 실행된다.
+    # 템플릿: application-local.yml.example 을 복사해서 만든다.
+    # 나중에 배포 환경에서는 SPRING_PROFILES_ACTIVE 를 지정하면 이 기본값은 무시된다.
+    default: local
+  main:
+    # 웹 화면을 붙이기 전까지는 콘솔 실행 전용 (웹 추가 시 이 줄 제거)
+    web-application-type: none
+
+# 시크릿은 절대 이 파일(git에 커밋됨)에 적지 않는다. application-local.yml 에만 적는다.
+kis:
+  mock:
+    app-key: ${KIS_MOCK_APP_KEY:}
+    app-secret: ${KIS_MOCK_APP_SECRET:}
+    account: ${KIS_MOCK_ACCOUNT:}
+    log-raw: ${KIS_MOCK_LOG_RAW:false}
+
+quantlog:
+  playbook:
+    dir: playbook   # 원칙·일지·제안 (playbook/README.md)
+  strategy:
+    # 초기값. 이후 학습 루프(기획서 6.4)가 결과를 보고 조정한다.
+    take-profit-percent: 1
+    stop-loss-percent: 1
+  smoke:
+    mode: ${QUANTLOG_SMOKE_MODE:}
+    market: ${QUANTLOG_SMOKE_MARKET:NASDAQ}
+    symbol: ${QUANTLOG_SMOKE_SYMBOL:AAPL}
+    quantity: ${QUANTLOG_SMOKE_QUANTITY:1}
+  risk:
+    max-order-usd: 1000
+    max-order-krw: 1000000
+    max-order-quantity: 10

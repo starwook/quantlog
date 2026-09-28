@@ -1,0 +1,823 @@
+{
+  "overall": {
+    "win_pct_p10_p25_p50_p75_p90": [
+      0.145,
+      0.317,
+      0.729,
+      1.864,
+      4.502
+    ],
+    "loss_pct_p10_p25_p50_p75_p90": [
+      0.084,
+      0.269,
+      0.818,
+      2.347,
+      6.087
+    ],
+    "hold_hours_median_win_vs_loss": [
+      0.7,
+      1.85
+    ],
+    "n": 12717,
+    "win_rate_pct": 68.4,
+    "avg_win_pct": 1.846,
+    "avg_loss_pct": -2.38,
+    "payoff_ratio": 0.78,
+    "expectancy_pct": 0.5086,
+    "weighted_win_rate_pct": 62.8,
+    "weighted_avg_win_pct": 1.988,
+    "weighted_avg_loss_pct": -2.395,
+    "ret_pct_p5_p25_p50_p75_p95": [
+      -4.121,
+      -0.21,
+      0.34,
+      1.145,
+      5.729
+    ],
+    "worst_pct": -45.28,
+    "best_pct": 52.22,
+    "hold_hours_p25_p50_p75_p95": [
+      0.16,
+      0.94,
+      6.92,
+      64.38
+    ]
+  },
+  "XBTUSD": {
+    "win_pct_p10_p25_p50_p75_p90": [
+      0.131,
+      0.28,
+      0.618,
+      1.427,
+      3.309
+    ],
+    "loss_pct_p10_p25_p50_p75_p90": [
+      0.076,
+      0.226,
+      0.688,
+      1.795,
+      4.324
+    ],
+    "hold_hours_median_win_vs_loss": [
+      0.58,
+      1.54
+    ],
+    "n": 10047,
+    "win_rate_pct": 68.4,
+    "avg_win_pct": 1.263,
+    "avg_loss_pct": -1.605,
+    "payoff_ratio": 0.79,
+    "expectancy_pct": 0.3559,
+    "weighted_win_rate_pct": 62.2,
+    "weighted_avg_win_pct": 1.632,
+    "weighted_avg_loss_pct": -2.009,
+    "ret_pct_p5_p25_p50_p75_p95": [
+      -2.792,
+      -0.18,
+      0.301,
+      0.914,
+      4.022
+    ],
+    "worst_pct": -30.86,
+    "best_pct": 23.67,
+    "hold_hours_p25_p50_p75_p95": [
+      0.15,
+      0.79,
+      5.62,
+      39.72
+    ]
+  },
+  "ETHUSD": {
+    "win_pct_p10_p25_p50_p75_p90": [
+      0.227,
+      0.499,
+      1.279,
+      4.064,
+      8.544
+    ],
+    "loss_pct_p10_p25_p50_p75_p90": [
+      0.106,
+      0.431,
+      1.224,
+      4.034,
+      9.398
+    ],
+    "hold_hours_median_win_vs_loss": [
+      1.35,
+      2.43
+    ],
+    "n": 1405,
+    "win_rate_pct": 69.5,
+    "avg_win_pct": 2.958,
+    "avg_loss_pct": -3.984,
+    "payoff_ratio": 0.74,
+    "expectancy_pct": 0.8382,
+    "weighted_win_rate_pct": 71.3,
+    "weighted_avg_win_pct": 4.566,
+    "weighted_avg_loss_pct": -7.626,
+    "ret_pct_p5_p25_p50_p75_p95": [
+      -6.458,
+      -0.289,
+      0.568,
+      2.479,
+      10.074
+    ],
+    "worst_pct": -45.28,
+    "best_pct": 21.47,
+    "hold_hours_p25_p50_p75_p95": [
+      0.21,
+      1.6,
+      13.58,
+      105.3
+    ]
+  },
+  "XRPUSD": {
+    "win_pct_p10_p25_p50_p75_p90": [
+      2.611,
+      6.263,
+      11.245,
+      16.064,
+      23.749
+    ],
+    "loss_pct_p10_p25_p50_p75_p90": [
+      0.191,
+      1.008,
+      2.049,
+      5.943,
+      7.124
+    ],
+    "hold_hours_median_win_vs_loss": [
+      2.1,
+      66.81
+    ],
+    "n": 120,
+    "win_rate_pct": 80.0,
+    "avg_win_pct": 11.935,
+    "avg_loss_pct": -3.157,
+    "payoff_ratio": 3.78,
+    "expectancy_pct": 8.9163,
+    "weighted_win_rate_pct": 69.2,
+    "weighted_avg_win_pct": 10.918,
+    "weighted_avg_loss_pct": -4.251,
+    "ret_pct_p5_p25_p50_p75_p95": [
+      -5.943,
+      1.201,
+      7.642,
+      15.023,
+      25.071
+    ],
+    "worst_pct": -9.61,
+    "best_pct": 33.75,
+    "hold_hours_p25_p50_p75_p95": [
+      0.77,
+      3.37,
+      88.03,
+      271.27
+    ]
+  },
+  "by_exit_ordtype": {
+    "Limit": {
+      "win_pct_p10_p25_p50_p75_p90": [
+        0.148,
+        0.323,
+        0.741,
+        1.909,
+        4.54
+      ],
+      "loss_pct_p10_p25_p50_p75_p90": [
+        0.087,
+        0.277,
+        0.831,
+        2.417,
+        6.252
+      ],
+      "hold_hours_median_win_vs_loss": [
+        0.73,
+        2.05
+      ],
+      "n": 12354,
+      "win_rate_pct": 68.6,
+      "avg_win_pct": 1.87,
+      "avg_loss_pct": -2.434,
+      "payoff_ratio": 0.77,
+      "expectancy_pct": 0.5207,
+      "weighted_win_rate_pct": 63.2,
+      "weighted_avg_win_pct": 1.99,
+      "weighted_avg_loss_pct": -2.401,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -4.216,
+        -0.205,
+        0.352,
+        1.177,
+        5.797
+      ],
+      "worst_pct": -45.28,
+      "best_pct": 52.22,
+      "hold_hours_p25_p50_p75_p95": [
+        0.17,
+        1.0,
+        7.27,
+        65.76
+      ]
+    },
+    "Stop": {
+      "win_pct_p10_p25_p50_p75_p90": [
+        1.164,
+        1.164,
+        1.164,
+        1.164,
+        1.164
+      ],
+      "loss_pct_p10_p25_p50_p75_p90": [
+        0.371,
+        0.768,
+        1.181,
+        1.511,
+        2.487
+      ],
+      "hold_hours_median_win_vs_loss": [
+        9.6,
+        0.65
+      ],
+      "n": 30,
+      "win_rate_pct": 3.3,
+      "avg_win_pct": 1.164,
+      "avg_loss_pct": -1.4,
+      "payoff_ratio": 0.83,
+      "expectancy_pct": -1.3143,
+      "weighted_win_rate_pct": 0.0,
+      "weighted_avg_win_pct": 1.164,
+      "weighted_avg_loss_pct": -2.591,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -3.585,
+        -1.511,
+        -1.181,
+        -0.746,
+        -0.149
+      ],
+      "worst_pct": -7.09,
+      "best_pct": 1.16,
+      "hold_hours_p25_p50_p75_p95": [
+        0.2,
+        0.79,
+        7.77,
+        19.29
+      ]
+    },
+    "StopLimit": {
+      "win_pct_p10_p25_p50_p75_p90": null,
+      "loss_pct_p10_p25_p50_p75_p90": [
+        1.478,
+        1.478,
+        9.191,
+        9.191,
+        9.191
+      ],
+      "hold_hours_median_win_vs_loss": [
+        null,
+        11.21
+      ],
+      "n": 2,
+      "win_rate_pct": 0.0,
+      "avg_win_pct": null,
+      "avg_loss_pct": -5.334,
+      "payoff_ratio": null,
+      "expectancy_pct": -5.3344,
+      "weighted_win_rate_pct": 0.0,
+      "weighted_avg_win_pct": null,
+      "weighted_avg_loss_pct": -1.955,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -9.191,
+        -9.191,
+        -9.191,
+        -1.478,
+        -1.478
+      ],
+      "worst_pct": -9.19,
+      "best_pct": -1.48,
+      "hold_hours_p25_p50_p75_p95": [
+        10.01,
+        12.4,
+        12.4,
+        12.4
+      ]
+    },
+    "Market": {
+      "win_pct_p10_p25_p50_p75_p90": [
+        0.09,
+        0.176,
+        0.366,
+        0.75,
+        1.615
+      ],
+      "loss_pct_p10_p25_p50_p75_p90": [
+        0.061,
+        0.13,
+        0.353,
+        0.916,
+        1.853
+      ],
+      "hold_hours_median_win_vs_loss": [
+        0.14,
+        0.17
+      ],
+      "n": 331,
+      "win_rate_pct": 63.7,
+      "avg_win_pct": 0.867,
+      "avg_loss_pct": -0.819,
+      "payoff_ratio": 1.06,
+      "expectancy_pct": 0.2556,
+      "weighted_win_rate_pct": 28.4,
+      "weighted_avg_win_pct": 0.508,
+      "weighted_avg_loss_pct": -1.129,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -1.582,
+        -0.164,
+        0.161,
+        0.509,
+        1.943
+      ],
+      "worst_pct": -10.58,
+      "best_pct": 25.02,
+      "hold_hours_p25_p50_p75_p95": [
+        0.04,
+        0.15,
+        0.42,
+        7.45
+      ]
+    }
+  },
+  "by_entry_side": {
+    "long": {
+      "win_pct_p10_p25_p50_p75_p90": [
+        0.141,
+        0.31,
+        0.697,
+        1.789,
+        4.877
+      ],
+      "loss_pct_p10_p25_p50_p75_p90": [
+        0.084,
+        0.238,
+        0.672,
+        2.26,
+        5.841
+      ],
+      "hold_hours_median_win_vs_loss": [
+        0.47,
+        0.94
+      ],
+      "n": 5460,
+      "win_rate_pct": 71.0,
+      "avg_win_pct": 2.032,
+      "avg_loss_pct": -1.948,
+      "payoff_ratio": 1.04,
+      "expectancy_pct": 0.8757,
+      "weighted_win_rate_pct": 64.4,
+      "weighted_avg_win_pct": 2.034,
+      "weighted_avg_loss_pct": -2.027,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -3.69,
+        -0.123,
+        0.364,
+        1.162,
+        6.247
+      ],
+      "worst_pct": -32.19,
+      "best_pct": 52.22,
+      "hold_hours_p25_p50_p75_p95": [
+        0.12,
+        0.58,
+        4.37,
+        54.23
+      ]
+    },
+    "short": {
+      "win_pct_p10_p25_p50_p75_p90": [
+        0.147,
+        0.324,
+        0.758,
+        1.944,
+        4.334
+      ],
+      "loss_pct_p10_p25_p50_p75_p90": [
+        0.084,
+        0.301,
+        0.928,
+        2.408,
+        6.36
+      ],
+      "hold_hours_median_win_vs_loss": [
+        0.93,
+        2.77
+      ],
+      "n": 7257,
+      "win_rate_pct": 66.4,
+      "avg_win_pct": 1.696,
+      "avg_loss_pct": -2.661,
+      "payoff_ratio": 0.64,
+      "expectancy_pct": 0.2324,
+      "weighted_win_rate_pct": 61.9,
+      "weighted_avg_win_pct": 1.963,
+      "weighted_avg_loss_pct": -2.574,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -4.458,
+        -0.31,
+        0.32,
+        1.131,
+        5.094
+      ],
+      "worst_pct": -45.28,
+      "best_pct": 26.56,
+      "hold_hours_p25_p50_p75_p95": [
+        0.22,
+        1.28,
+        8.96,
+        73.06
+      ]
+    }
+  },
+  "by_year": {
+    "2018": {
+      "win_pct_p10_p25_p50_p75_p90": [
+        0.117,
+        0.245,
+        0.482,
+        0.982,
+        1.922
+      ],
+      "loss_pct_p10_p25_p50_p75_p90": [
+        0.06,
+        0.172,
+        0.505,
+        1.202,
+        2.685
+      ],
+      "hold_hours_median_win_vs_loss": [
+        0.23,
+        0.52
+      ],
+      "n": 6527,
+      "win_rate_pct": 71.7,
+      "avg_win_pct": 0.911,
+      "avg_loss_pct": -1.146,
+      "payoff_ratio": 0.8,
+      "expectancy_pct": 0.3289,
+      "weighted_win_rate_pct": 67.1,
+      "weighted_avg_win_pct": 0.688,
+      "weighted_avg_loss_pct": -0.946,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -1.701,
+        -0.072,
+        0.283,
+        0.721,
+        2.42
+      ],
+      "worst_pct": -19.31,
+      "best_pct": 30.2,
+      "hold_hours_p25_p50_p75_p95": [
+        0.08,
+        0.3,
+        1.25,
+        11.73
+      ]
+    },
+    "2019": {
+      "win_pct_p10_p25_p50_p75_p90": [
+        0.161,
+        0.318,
+        0.62,
+        1.134,
+        2.153
+      ],
+      "loss_pct_p10_p25_p50_p75_p90": [
+        0.073,
+        0.21,
+        0.528,
+        1.305,
+        2.621
+      ],
+      "hold_hours_median_win_vs_loss": [
+        0.82,
+        1.11
+      ],
+      "n": 2162,
+      "win_rate_pct": 70.3,
+      "avg_win_pct": 0.992,
+      "avg_loss_pct": -1.126,
+      "payoff_ratio": 0.88,
+      "expectancy_pct": 0.3632,
+      "weighted_win_rate_pct": 66.2,
+      "weighted_avg_win_pct": 0.938,
+      "weighted_avg_loss_pct": -1.107,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -1.744,
+        -0.121,
+        0.361,
+        0.845,
+        2.653
+      ],
+      "worst_pct": -11.03,
+      "best_pct": 12.89,
+      "hold_hours_p25_p50_p75_p95": [
+        0.19,
+        0.88,
+        4.73,
+        24.31
+      ]
+    },
+    "2020": {
+      "win_pct_p10_p25_p50_p75_p90": [
+        0.241,
+        0.699,
+        1.456,
+        2.939,
+        5.507
+      ],
+      "loss_pct_p10_p25_p50_p75_p90": [
+        0.141,
+        0.429,
+        1.171,
+        2.691,
+        5.461
+      ],
+      "hold_hours_median_win_vs_loss": [
+        3.33,
+        5.57
+      ],
+      "n": 2004,
+      "win_rate_pct": 60.6,
+      "avg_win_pct": 2.632,
+      "avg_loss_pct": -2.143,
+      "payoff_ratio": 1.23,
+      "expectancy_pct": 0.7496,
+      "weighted_win_rate_pct": 57.3,
+      "weighted_avg_win_pct": 1.932,
+      "weighted_avg_loss_pct": -1.953,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -4.884,
+        -0.713,
+        0.473,
+        1.809,
+        6.149
+      ],
+      "worst_pct": -19.29,
+      "best_pct": 33.75,
+      "hold_hours_p25_p50_p75_p95": [
+        0.83,
+        3.94,
+        13.38,
+        55.72
+      ]
+    },
+    "2021": {
+      "win_pct_p10_p25_p50_p75_p90": [
+        0.884,
+        2.159,
+        3.806,
+        6.707,
+        11.551
+      ],
+      "loss_pct_p10_p25_p50_p75_p90": [
+        0.418,
+        1.475,
+        3.735,
+        7.822,
+        17.734
+      ],
+      "hold_hours_median_win_vs_loss": [
+        15.2,
+        24.08
+      ],
+      "n": 2024,
+      "win_rate_pct": 63.2,
+      "avg_win_pct": 5.529,
+      "avg_loss_pct": -6.78,
+      "payoff_ratio": 0.82,
+      "expectancy_pct": 1.0047,
+      "weighted_win_rate_pct": 63.7,
+      "weighted_avg_win_pct": 4.401,
+      "weighted_avg_loss_pct": -5.602,
+      "ret_pct_p5_p25_p50_p75_p95": [
+        -13.092,
+        -2.186,
+        1.822,
+        4.589,
+        12.509
+      ],
+      "worst_pct": -45.28,
+      "best_pct": 52.22,
+      "hold_hours_p25_p50_p75_p95": [
+        5.26,
+        19.46,
+        59.45,
+        227.19
+      ]
+    }
+  },
+  "threshold_share": {
+    "|ret|>=0.1%": {
+      "gain_share_pct": 64.03,
+      "loss_share_pct": 27.92
+    },
+    "|ret|>=0.25%": {
+      "gain_share_pct": 55.34,
+      "loss_share_pct": 24.13
+    },
+    "|ret|>=0.5%": {
+      "gain_share_pct": 42.25,
+      "loss_share_pct": 19.6
+    },
+    "|ret|>=1%": {
+      "gain_share_pct": 27.55,
+      "loss_share_pct": 14.19
+    },
+    "|ret|>=2%": {
+      "gain_share_pct": 16.16,
+      "loss_share_pct": 8.97
+    },
+    "|ret|>=3%": {
+      "gain_share_pct": 11.21,
+      "loss_share_pct": 6.57
+    },
+    "|ret|>=5%": {
+      "gain_share_pct": 5.89,
+      "loss_share_pct": 3.95
+    },
+    "|ret|>=10%": {
+      "gain_share_pct": 1.93,
+      "loss_share_pct": 1.34
+    }
+  },
+  "threshold_share_2018_2019": {
+    "1%": {
+      "gain_ge_pct": 18.3,
+      "loss_le_pct": 8.8
+    },
+    "2%": {
+      "gain_ge_pct": 7.1,
+      "loss_le_pct": 4.1
+    },
+    "3%": {
+      "gain_ge_pct": 3.9,
+      "loss_le_pct": 2.6
+    },
+    "5%": {
+      "gain_ge_pct": 1.7,
+      "loss_le_pct": 1.3
+    },
+    "10%": {
+      "gain_ge_pct": 0.2,
+      "loss_le_pct": 0.3
+    }
+  },
+  "threshold_share_2020_2021": {
+    "1%": {
+      "gain_ge_pct": 47.6,
+      "loss_le_pct": 25.8
+    },
+    "2%": {
+      "gain_ge_pct": 35.7,
+      "loss_le_pct": 19.5
+    },
+    "3%": {
+      "gain_ge_pct": 27.1,
+      "loss_le_pct": 15.2
+    },
+    "5%": {
+      "gain_ge_pct": 15.0,
+      "loss_le_pct": 9.7
+    },
+    "10%": {
+      "gain_ge_pct": 5.6,
+      "loss_le_pct": 3.6
+    }
+  },
+  "stop_orders_loss": {
+    "n": 31,
+    "loss_pct_p10_p25_p50_p75_p90": [
+      0.4,
+      0.768,
+      1.255,
+      1.523,
+      2.487
+    ]
+  },
+  "market_orders_loss": {
+    "n": 119,
+    "loss_pct_p10_p25_p50_p75_p90": [
+      0.061,
+      0.13,
+      0.353,
+      0.916,
+      1.853
+    ]
+  },
+  "limit_exit_split": {
+    "loss_orders": 3842,
+    "win_orders": 8481,
+    "loss_pct_p50_p90_p99": [
+      0.843,
+      6.285,
+      29.973
+    ]
+  },
+  "big_loss_share_of_weighted_loss_pct": 80.6,
+  "scale_in": {
+    "adds": 713572,
+    "adds_against_position_share_pct": 55.8,
+    "adverse_pct_p50_p90_p99_of_adverse": [
+      0.344,
+      3.926,
+      17.159
+    ],
+    "weighted_adverse_share_ge_1pct": 12.3
+  },
+  "wallet_daily": {
+    "days": 1365,
+    "win_day_rate_pct": 66.3,
+    "avg_win_day_pct": 3.476,
+    "avg_loss_day_pct": -3.372,
+    "worst_day_pct": -84.33,
+    "best_day_pct": 67.69,
+    "p5_p50_p95_pct": [
+      -5.235,
+      0.117,
+      10.966
+    ],
+    "daily_stdev_pct": 7.957,
+    "longest_losing_streak_days": 8,
+    "final_compounded_multiple_ex_flows": 52486.7,
+    "max_drawdown_pct": -90.9,
+    "max_drawdown_end_day": "2018-09-22",
+    "yearly_return_pct": {
+      "2018": 11673.4,
+      "2019": 1275.9,
+      "2020": 320.8,
+      "2021": 670.0
+    },
+    "monthly_win_rate_pct": 80.4,
+    "worst_month_pct": -82.4,
+    "best_month_pct": 472.9
+  },
+  "leverage_est_daily_max": {
+    "days": 1075,
+    "p25_p50_p75_p95_max": [
+      1.82,
+      2.39,
+      3.84,
+      13.61,
+      107.8
+    ]
+  },
+  "wallet_flows_btc": {
+    "deposits": 14.49,
+    "withdrawals": 2814.54,
+    "final_wallet_btc": 737.27,
+    "total_realised_pnl_btc": 3537.32
+  },
+  "closing_orders_by_symbol_top": [
+    [
+      "XBTUSD",
+      10047
+    ],
+    [
+      "ETHUSD",
+      1405
+    ],
+    [
+      "EOSU18",
+      161
+    ],
+    [
+      "BCHZ18",
+      159
+    ],
+    [
+      "XRPU18",
+      125
+    ],
+    [
+      "XRPUSD",
+      120
+    ],
+    [
+      "XRPZ18",
+      101
+    ],
+    [
+      "ADAM18",
+      89
+    ]
+  ],
+  "fills_by_ordtype": {
+    "Market": 4067,
+    "Limit": 1430266,
+    "Stop": 4773,
+    "StopLimit": 101
+  },
+  "period": [
+    "2018-03-05",
+    "2021-12-24"
+  ]
+}

@@ -1,0 +1,21 @@
+# build
+.gradle/
+build/
+out/
+*.class
+
+# IDE
+.idea/
+*.iml
+
+# secrets: never commit
+.env
+.env.*
+!.env.example
+application-local.yml
+application-*.yml
+*.pem
+*.key
+
+# 대용량 원본 데이터 (분석 산출물 derived/ 는 재생성 가능)
+data/wonyotti/raw/
