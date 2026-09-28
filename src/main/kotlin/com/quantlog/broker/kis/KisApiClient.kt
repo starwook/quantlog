@@ -1,6 +1,7 @@
 package com.quantlog.broker.kis
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
 import mu.KotlinLogging
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
@@ -14,6 +15,7 @@ private val log = KotlinLogging.logger {}
 class KisApiClient(
     private val properties: KisProperties,
     private val tokenProvider: KisTokenProvider,
+    private val objectMapper: ObjectMapper,
     restClientBuilder: RestClient.Builder,
 ) {
     private val restClient = restClientBuilder.clone().baseUrl(properties.baseUrl).build()
@@ -39,7 +41,11 @@ class KisApiClient(
         body: Map<String, String>,
     ): JsonNode =
         execute(path, trId) { spec ->
-            spec.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(body)
+            // Map 객체를 그대로 넘기면 Spring이 쓰기 시점에 직렬화하며 Content-Length가 어긋나
+            // KIS 게이트웨이가 EGW00202(GW라우팅 오류)로 거부하는 사례가 있었다. 미리 JSON 문자열로
+            // 직렬화해 정확한 바이트 길이를 넘긴다. (참고: https://wildeveloperetrain.tistory.com/426)
+            val json = objectMapper.writeValueAsString(body)
+            spec.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(json)
         }
 
     private fun execute(

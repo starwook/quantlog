@@ -1,5 +1,6 @@
 package com.quantlog.broker.kis
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantlog.broker.Market
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Side
@@ -30,7 +31,7 @@ class KisMockBrokerTest {
             KisProperties(baseUrl = base, appKey = "key", appSecret = "secret", account = "12345678-01", minIntervalMillis = 0)
         val builder = RestClient.builder()
         server = MockRestServiceServer.bindTo(builder).build()
-        val api = KisApiClient(properties, KisTokenProvider(properties, builder), builder)
+        val api = KisApiClient(properties, KisTokenProvider(properties, builder), ObjectMapper(), builder)
         broker = KisMockBroker(api, properties)
 
         server.expect(requestTo("$base/oauth2/tokenP"))
