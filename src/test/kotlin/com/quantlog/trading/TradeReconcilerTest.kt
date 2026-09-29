@@ -62,7 +62,7 @@ class TradeReconcilerTest {
     fun `체결가를 확인하면 채워서 저장한다`() {
         val trade = pendingTrade()
         val repository = Mockito.mock(TradeRepository::class.java)
-        Mockito.`when`(repository.findAllByMarketAndFilledPriceIsNull(Market.KR)).thenReturn(listOf(trade))
+        Mockito.`when`(repository.findAllByFilledPriceIsNull()).thenReturn(listOf(trade))
 
         TradeReconciler(FakeBroker(BigDecimal("272000")), repository, ReconcileProperties(enabled = true)).reconcile()
 
@@ -74,7 +74,7 @@ class TradeReconcilerTest {
     fun `아직 체결 확인 안 되면 그대로 두고 저장하지 않는다`() {
         val trade = pendingTrade()
         val repository = Mockito.mock(TradeRepository::class.java)
-        Mockito.`when`(repository.findAllByMarketAndFilledPriceIsNull(Market.KR)).thenReturn(listOf(trade))
+        Mockito.`when`(repository.findAllByFilledPriceIsNull()).thenReturn(listOf(trade))
 
         TradeReconciler(FakeBroker(null), repository, ReconcileProperties(enabled = true)).reconcile()
 
@@ -86,7 +86,7 @@ class TradeReconcilerTest {
     fun `실패해도 다른 건 처리를 멈추지 않는다`() {
         val trade = pendingTrade()
         val repository = Mockito.mock(TradeRepository::class.java)
-        Mockito.`when`(repository.findAllByMarketAndFilledPriceIsNull(Market.KR)).thenReturn(listOf(trade))
+        Mockito.`when`(repository.findAllByFilledPriceIsNull()).thenReturn(listOf(trade))
         val broker =
             object : BrokerClient by FakeBroker(null) {
                 override fun filledPrice(
