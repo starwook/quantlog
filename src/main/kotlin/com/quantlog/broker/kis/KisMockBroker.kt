@@ -296,7 +296,7 @@ class KisMockBroker(
         market: Market,
         orderNo: String,
     ): BigDecimal? {
-        if (market.isOverseas) return null
+        if (market.isOverseas) return overseasFilledPrice(market, orderNo)
         val today = LocalDate.now(KST).format(DATE_FORMAT)
         val res =
             api.get(
@@ -324,6 +324,43 @@ class KisMockBroker(
         val filledQty = row.path("tot_ccld_qty").asText("0").toIntOrNull() ?: 0
         if (filledQty <= 0) return null
         return row.decimal("avg_prvs")
+    }
+
+    /**
+     * 해외 주문체결내역(VTTS3035R, docs/kis-api/examples/overseas_stock/inquire_ccnl.py 원문 기준).
+     * 모의투자는 종목·구분·거래소 필터가 전체 조회만 되고 주문번호로 검색도 안 돼서(ODNO 는 반드시 ""),
+     * 어제~오늘(현지 날짜) 전체를 받아 주문번호를 직접 골라낸다. 첫 페이지만 본다(연속조회 헤더 미지원).
+     * 필드명(odno/ft_ccld_qty/ft_ccld_unpr3)은 원문 컬럼 목록 기준이며 실측은 아직 안 했다.
+     */
+    private fun overseasFilledPrice(
+        market: Market,
+        orderNo: String,
+    ): BigDecimal? {
+        val today = LocalDate.now(market.zone)
+        val res =
+            api.get(
+                "/uapi/overseas-stock/v1/trading/inquire-ccnl",
+                "VTTS3035R",
+                accountParams() +
+                    mapOf(
+                        "PDNO" to "",
+                        "ORD_STRT_DT" to today.minusDays(1).format(DATE_FORMAT),
+                        "ORD_END_DT" to today.format(DATE_FORMAT),
+                        "SLL_BUY_DVSN" to "00",
+                        "CCLD_NCCS_DVSN" to "00",
+                        "OVRS_EXCG_CD" to "",
+                        "SORT_SQN" to "DS",
+                        "ORD_DT" to "",
+                        "ORD_GNO_BRNO" to "",
+                        "ODNO" to "",
+                        "CTX_AREA_NK200" to "",
+                        "CTX_AREA_FK200" to "",
+                    ),
+            )
+        val row = res.path("output").firstOrNull { it.path("odno").asText() == orderNo } ?: return null
+        val filledQty = row.path("ft_ccld_qty").asText("0").toBigDecimalOrNull() ?: BigDecimal.ZERO
+        if (filledQty <= BigDecimal.ZERO) return null
+        return row.decimal("ft_ccld_unpr3")
     }
 
     private fun accountParams() = mapOf("CANO" to properties.accountNumber, "ACNT_PRDT_CD" to properties.accountProductCode)

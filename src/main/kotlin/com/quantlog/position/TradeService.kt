@@ -13,7 +13,7 @@ class TradeService(
     private val repository: TradeRepository,
     private val notifier: Notifier,
 ) {
-    /** filledPrice: 실제 체결가(국내만 확인 가능, 호출부가 조회해서 넘긴다). 못 구했으면 null로 둔다 — 지어내지 않는다. */
+    /** filledPrice: 실제 체결가(호출부가 조회해서 넘긴다). 못 구했으면 null로 둔다 — 지어내지 않는다. */
     fun record(
         order: OrderRequest,
         receipt: OrderReceipt,
