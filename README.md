@@ -4,7 +4,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 
 ## 지금 되는 것
 
-한투(KIS) **모의투자** 연동 + 매매 기록 DB/웹. 국내(KR) + 미국(NASDAQ/NYSE/AMEX) 지원. 실행하면 `http://localhost:8080`에서 계좌 요약·실현손익·매매 기록을 볼 수 있다 (Thymeleaf, 서버는 계속 떠 있음).
+한투(KIS) **모의투자** 연동 + 매매 기록 DB/웹. 국내(KR) + 미국(NASDAQ/NYSE/AMEX) 지원. 실행하면 `http://localhost:8080`에서 계좌 요약·실현손익·매매 기록을 볼 수 있다 (Thymeleaf, 서버는 계속 떠 있음). 보유 종목은 화면을 열 때마다 KIS 잔고를 직접 조회해서 보여준다(DB 기록과 무관, 캐시 없음 — 조회 실패 시에만 매매 기록 기반으로 대체).
 
 | 기능 | 위치 |
 |---|---|
@@ -13,12 +13,13 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 | 청산 판정 (익절 +1% / 손절 -1% 시작, 목표가는 가장 가까운 호가로 맞춤, 설정으로 조정) | `strategy/ExitRule.kt` |
 | 주문 전 리스크 가드 (주문금액·수량 상한) | `trading/RiskGuard.kt` |
 | 연동 점검 실행기 (READ / BUY / SELL / CANDLES) | `trading/SmokeTestRunner.kt` |
-| 청산 스케줄러 (정규장 동안 30초마다 잔고 확인 → 익절/손절 목표가에 닿으면 한 호가 낮게 전량 매도, `quantlog.exit.enabled`) | `trading/ExitScheduler.kt` |
+| 청산 스케줄러 (정규장 동안 1초마다 매매 기록 DB 기준 보유 종목의 현재가 확인 → 익절/손절 목표가에 닿으면 한 호가 낮게 전량 매도, `quantlog.exit.enabled`) | `trading/ExitScheduler.kt` |
+| Oracle Cloud 배포 (로컬 수동 `deploy/deploy.sh` / GitHub push 자동 `.github/workflows/deploy.yml`) | `deploy/` (절차는 `deploy/DEPLOY.md`) |
 | 국내 분봉 수집 (KIS 당일·최근 30건 → `minute_candle` 테이블에 누적) | `marketdata/` |
 | 매매 기록 저장·조회·실현손익 계산(FIFO) | `position/` (MySQL, DB명 `quantlog`, 로컬 root/무비밀번호) |
 | 웹 대시보드 (8080) | `position/TradeController.kt` + `resources/templates/trades.html` |
 
-**아직 없는 것**: 자동 매수(진입 판단 규칙 미정), 타임스톱·체결 확인·휴장일 판단, 클라우드 배포(로컬 PC 꺼지면 같이 멈춤), 진입 판단(AI 필요 여부 재검토 중, `docs/기획서.md` 7장), 일일 손실 한도(킬스위치) 코드.
+**아직 없는 것**: 자동 매수(진입 판단 규칙 미정), 타임스톱·체결 확인·휴장일 판단, 진입 판단(AI 필요 여부 재검토 중, `docs/기획서.md` 7장), 일일 손실 한도(킬스위치) 코드.
 
 ## 오늘 모의투자 테스트하기
 
