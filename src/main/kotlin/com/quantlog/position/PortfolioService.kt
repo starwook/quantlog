@@ -79,8 +79,10 @@ class PortfolioService(
         trades.forEach { trade ->
             val key = trade.market to trade.symbol
             val lots = lotsByKey.getOrPut(key) { ArrayDeque() }
+            // 실제 체결가가 있으면 그걸 쓴다 — 지정가와 다를 수 있다 (2026-09-29: 국내는 지정가·체결가가 꽤 벌어진 적 있었음).
+            val price = trade.filledPrice ?: trade.orderPrice
             when (trade.side) {
-                Side.BUY -> lots.addLast(Lot(trade.quantity, trade.orderPrice))
+                Side.BUY -> lots.addLast(Lot(trade.quantity, price))
                 Side.SELL -> {
                     var remaining = trade.quantity
                     var cost = BigDecimal.ZERO
@@ -95,7 +97,7 @@ class PortfolioService(
                         if (lot.quantity == 0) lots.removeFirst()
                     }
                     if (matchedQty > 0) {
-                        val proceeds = trade.orderPrice.multiply(BigDecimal(matchedQty))
+                        val proceeds = price.multiply(BigDecimal(matchedQty))
                         val amount = proceeds.subtract(cost)
                         val percent = percentOf(amount, cost)
                         trade.id?.let { pnlByTradeId[it] = RealizedPnl(amount, percent) }
@@ -121,7 +123,7 @@ class PortfolioService(
             val avgCost = cost.divide(BigDecimal(quantity), MathContext.DECIMAL64)
             val (currentPrice, stale) =
                 try {
-                    broker.currentPrice(market, symbol) to false
+                    broker.quote(market, symbol).price to false
                 } catch (e: Exception) {
                     log.warn(e) { "현재가 조회 실패, 평단가로 대체: $market $symbol" }
                     avgCost to true

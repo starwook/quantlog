@@ -48,39 +48,61 @@ class KisApiClient(
             spec.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(json)
         }
 
+    /**
+     * 초당 한도 초과(EGW00201/EGW00215)는 여러 스케줄러가 겹칠 때 실제로 발생한다(2026-09-29 실측:
+     * 청산 스케줄러가 "1% 익절 됐는데 안 팔렸다"고 느껴진 사례의 원인 — 그 순간 확인이 한도 초과로 통째로
+     * 실패하고 다음 30초까지 기다린 것). 한도 초과일 때만 짧게 쉬었다가 한 번 더 시도한다.
+     */
     private fun execute(
         path: String,
         trId: String,
         build: (RestClient) -> RestClient.RequestHeadersSpec<*>,
     ): JsonNode {
-        throttle()
-        val response: JsonNode =
+        repeat(MAX_ATTEMPTS) { attempt ->
+            throttle()
             try {
-                build(restClient)
-                    .header("authorization", "Bearer ${tokenProvider.accessToken()}")
-                    .header("appkey", properties.appKey)
-                    .header("appsecret", properties.appSecret)
-                    .header("tr_id", trId)
-                    .header("custtype", "P")
-                    .retrieve()
-                    .body(JsonNode::class.java)
-            } catch (e: RestClientResponseException) {
-                throw KisApiException("KIS 호출 실패 $path ($trId): HTTP ${e.statusCode.value()} ${e.responseBodyAsString}", e)
-            } ?: throw KisApiException("KIS 응답이 비어 있습니다: $path ($trId)")
+                val response =
+                    build(restClient)
+                        .header("authorization", "Bearer ${tokenProvider.accessToken()}")
+                        .header("appkey", properties.appKey)
+                        .header("appsecret", properties.appSecret)
+                        .header("tr_id", trId)
+                        .header("custtype", "P")
+                        .retrieve()
+                        .body(JsonNode::class.java)
+                        ?: throw KisApiException("KIS 응답이 비어 있습니다: $path ($trId)")
 
-        if (response.path("rt_cd").asText() != "0") {
-            throw KisApiException(
-                "KIS 오류 $path ($trId): [${response.path("msg_cd").asText()}] ${response.path("msg1").asText()}",
-            )
+                if (response.path("rt_cd").asText() != "0") {
+                    throw KisApiException(
+                        "KIS 오류 $path ($trId): [${response.path("msg_cd").asText()}] ${response.path("msg1").asText()}",
+                    )
+                }
+                if (properties.logRaw) log.info { "KIS raw $path ($trId): $response" }
+                return response
+            } catch (e: RestClientResponseException) {
+                val body = e.responseBodyAsString
+                if (attempt < MAX_ATTEMPTS - 1 && isRateLimited(body)) {
+                    log.warn { "[KIS 한도 초과] $path ($trId) — ${RATE_LIMIT_RETRY_DELAY_MILLIS}ms 후 재시도" }
+                    Thread.sleep(RATE_LIMIT_RETRY_DELAY_MILLIS)
+                    return@repeat
+                }
+                throw KisApiException("KIS 호출 실패 $path ($trId): HTTP ${e.statusCode.value()} $body", e)
+            }
         }
-        if (properties.logRaw) log.info { "KIS raw $path ($trId): $response" }
-        return response
+        throw KisApiException("KIS 호출 실패(재시도 초과) $path ($trId)")
     }
+
+    private fun isRateLimited(body: String): Boolean = body.contains("EGW00201") || body.contains("EGW00215")
 
     @Synchronized
     private fun throttle() {
         val wait = lastCallAt + properties.minIntervalMillis - System.currentTimeMillis()
         if (wait > 0) Thread.sleep(wait)
         lastCallAt = System.currentTimeMillis()
+    }
+
+    private companion object {
+        const val MAX_ATTEMPTS = 2
+        const val RATE_LIMIT_RETRY_DELAY_MILLIS = 1500L
     }
 }

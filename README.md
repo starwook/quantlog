@@ -10,13 +10,15 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 |---|---|
 | 브로커 추상화 | `broker/BrokerClient.kt` |
 | KIS 모의투자 구현 (시세·매수가능·잔고·지정가 주문) | `broker/kis/` |
-| 청산 판정 (익절 +1% / 손절 -1% 시작, 설정으로 조정) | `strategy/ExitRule.kt` |
+| 청산 판정 (익절 +1% / 손절 -1% 시작, 목표가는 가장 가까운 호가로 맞춤, 설정으로 조정) | `strategy/ExitRule.kt` |
 | 주문 전 리스크 가드 (주문금액·수량 상한) | `trading/RiskGuard.kt` |
-| 연동 점검 실행기 (READ / BUY / SELL) | `trading/SmokeTestRunner.kt` |
+| 연동 점검 실행기 (READ / BUY / SELL / CANDLES) | `trading/SmokeTestRunner.kt` |
+| 청산 스케줄러 (정규장 동안 30초마다 잔고 확인 → 익절/손절 목표가에 닿으면 한 호가 낮게 전량 매도, `quantlog.exit.enabled`) | `trading/ExitScheduler.kt` |
+| 국내 분봉 수집 (KIS 당일·최근 30건 → `minute_candle` 테이블에 누적) | `marketdata/` |
 | 매매 기록 저장·조회·실현손익 계산(FIFO) | `position/` (MySQL, DB명 `quantlog`, 로컬 root/무비밀번호) |
 | 웹 대시보드 (8080) | `position/TradeController.kt` + `resources/templates/trades.html` |
 
-**아직 없는 것**: 자동 루프(스케줄러로 주기 실행), 클라우드 배포(로컬 PC 꺼지면 같이 멈춤), 진입 판단(AI 필요 여부 재검토 중, `docs/기획서.md` 7장), 일일 손실 한도(킬스위치) 코드.
+**아직 없는 것**: 자동 매수(진입 판단 규칙 미정), 타임스톱·체결 확인·휴장일 판단, 클라우드 배포(로컬 PC 꺼지면 같이 멈춤), 진입 판단(AI 필요 여부 재검토 중, `docs/기획서.md` 7장), 일일 손실 한도(킬스위치) 코드.
 
 ## 오늘 모의투자 테스트하기
 
@@ -49,8 +51,8 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 
 ### 1. 순서
 1. **`mode: READ`** (시간 무관): 현재가 → 매수가능금액 → 잔고 조회. 토큰/계좌/응답 필드가 맞는지 확인. 오류가 나면 로그의 `KIS 오류 … [msg_cd] msg1` 를 본다.
-2. **`mode: BUY`** (미국 정규장 중): 현재가 +0.5% 지정가로 1주 매수. 잔고에 보이면 성공. (파일 저장 후 다시 실행)
-3. **`mode: SELL`**: 현재가 -0.5% 지정가로 1주 매도해 정리.
+2. **`mode: BUY`** (미국 정규장 중): 현재가 +0.5%를 호가 단위로 올림한 지정가로 1주 매수. 잔고에 보이면 성공. (파일 저장 후 다시 실행)
+3. **`mode: SELL`**: 현재가 -0.5%를 호가 단위로 내림한 지정가로 1주 매도해 정리. 가격을 직접 정하려면 `quantlog.smoke.limit-price`(예: `273000`)를 지정한다.
 
 값을 바꿀 때마다 `application-local.yml`을 저장하고 다시 실행하면 된다.
 
@@ -62,7 +64,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 - 모의투자는 **일부 종목만 매매 가능**하다. `AAPL`이 거절되면 `application-local.yml`의 `quantlog.smoke.symbol`을 다른 대형주로 바꿔 본다.
 
 ### 3. 안전장치
-- 주문은 항상 `RiskGuard` 를 거친다 (기본 1회 $1,000 / 10주 / ₩1,000,000). 한도는 `application.yml` 의 `quantlog.risk`.
+- 주문은 항상 `RiskGuard` 를 거친다 (기본 1회 $1,000 / 10주 / ₩2,000,000). 한도는 `application.yml` 의 `quantlog.risk`.
 - 모의 도메인(`openapivts…`)만 사용한다. 실전 도메인은 코드에 없다.
 
 ## 개발

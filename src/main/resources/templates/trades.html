@@ -14,10 +14,12 @@
             /* 한국 증권가 관행: 이익(상승)=빨강, 손실(하락)=파랑 */
             --pos: #f04452;
             --neg: #3182f6;
-            --buy-bg: #eef2ff;
-            --buy-text: #4f5b76;
-            --sell-bg: #f4f4f5;
-            --sell-text: #4f5b76;
+            /* 매수/매도 배지: 뚜렷이 구분되도록 진한 배경 + 흰 글씨로 바꿈 (2026-09-29: 이전엔 두 배지의
+               글자색이 #4f5b76로 똑같아서 배경색 차이만으로 구분해야 했다 — 구분이 잘 안 된다는 지적). */
+            --buy-bg: #f04452;
+            --buy-text: #ffffff;
+            --sell-bg: #3182f6;
+            --sell-text: #ffffff;
         }
         * { box-sizing: border-box; }
         body {
@@ -87,7 +89,14 @@
             border-top: 1px solid var(--border);
         }
         .holding:first-child { border-top: none; }
-        .holding .name { font-weight: 600; font-size: 15px; }
+        .holding .name {
+            font-weight: 600;
+            font-size: 15px;
+            color: var(--text);
+            text-decoration: none;
+            display: inline-block;
+        }
+        .holding .name:hover { text-decoration: underline; }
         .holding .meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
         .holding .right { text-align: right; }
         .holding .value { font-weight: 600; font-size: 15px; }
@@ -118,17 +127,26 @@
         }
         .badge.buy { color: var(--buy-text); background: var(--buy-bg); }
         .badge.sell { color: var(--sell-text); background: var(--sell-bg); }
-        .trade .symbol { font-weight: 600; font-size: 15px; }
+        .trade .symbol {
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--text);
+            text-decoration: none;
+        }
+        .trade .symbol:hover { text-decoration: underline; }
         .trade .right { text-align: right; }
         .trade .value { font-weight: 600; font-size: 15px; }
-        .trade .pnl { font-size: 13px; margin-top: 2px; }
+        .trade .pnl { font-size: 13px; margin-top: 2px; font-weight: 600; }
         .trade .meta {
-            margin-top: 8px;
+            margin-top: 10px;
             font-size: 13px;
-            color: var(--muted);
-            line-height: 1.5;
+            color: var(--text);
+            line-height: 1.6;
         }
-        .trade .meta .reason { color: var(--text); }
+        .trade .meta .order-no {
+            color: var(--muted);
+            font-size: 12px;
+        }
 
         .empty {
             padding: 48px 16px;
@@ -142,10 +160,36 @@
             font-size: 12px;
             color: var(--muted);
         }
+        .chart-nav {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .chart-nav a {
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--card);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            text-decoration: none;
+        }
+        .chart-nav a.backtest {
+            background: var(--text);
+            color: #fff;
+        }
     </style>
 </head>
 <body>
 <main>
+    <div class="chart-nav" th:if="${not #lists.isEmpty(chartSymbols)}">
+        <a th:each="s : ${chartSymbols}"
+           th:href="@{'/chart/' + ${s.market} + '/' + ${s.symbol}}"
+           th:text="${s.displayName} + ' 차트'"></a>
+        <a class="backtest" th:if="${not #lists.isEmpty(chartSymbols)}"
+           th:href="@{'/backtest/' + ${chartSymbols[0].market} + '/' + ${chartSymbols[0].symbol}}">백테스트</a>
+    </div>
+
     <div th:each="s : ${summaries}" style="margin-bottom: 24px;">
         <h1 th:text="${s.currency} + ' 계좌'"></h1>
 
@@ -181,7 +225,7 @@
             <div th:if="${s.holdingCount == 0}" class="empty">보유 중인 종목이 없습니다.</div>
             <div class="holding" th:each="h : ${s.holdings}">
                 <div>
-                    <div class="name" th:text="${h.symbol} + ' · ' + ${h.market}"></div>
+                    <a class="name" th:href="@{'/chart/' + ${h.market} + '/' + ${h.symbol}}" th:text="${h.symbolName}"></a>
                     <div class="meta" th:text="${h.quantity} + '주 · 평단 ' + ${h.avgCost}"></div>
                 </div>
                 <div class="right">
@@ -203,22 +247,22 @@
         <div class="trade" th:each="t : ${trades}">
             <div class="top">
                 <div class="who">
-                    <span class="badge" th:classappend="${t.sideCss}" th:text="${t.side == 'BUY'} ? '매수' : '매도'"></span>
-                    <span class="symbol" th:text="${t.symbol} + ' · ' + ${t.market}"></span>
+                    <span class="badge" th:classappend="${t.sideCss}" th:text="${t.side == 'BUY'} ? '▲ 매수' : '▼ 매도'"></span>
+                    <a class="symbol" th:href="@{'/chart/' + ${t.market} + '/' + ${t.symbol}}" th:text="${t.symbolName} + ' · ' + ${t.market}"></a>
                 </div>
                 <div class="right">
-                    <div class="value" th:text="${t.quantity} + '주 @ ' + ${t.orderPrice}"></div>
+                    <div class="value" th:text="${t.quantity} + '주 @ ' + ${t.priceText}"></div>
                     <div class="pnl" th:classappend="${t.pnlCss}" th:text="${t.pnlText}"></div>
                 </div>
             </div>
             <div class="meta">
-                <span th:text="${t.executedAtKst}"></span> · 주문번호 <span th:text="${t.orderNo}"></span><br>
-                사유: <span class="reason" th:text="${t.reason}"></span>
+                <span th:text="${t.reason}"></span><br>
+                <span class="order-no" th:text="${t.executedAtKst} + ' · 주문번호 ' + ${t.orderNo}"></span>
             </div>
         </div>
     </div>
 
-    <footer>모의투자 실험 기록입니다. 투자 권유가 아니며, 지정가는 실제 체결가와 다를 수 있습니다.</footer>
+    <footer>모의투자 실험 기록입니다. 투자 권유가 아닙니다. 매매 기록의 가격은 실제 체결가(국내만 확인됨)를 우선 보여주고, 못 구했으면 지정가를 보여줍니다.</footer>
 </main>
 </body>
 </html>

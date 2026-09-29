@@ -1,5 +1,7 @@
 package com.quantlog.position
 
+import com.quantlog.watchlist.WatchedSymbol
+import com.quantlog.watchlist.displayNameOf
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
@@ -7,16 +9,19 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** 화면에 그대로 찍을 수 있게 미리 포맷을 끝낸 값들. 템플릿에는 포맷·색상 판정 로직을 두지 않는다. */
 data class TradeRow(
     val executedAtKst: String,
     val market: String,
     val symbol: String,
+    val symbolName: String,
     val side: String,
     val sideCss: String,
     val quantity: Int,
-    val orderPrice: String,
+    /** 실제 체결가 우선. 못 구했으면 지정가 + "(체결가 미확인)". */
+    val priceText: String,
     val orderNo: String,
     val reason: String,
     val pnlText: String,
@@ -26,6 +31,7 @@ data class TradeRow(
 data class HoldingRow(
     val market: String,
     val symbol: String,
+    val symbolName: String,
     val quantity: Int,
     val avgCost: String,
     val currentPrice: String,
@@ -50,7 +56,9 @@ data class SummaryView(
 )
 
 @Controller
-class TradeController(private val portfolioService: PortfolioService) {
+class TradeController(
+    private val portfolioService: PortfolioService,
+) {
     @GetMapping("/")
     fun trades(model: Model): String {
         val snapshot = portfolioService.snapshot()
@@ -65,6 +73,7 @@ class TradeController(private val portfolioService: PortfolioService) {
         model.addAttribute("hasSummaries", summaries.isNotEmpty())
         model.addAttribute("trades", rows)
         model.addAttribute("hasTrades", rows.isNotEmpty())
+        model.addAttribute("chartSymbols", WatchedSymbol.entries)
         return "trades"
     }
 
@@ -73,26 +82,35 @@ class TradeController(private val portfolioService: PortfolioService) {
             executedAtKst = TIME_FORMAT.format(executedAt.atZone(KST)),
             market = market.name,
             symbol = symbol,
+            symbolName = displayNameOf(market, symbol),
             side = side.name,
             sideCss = side.name.lowercase(),
             quantity = quantity,
-            orderPrice = orderPrice.money(),
+            priceText = priceText(),
             orderNo = orderNo,
             reason = reason ?: "—",
-            pnlText = pnl?.let { "${it.amount.money()} (${it.percent.percentText()})" } ?: "—",
+            pnlText = pnl?.let { "${it.amount.signedMoney(market.currency)} (${it.percent.percentText()})" } ?: "—",
             pnlCss = pnl?.amount?.pnlCss() ?: "muted",
         )
+
+    /** 체결가를 우선 보여준다. 지정가와 다르면 같이 적고, 체결가를 못 구했으면 그렇다고 밝힌다. */
+    private fun Trade.priceText(): String {
+        val currency = market.currency
+        val filled = filledPrice ?: return "${orderPrice.money(currency)} (지정가, 체결가 미확인)"
+        if (filled.compareTo(orderPrice) == 0) return filled.money(currency)
+        return "${filled.money(currency)} (지정가 ${orderPrice.money(currency)})"
+    }
 
     private fun PortfolioSummary.toView() =
         SummaryView(
             currency = currency,
-            holdingsValueText = holdingsValue.money(),
-            costBasisText = costBasis.money(),
-            unrealizedText = "${unrealizedPnl.money()} (${unrealizedPnlPercent.percentText()})",
+            holdingsValueText = holdingsValue.money(currency),
+            costBasisText = costBasis.money(currency),
+            unrealizedText = "${unrealizedPnl.signedMoney(currency)} (${unrealizedPnlPercent.percentText()})",
             unrealizedCss = unrealizedPnl.pnlCss(),
-            realizedTodayText = "${realizedPnlToday.money()} (${realizedPnlTodayPercent.percentText()})",
+            realizedTodayText = "${realizedPnlToday.signedMoney(currency)} (${realizedPnlTodayPercent.percentText()})",
             realizedTodayCss = realizedPnlToday.pnlCss(),
-            realizedTotalText = "${realizedPnlTotal.money()} (${realizedPnlTotalPercent.percentText()})",
+            realizedTotalText = "${realizedPnlTotal.signedMoney(currency)} (${realizedPnlTotalPercent.percentText()})",
             realizedTotalCss = realizedPnlTotal.pnlCss(),
             holdingCount = holdings.size,
             holdings = holdings.map { it.toRow() },
@@ -102,17 +120,31 @@ class TradeController(private val portfolioService: PortfolioService) {
         HoldingRow(
             market = market.name,
             symbol = symbol,
+            symbolName = displayNameOf(market, symbol),
             quantity = quantity,
-            avgCost = avgCost.money(),
-            currentPrice = currentPrice.money(),
+            avgCost = avgCost.money(market.currency),
+            currentPrice = currentPrice.money(market.currency),
             stale = priceStale,
-            valueText = value.money(),
-            pnlText = "${unrealizedPnl.money()} (${unrealizedPnlPercent.percentText()})",
+            valueText = value.money(market.currency),
+            pnlText = "${unrealizedPnl.signedMoney(market.currency)} (${unrealizedPnlPercent.percentText()})",
             pnlCss = unrealizedPnl.pnlCss(),
         )
 
-    /** 통화 기호까지 붙인 금액 표기. 통화가 섞이지 않도록 항상 currency 와 함께 다닌다. */
-    private fun BigDecimal.money(): String = setScale(2, RoundingMode.HALF_UP).toPlainString()
+    /**
+     * 통화별로 자릿수를 다르게 표기한다 — 원화는 소수점 없이 천 단위 구분, 달러는 소수점 둘째 자리까지.
+     * 2026-09-29: 기존엔 setScale(2)+toPlainString() 이라 "1779500.00"처럼 구분자 없이 나와 숫자를
+     * 잘못 읽기 쉬웠다(원화는 애초에 소수점이 없는 통화).
+     */
+    private fun BigDecimal.money(currency: String): String {
+        val scale = if (currency == "KRW") 0 else 2
+        return String.format(Locale.US, "%,.${scale}f", this)
+    }
+
+    /** 손익처럼 부호가 의미 있는 값에 쓴다. 음수는 money() 가 이미 "-"를 붙여주니 양수에만 "+"를 더한다. */
+    private fun BigDecimal.signedMoney(currency: String): String {
+        val formatted = money(currency)
+        return if (this > BigDecimal.ZERO) "+$formatted" else formatted
+    }
 
     private fun BigDecimal.percentText(): String {
         val v = setScale(2, RoundingMode.HALF_UP)

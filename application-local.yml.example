@@ -13,6 +13,8 @@ kis:
     log-raw: true             # 첫 연동 확인 때는 true 로 응답 원문을 로그로 본다. 익숙해지면 false
 
 quantlog:
+  notify:
+    webhook-url: ""          # Discord/Slack 웹훅 URL. 체결(매수/매도)과 WARN 이상 로그를 알린다. 비우면 꺼짐
   smoke:
     mode: "READ"              # READ(조회만) / BUY / SELL. 비워두면 아무것도 안 한다.
     market: "NASDAQ"          # NASDAQ / NYSE / AMEX / KR

@@ -15,6 +15,7 @@
 | `examples/auth/auth_token.py` | `examples_llm/auth/auth_token/` | 토큰 발급 |
 | `examples/overseas_stock/*.py` | `examples_llm/overseas_stock/*/` | 해외(미국) 주문·시세·잔고 |
 | `examples/domestic_stock/*.py` | `examples_llm/domestic_stock/*/` | 국내 주문·시세·잔고 |
+| `examples/domestic_stock/inquire_time_itemchartprice.py` | `examples_llm/domestic_stock/inquire_time_itemchartprice/` | 국내 당일 분봉 조회 (2026-09-29 추가) |
 
 ## 코드에 반영한 스펙 (모의투자)
 
@@ -36,10 +37,20 @@
 | 매도 | 미국 | 〃 | `VTTT1001U` ※ |
 | 매수/매도 | 국내 | `POST /uapi/domestic-stock/v1/trading/order-cash` | `VTTC0012U` / `VTTC0011U` |
 | 정정/취소 | 미국 | `POST /uapi/overseas-stock/v1/trading/order-rvsecncl` | `VTTT1004U` (미구현) |
+| 당일 분봉 조회 | 국내 | `GET /uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice` | `FHKST03010200` (실전·모의 동일, V 접두 안 씀) — `KisMockBroker.minuteCandles()` |
 
 ## 주의 / 확인 필요
 
+- **주문 응답(`ODNO`)은 지정가 접수 확인일 뿐, 실제 체결가가 아니다** (2026-09-29 실측으로 발견: 삼성전자 273,000원 지정가 매수가 실제로는 272,000원에 체결됨 — 1,000원, SK하이닉스는 1,791,000원 지정 → 1,779,500원 체결로 11,500원이나 차이 남). 실제 체결가는 `주식일별주문체결조회`(`/uapi/domestic-stock/v1/trading/inquire-daily-ccld`, 모의 TR `VTTC0081R`)를 `ODNO`로 필터링해서 조회한다. 응답 `output1`의 `avg_prvs`(체결평균가)·`tot_ccld_qty`(체결수량) 필드 실측 확인됨. `KisMockBroker.filledPrice()`. 해외는 아직 미구현.
+
+
+- **국내 분봉 조회는 당일 데이터만, 1회 최대 30건**(2026-09-29, `inquire_time_itemchartprice.py` 원문 확인 + 실측 둘 다 일치). 전일자 분봉은 안 준다. 1시간(1분봉 60개) 분석도 2회 호출이 필요하다 — "한 시간치 분봉 데이터가 많지 않을까"라는 걱정은 용량이 아니라 **이 30건 제한**이 진짜 이슈. 응답은 최신 분봉이 배열 맨 앞(내림차순)이다.
+  - **`output2` 필드명 실측 확인됨**(2026-09-29, 삼성전자): `stck_bsop_date`(날짜 YYYYMMDD) · `stck_cntg_hour`(체결시각 HHMMSS) · `stck_oprc`(시가) · `stck_hgpr`(고가) · `stck_lwpr`(저가) · `stck_prpr`(그 분의 종가) · `cntg_vol`(그 분의 체결량). 코드가 그대로 매핑한다.
+  - 매번 최근 30건만 받아 매매 판단에 쓰기엔 부족할 수 있다 — 받는 족족 우리 DB(`minute_candle` 테이블, `com.quantlog.marketdata`)에 쌓아서 누적한다 (2026-09-29 사용자 결정). 이미 저장된 시각은 건너뛴다.
+
 - **OCO(동시 청산) 지원 여부를 문서에서 못 찾음**: 익절/손절 두 주문을 동시에 걸어두고 하나 체결되면 나머지가 자동 취소되는 기능이 국내/해외 모의 주문 API에 있는지 확인 안 됨 (토스는 지원 확인됨, `docs/toss-api`). 우회책: 매수 체결 후 별도 프로세스가 가격을 감시하다가 청산 기준에 닿는 순간에만 매도 주문을 낸다 — 두 주문을 동시에 걸어두는 게 아니라서 "동시에 두 개 체결" 문제 자체가 안 생긴다. 2026-09-29 SOXL 매수→매도로 실제 검증됨.
+
+- **국내 주문 가격은 호가 단위의 배수여야 한다** (실측, 2026-09-29): 삼성전자 274,365원 지정가 매수가 `40030000 모의투자 주문처리가 안되었습니다(호가단위 오류)`로 거부됐다. 국내 현재가 응답(`FHKST01010100`)의 `aspr_unit` 필드가 그 가격대의 호가 단위다(273,000원 → `500`). 코드는 이 값을 `Quote.tickSize`로 받아 주문가를 맞춘다. 미국은 $1 이상 $0.01 고정(`Market.overseasTickSize`).
 
 - ※ 미국 매도 모의 TR ID `VTTT1001U`: 포털 원문([portal-notes.md](portal-notes.md))으로 확인됨.
 - 모의투자 미국 주문은 **지정가(`ORD_DVSN=00`)만 가능**. 모의는 **일부 종목만 매매 가능** — 종목이 거절되면 다른 종목으로 바꿔 본다.

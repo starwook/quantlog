@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${symbolName} + ' 백테스트 · quantlog'"></title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --pos: #f04452;
+            --neg: #3182f6;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 24px 16px 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; }
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .nav a { color: var(--muted); text-decoration: none; font-size: 14px; }
+        .symbols { display: flex; gap: 8px; }
+        .symbols a {
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--card);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            text-decoration: none;
+        }
+        .symbols a.active { background: var(--text); color: #fff; }
+        .date-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 14px; }
+        .date-nav a { color: var(--muted); text-decoration: none; }
+        .date-nav .current { font-weight: 700; }
+        h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+        .note { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+        .summary {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        .summary .item { text-align: center; }
+        .summary .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+        .summary .value { font-size: 20px; font-weight: 700; }
+        .section-title { font-size: 15px; font-weight: 700; padding: 4px 4px 10px; }
+        .card { background: var(--card); border-radius: 16px; }
+        .trade { padding: 14px 20px; border-top: 1px solid var(--border); font-size: 14px; }
+        .trade:first-child { border-top: none; }
+        .trade .top { display: flex; justify-content: space-between; align-items: center; }
+        .trade .path { color: var(--muted); }
+        .trade .ret { font-weight: 700; }
+        .trade .reason { font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .empty { padding: 48px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+        .pos { color: var(--pos); }
+        .neg { color: var(--neg); }
+        .zero { color: var(--muted); }
+        footer { margin-top: 16px; padding: 0 4px; font-size: 12px; color: var(--muted); }
+    </style>
+</head>
+<body>
+<main>
+    <div class="nav">
+        <a href="/">← 계좌로</a>
+        <div class="symbols">
+            <a th:each="s : ${watchedSymbols}"
+               th:href="@{'/backtest/' + ${s.market} + '/' + ${s.symbol} + '?date=' + ${date}}"
+               th:text="${s.displayName}"
+               th:classappend="${s.symbol == symbol} ? 'active' : ''"></a>
+        </div>
+    </div>
+
+    <div class="date-nav">
+        <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol} + '?date=' + ${prevDate}}">← 전날</a>
+        <span class="current" th:text="${date}"></span>
+        <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol} + '?date=' + ${nextDate}}">다음날 →</a>
+        <a th:href="@{'/chart/' + ${market} + '/' + ${symbol}}" style="margin-left: auto;">차트 보기 →</a>
+    </div>
+
+    <h1 th:text="${symbolName} + ' 백테스트'"></h1>
+    <p class="note">
+        실제 매매가 아니라 그날 쌓인 분봉으로 "이 규칙대로 했으면 어땠을까"를 재생한 시뮬레이션입니다.
+        라이브와 같은 진입 규칙(SupportBounceEntryRule)·익절손절 %를 쓰지만, 호가 단위 반올림은 반영하지 않은 근사치입니다.
+    </p>
+
+    <div class="summary">
+        <div class="item">
+            <div class="label">거래 횟수</div>
+            <div class="value" th:text="${tradeCount} + '건'"></div>
+        </div>
+        <div class="item">
+            <div class="label">승률</div>
+            <div class="value" th:text="${winRateText}"></div>
+        </div>
+        <div class="item">
+            <div class="label">합계 수익률</div>
+            <div class="value" th:classappend="${totalReturnCss}" th:text="${totalReturnText}"></div>
+        </div>
+    </div>
+
+    <div class="section-title" th:text="'시뮬레이션 매매 (' + ${winCount} + '승 ' + ${lossCount} + '패)'"></div>
+    <div class="card">
+        <div class="empty" th:if="${candleCount == 0}">이 날짜엔 분봉 데이터가 없습니다.</div>
+        <div class="empty" th:if="${candleCount > 0 and !hasTrades}">분봉은 있지만 이 규칙으로는 진입 신호가 한 번도 안 났습니다.</div>
+        <div class="trade" th:each="t : ${trades}">
+            <div class="top">
+                <span class="path" th:text="${t.entryTime} + ' @ ' + ${t.entryPrice} + ' → ' + ${t.exitTime} + ' @ ' + ${t.exitPrice}"></span>
+                <span class="ret" th:classappend="${t.returnCss}" th:text="${t.returnText}"></span>
+            </div>
+            <div class="reason" th:text="'청산 사유: ' + ${t.exitReason}"></div>
+        </div>
+    </div>
+
+    <footer th:text="'분봉 ' + ${candleCount} + '건 기준'"></footer>
+</main>
+</body>
+</html>

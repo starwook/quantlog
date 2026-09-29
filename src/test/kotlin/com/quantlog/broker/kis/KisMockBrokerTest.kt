@@ -2,10 +2,14 @@ package com.quantlog.broker.kis
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantlog.broker.Market
+import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
+import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
@@ -16,6 +20,8 @@ import org.springframework.test.web.client.match.MockRestRequestMatchers.request
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
 import org.springframework.web.client.RestClient
 import java.math.BigDecimal
+import java.time.LocalDate
+import java.time.LocalTime
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
@@ -32,7 +38,8 @@ class KisMockBrokerTest {
         val builder = RestClient.builder()
         server = MockRestServiceServer.bindTo(builder).build()
         val api = KisApiClient(properties, KisTokenProvider(properties, builder), ObjectMapper(), builder)
-        broker = KisMockBroker(api, properties)
+        // 실시간 시세는 꺼져 있는 상태를 가정 — quote() 는 항상 REST로 폴백한다(기존 테스트 그대로).
+        broker = KisMockBroker(api, properties, Mockito.mock(KisRealtimeClient::class.java))
 
         server.expect(requestTo("$base/oauth2/tokenP"))
             .andExpect(method(HttpMethod.POST))
@@ -55,7 +62,7 @@ class KisMockBrokerTest {
             .andExpect(header("appkey", "key"))
             .andRespond(ok("""{"last":"187.50"}"""))
 
-        assertEquals(BigDecimal("187.50"), broker.currentPrice(Market.NASDAQ, "AAPL"))
+        assertEquals(Quote(BigDecimal("187.50"), BigDecimal("0.01")), broker.quote(Market.NASDAQ, "AAPL"))
         server.verify()
     }
 
@@ -63,9 +70,111 @@ class KisMockBrokerTest {
     fun `국내 현재가 조회`() {
         server.expect(requestTo("$base/uapi/domestic-stock/v1/quotations/inquire-price?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=005930"))
             .andExpect(header("tr_id", "FHKST01010100"))
-            .andRespond(ok("""{"stck_prpr":"70000"}"""))
+            .andRespond(ok("""{"stck_prpr":"273000","aspr_unit":"500"}"""))
 
-        assertEquals(BigDecimal("70000"), broker.currentPrice(Market.KR, "005930"))
+        assertEquals(Quote(BigDecimal("273000"), BigDecimal("500")), broker.quote(Market.KR, "005930"))
+    }
+
+    @Test
+    fun `국내 분봉 조회는 실측 필드명을 그대로 매핑한다`() {
+        // 2026-09-29 삼성전자 실측 원문 (docs/kis-api/README.md)
+        server.expect(
+            requestTo(
+                "$base/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice" +
+                    "?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=005930&FID_INPUT_HOUR_1=100000&FID_PW_DATA_INCU_YN=Y&FID_ETC_CLS_CODE=",
+            ),
+        ).andExpect(header("tr_id", "FHKST03010200"))
+            .andRespond(
+                withSuccess(
+                    """{"rt_cd":"0","msg_cd":"MCA00000","msg1":"정상처리 되었습니다.","output1":{},"output2":[
+                        {"stck_bsop_date":"20260929","stck_cntg_hour":"100000","stck_prpr":"272000","stck_oprc":"271500","stck_hgpr":"272000","stck_lwpr":"271000","cntg_vol":"46062"},
+                        {"stck_bsop_date":"20260929","stck_cntg_hour":"095900","stck_prpr":"271500","stck_oprc":"271000","stck_hgpr":"271500","stck_lwpr":"271000","cntg_vol":"11418"}
+                    ]}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        val candles = broker.minuteCandles(Market.KR, "005930", LocalTime.of(10, 0, 0))
+
+        assertEquals(2, candles.size)
+        assertEquals(
+            MinuteCandle(
+                LocalDate.of(2026, 9, 29),
+                LocalTime.of(10, 0, 0),
+                BigDecimal("271500"),
+                BigDecimal("272000"),
+                BigDecimal("271000"),
+                BigDecimal("272000"),
+                46062,
+            ),
+            candles[0],
+        )
+    }
+
+    @Test
+    fun `해외 분봉 조회는 HHDFS76950200 을 부르고 추정 필드명으로 매핑한다`() {
+        // 2026-09-29: 공식 예제에 필드명이 안 적혀 있어 KIS 일반 명명 규칙(tymd/xhms/open/high/low/last/evol)으로
+        // 추정 구현 — 실전 투입 전 KIS_MOCK_LOG_RAW 로 원문 재확인 필요.
+        server.expect(requestTo(startsWith("$base/uapi/overseas-price/v1/quotations/inquire-time-itemchartprice")))
+            .andExpect(header("tr_id", "HHDFS76950200"))
+            .andRespond(
+                withSuccess(
+                    """{"rt_cd":"0","msg_cd":"0","msg1":"OK","output1":{},"output2":[
+                        {"tymd":"20260929","xhms":"140000","open":"135.00","high":"136.50","low":"134.80","last":"136.30","evol":"12345"}
+                    ]}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        val candles = broker.minuteCandles(Market.NASDAQ, "AAPL", LocalTime.NOON)
+
+        assertEquals(
+            MinuteCandle(
+                LocalDate.of(2026, 9, 29),
+                LocalTime.of(14, 0, 0),
+                BigDecimal("135.00"),
+                BigDecimal("136.50"),
+                BigDecimal("134.80"),
+                BigDecimal("136.30"),
+                12345,
+            ),
+            candles.single(),
+        )
+    }
+
+    @Test
+    fun `국내 체결가 조회는 실측 필드명을 그대로 매핑한다`() {
+        // 2026-09-29 삼성전자 실측 원문: 지정가 273,000원 매수가 실제로는 272,000원에 체결됨
+        server.expect(requestTo(startsWith("$base/uapi/domestic-stock/v1/trading/inquire-daily-ccld")))
+            .andExpect(header("tr_id", "VTTC0081R"))
+            .andRespond(
+                withSuccess(
+                    """{"rt_cd":"0","msg_cd":"20310000","msg1":"모의투자 조회가 완료되었습니다.","output1":[
+                        {"odno":"0000008307","tot_ccld_qty":"1","avg_prvs":"272000"}
+                    ],"output2":{}}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        assertEquals(0, BigDecimal("272000").compareTo(broker.filledPrice(Market.KR, "0000008307")))
+    }
+
+    @Test
+    fun `아직 체결 안 됐으면 null`() {
+        server.expect(requestTo(startsWith("$base/uapi/domestic-stock/v1/trading/inquire-daily-ccld")))
+            .andRespond(
+                withSuccess(
+                    """{"rt_cd":"0","msg_cd":"20310000","msg1":"완료","output1":[],"output2":{}}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        assertEquals(null, broker.filledPrice(Market.KR, "0000099999"))
+    }
+
+    @Test
+    fun `해외 체결가 조회는 미구현이라 null`() {
+        assertEquals(null, broker.filledPrice(Market.NASDAQ, "0000123456"))
     }
 
     @Test
@@ -137,7 +246,7 @@ class KisMockBrokerTest {
         server.expect(requestTo("$base/uapi/overseas-price/v1/quotations/price?AUTH=&EXCD=NAS&SYMB=ZZZZ"))
             .andRespond(withSuccess("""{"rt_cd":"1","msg_cd":"EGW00123","msg1":"종목 없음"}""", MediaType.APPLICATION_JSON))
 
-        val e = assertFailsWith<KisApiException> { broker.currentPrice(Market.NASDAQ, "ZZZZ") }
+        val e = assertFailsWith<KisApiException> { broker.quote(Market.NASDAQ, "ZZZZ") }
         assert(e.message!!.contains("종목 없음"))
     }
 }

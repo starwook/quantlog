@@ -31,20 +31,52 @@ kis:
     app-secret: ${KIS_MOCK_APP_SECRET:}
     account: ${KIS_MOCK_ACCOUNT:}
     log-raw: ${KIS_MOCK_LOG_RAW:false}
+    # 실시간 시세 WebSocket. 경로는 첫 연결 로그로 확인 필요(2026-09-29: 아직 실측 전).
+    realtime-enabled: ${KIS_REALTIME_ENABLED:false}
+    realtime-symbols:
+      - "005930"
+      - "091160"
 
 quantlog:
+  notify:
+    # Discord/Slack Incoming Webhook URL (시크릿 — application-local.yml 에만 적는다). 비우면 알림 꺼짐.
+    webhook-url: ${QUANTLOG_NOTIFY_WEBHOOK_URL:}
   playbook:
     dir: playbook   # 원칙·일지·제안 (playbook/README.md)
   strategy:
     # 초기값. 이후 학습 루프(기획서 6.4)가 결과를 보고 조정한다.
     take-profit-percent: 1
     stop-loss-percent: 1
+    entry:
+      # 분봉 체류시간 기반 지지선 근접+반등 진입 신호. 검증 전 가설값 (playbook/principles.md "아직 정하는 중").
+      min-candles: 15
+      near-support-percent: 0.3
+      support-bucket-count: 20
+      support-zone-fraction: 0.5
   smoke:
     mode: ${QUANTLOG_SMOKE_MODE:}
     market: ${QUANTLOG_SMOKE_MARKET:NASDAQ}
     symbol: ${QUANTLOG_SMOKE_SYMBOL:AAPL}
     quantity: ${QUANTLOG_SMOKE_QUANTITY:1}
+  exit:
+    # 청산 스케줄러: 정규장 동안 보유 현황(DB)을 보고 익절/손절 목표가에 닿으면 전량 매도한다.
+    # 2026-09-29: REST 잔고 조회 대신 DB 기반으로 바꿔서 초당 요청 한도 걱정 없이 1초로 좁힘.
+    enabled: ${QUANTLOG_EXIT_ENABLED:true}
+    interval-millis: 1000
+  entry:
+    # 진입 스케줄러: 국내 정규장/미국 프리마켓~애프터마켓 동안 감시 종목(WatchedSymbol) 분봉을 보고
+    # 저점 근접+반등 신호가 뜨면 소량 매수한다. 감시 종목 목록·자동매매 대상 여부는
+    # com.quantlog.watchlist.WatchedSymbol 에서 관리한다(여기 yaml이 아님).
+    # 검증 전 규칙(playbook/principles.md "아직 정하는 중") — 끄려면 false로.
+    enabled: ${QUANTLOG_ENTRY_ENABLED:true}
+    quantity-per-order: 1
+    interval-millis: 1000
+    cooldown: 10m
+  reconcile:
+    # 주문 직후 한 번에 못 구한 실제 체결가를 1분마다 KIS 에 다시 물어봐서 채운다 (국내만).
+    enabled: ${QUANTLOG_RECONCILE_ENABLED:true}
+    interval-millis: 60000
   risk:
     max-order-usd: 1000
-    max-order-krw: 1000000
+    max-order-krw: 2000000
     max-order-quantity: 10

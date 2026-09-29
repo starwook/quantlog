@@ -5,12 +5,20 @@ import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.BuyingPower
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
+import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 한국투자증권 모의투자 구현체. 스펙 출처: docs/kis-api/examples (TR ID 는 모의투자용 V 접두).
@@ -20,11 +28,29 @@ import java.math.RoundingMode
 class KisMockBroker(
     private val api: KisApiClient,
     private val properties: KisProperties,
+    private val realtimeClient: KisRealtimeClient,
 ) : BrokerClient {
-    override fun currentPrice(
+    /** 실시간 시세는 호가 단위(aspr_unit)를 안 주므로, REST 로 마지막에 받은 값을 잠깐 재사용한다. */
+    private val tickSizeCache = ConcurrentHashMap<String, BigDecimal>()
+
+    override fun quote(
         market: Market,
         symbol: String,
-    ): BigDecimal =
+    ): Quote {
+        if (!market.isOverseas) {
+            val cachedTick = tickSizeCache[symbol]
+            val live = realtimeClient.latestPrice(symbol)
+            if (cachedTick != null && live != null && Duration.between(live.at, Instant.now()) <= LIVE_QUOTE_FRESHNESS) {
+                return Quote(live.price, cachedTick)
+            }
+        }
+        return quoteViaRest(market, symbol)
+    }
+
+    private fun quoteViaRest(
+        market: Market,
+        symbol: String,
+    ): Quote =
         if (market.isOverseas) {
             val res =
                 api.get(
@@ -32,7 +58,8 @@ class KisMockBroker(
                     "HHDFS00000300",
                     mapOf("AUTH" to "", "EXCD" to market.quoteExchangeCode(), "SYMB" to symbol),
                 )
-            res.path("output").decimal("last")
+            val price = res.path("output").decimal("last")
+            Quote(price, market.overseasTickSize(price))
         } else {
             val res =
                 api.get(
@@ -40,7 +67,12 @@ class KisMockBroker(
                     "FHKST01010100",
                     mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
                 )
-            res.path("output").decimal("stck_prpr")
+            val output = res.path("output")
+            // aspr_unit: 현재가 기준 호가 단위 (2026-09-29 모의투자 실측: 삼성전자 273,000원 → 500)
+            val tickSize = output.decimal("aspr_unit")
+            require(tickSize > BigDecimal.ZERO) { "KIS 시세에 호가 단위(aspr_unit)가 없음: $symbol" }
+            tickSizeCache[symbol] = tickSize
+            Quote(output.decimal("stck_prpr"), tickSize)
         }
 
     override fun buyingPower(
@@ -177,6 +209,123 @@ class KisMockBroker(
         return OrderReceipt(orderNo = out.path("ODNO").asText(), message = res.path("msg1").asText())
     }
 
+    /** 실측 확인(2026-09-29, 삼성전자): output2 필드명이 아래와 정확히 일치. docs/kis-api/README.md 참고. */
+    override fun minuteCandles(
+        market: Market,
+        symbol: String,
+        atTime: LocalTime,
+    ): List<MinuteCandle> =
+        if (market.isOverseas) {
+            overseasMinuteCandles(market, symbol)
+        } else {
+            domesticMinuteCandles(symbol, atTime)
+        }
+
+    private fun domesticMinuteCandles(
+        symbol: String,
+        atTime: LocalTime,
+    ): List<MinuteCandle> {
+        val res =
+            api.get(
+                "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+                "FHKST03010200",
+                mapOf(
+                    "FID_COND_MRKT_DIV_CODE" to "J",
+                    "FID_INPUT_ISCD" to symbol,
+                    "FID_INPUT_HOUR_1" to atTime.format(HOUR_FORMAT),
+                    "FID_PW_DATA_INCU_YN" to "Y",
+                    "FID_ETC_CLS_CODE" to "",
+                ),
+            )
+        return res.path("output2").map { node ->
+            MinuteCandle(
+                date = LocalDate.parse(node.path("stck_bsop_date").asText(), DATE_FORMAT),
+                time = LocalTime.parse(node.path("stck_cntg_hour").asText(), HOUR_FORMAT),
+                open = node.decimal("stck_oprc"),
+                high = node.decimal("stck_hgpr"),
+                low = node.decimal("stck_lwpr"),
+                close = node.decimal("stck_prpr"),
+                volume = node.path("cntg_vol").asText().toLong(),
+            )
+        }
+    }
+
+    /**
+     * 실측 확인(2026-09-29, SOXL 프리마켓): 공식 예제엔 output2 필드명이 안 적혀 있어 KIS 일반 명명
+     * 규칙으로 추정(tymd/xhms/open/high/low/last/evol)했는데, SmokeTestRunner CANDLES 모드로 받아보니
+     * 실제 가격·거래량이 정상 범위로 나와 필드명이 맞는 것으로 확인됨.
+     */
+    private fun overseasMinuteCandles(
+        market: Market,
+        symbol: String,
+    ): List<MinuteCandle> {
+        val res =
+            api.get(
+                "/uapi/overseas-price/v1/quotations/inquire-time-itemchartprice",
+                "HHDFS76950200",
+                mapOf(
+                    "AUTH" to "",
+                    "EXCD" to market.quoteExchangeCode(),
+                    "SYMB" to symbol,
+                    "NMIN" to "1",
+                    "PINC" to "0",
+                    "NEXT" to "",
+                    "NREC" to "120",
+                    "FILL" to "",
+                    "KEYB" to "",
+                ),
+            )
+        return res.path("output2").mapNotNull { node ->
+            val dateText = node.path("tymd").asText("")
+            val timeText = node.path("xhms").asText("")
+            if (dateText.isEmpty() || timeText.isEmpty()) return@mapNotNull null
+            MinuteCandle(
+                date = LocalDate.parse(dateText, DATE_FORMAT),
+                time = LocalTime.parse(timeText, HOUR_FORMAT),
+                open = node.decimal("open"),
+                high = node.decimal("high"),
+                low = node.decimal("low"),
+                close = node.decimal("last"),
+                volume = node.path("evol").asText("0").toLongOrNull() ?: 0L,
+            )
+        }
+    }
+
+    /** 실측 확인(2026-09-29): output1 필드명이 아래와 정확히 일치. docs/kis-api/README.md 참고. */
+    override fun filledPrice(
+        market: Market,
+        orderNo: String,
+    ): BigDecimal? {
+        if (market.isOverseas) return null
+        val today = LocalDate.now(KST).format(DATE_FORMAT)
+        val res =
+            api.get(
+                "/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
+                "VTTC0081R",
+                accountParams() +
+                    mapOf(
+                        "INQR_STRT_DT" to today,
+                        "INQR_END_DT" to today,
+                        "SLL_BUY_DVSN_CD" to "00",
+                        "PDNO" to "",
+                        // 체결분만 (01) — 미체결/취소는 목표가가 아니므로 제외
+                        "CCLD_DVSN" to "01",
+                        "INQR_DVSN" to "00",
+                        "INQR_DVSN_3" to "00",
+                        "ORD_GNO_BRNO" to "",
+                        "ODNO" to orderNo,
+                        "INQR_DVSN_1" to "",
+                        "CTX_AREA_FK100" to "",
+                        "CTX_AREA_NK100" to "",
+                        "EXCG_ID_DVSN_CD" to "KRX",
+                    ),
+            )
+        val row = res.path("output1").firstOrNull { it.path("odno").asText() == orderNo } ?: return null
+        val filledQty = row.path("tot_ccld_qty").asText("0").toIntOrNull() ?: 0
+        if (filledQty <= 0) return null
+        return row.decimal("avg_prvs")
+    }
+
     private fun accountParams() = mapOf("CANO" to properties.accountNumber, "ACNT_PRDT_CD" to properties.accountProductCode)
 
     private fun Market.quoteExchangeCode() =
@@ -209,5 +358,12 @@ class KisMockBroker(
     private fun JsonNode.decimal(field: String): BigDecimal {
         val text = path(field).asText("").trim()
         return if (text.isEmpty()) BigDecimal.ZERO else BigDecimal(text)
+    }
+
+    private companion object {
+        val KST = java.time.ZoneId.of("Asia/Seoul")
+        val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
+        val HOUR_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
+        val LIVE_QUOTE_FRESHNESS: Duration = Duration.ofSeconds(10)
     }
 }

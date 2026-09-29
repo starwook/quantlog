@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${symbolName} + ' 분봉 차트 · quantlog'"></title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --pos: #f04452;
+            --neg: #3182f6;
+            --buy: #00c853;
+            --sell: #f04452;
+        }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            height: 100%;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 24px 16px 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main {
+            flex: 1;
+            max-width: 720px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .nav a {
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .symbols {
+            display: flex;
+            gap: 8px;
+        }
+        .symbols a {
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--card);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            text-decoration: none;
+        }
+        .symbols a.active {
+            background: var(--text);
+            color: #fff;
+        }
+        h1 {
+            font-size: 18px;
+            margin: 0 0 4px;
+            font-weight: 700;
+        }
+        .status {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 12px;
+        }
+        .status.error { color: var(--pos); }
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 16px;
+        }
+        #chart {
+            width: 100%;
+            height: 420px;
+        }
+        .empty {
+            padding: 64px 16px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .legend {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .legend .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .legend .buy .dot { background: var(--buy); }
+        .legend .sell .dot { background: var(--sell); }
+        footer {
+            margin-top: 16px;
+            padding: 0 4px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+    </style>
+</head>
+<body>
+<main>
+    <div class="nav">
+        <a href="/">← 계좌로</a>
+        <div class="symbols">
+            <a th:each="s : ${watchedSymbols}"
+               th:href="@{'/chart/' + ${s.market} + '/' + ${s.symbol}}"
+               th:text="${s.displayName}"
+               th:classappend="${s.symbol == symbol} ? 'active' : ''"></a>
+        </div>
+    </div>
+
+    <div class="nav" style="margin-top: -4px;">
+        <span></span>
+        <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol}}">백테스트 보기 →</a>
+    </div>
+
+    <h1 th:text="${symbolName} + ' · ' + ${market} + ' 당일 분봉'"></h1>
+    <div class="status" id="status">불러오는 중…</div>
+
+    <div class="card">
+        <div id="chart"></div>
+        <div id="empty" class="empty" style="display:none;"></div>
+        <div class="legend">
+            <span class="buy"><span class="dot"></span>매수</span>
+            <span class="sell"><span class="dot"></span>매도</span>
+        </div>
+    </div>
+
+    <footer>모의투자 실험 기록입니다. 투자 권유가 아닙니다. 15초마다 자동으로 갱신됩니다.</footer>
+</main>
+<script th:inline="javascript">
+    const market = /*[[${market}]]*/ 'KR';
+    const symbol = /*[[${symbol}]]*/ '';
+    const dataUrl = '/chart/' + market + '/' + symbol + '/data';
+
+    const chartEl = document.getElementById('chart');
+    const statusEl = document.getElementById('status');
+    const emptyEl = document.getElementById('empty');
+
+    const chart = LightweightCharts.createChart(chartEl, {
+        layout: { background: { color: '#ffffff' }, textColor: '#191f28' },
+        grid: { vertLines: { color: '#eceef1' }, horzLines: { color: '#eceef1' } },
+        timeScale: { timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderVisible: false },
+    });
+    const candleSeries = chart.addCandlestickSeries({
+        upColor: '#f04452', downColor: '#3182f6', borderVisible: false,
+        wickUpColor: '#f04452', wickDownColor: '#3182f6',
+    });
+    const volumeSeries = chart.addHistogramSeries({
+        priceFormat: { type: 'volume' },
+        priceScaleId: '',
+    });
+    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+
+    new ResizeObserver(() => chart.applyOptions({ width: chartEl.clientWidth })).observe(chartEl);
+
+    function formatPrice(value) {
+        // 원화는 소수점 없이, 그 외(달러 등)는 소수점 둘째 자리까지 — 천 단위 구분자 포함.
+        const decimals = market === 'KR' ? 0 : 2;
+        return Number(value).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    }
+
+    function markerFor(trade) {
+        const isBuy = trade.side === 'BUY';
+        return {
+            time: trade.time,
+            position: isBuy ? 'belowBar' : 'aboveBar',
+            color: isBuy ? '#00c853' : '#f04452',
+            shape: isBuy ? 'arrowUp' : 'arrowDown',
+            text: (isBuy ? '매수 ' : '매도 ') + trade.quantity + '주 @ ' + formatPrice(trade.price),
+        };
+    }
+
+    async function refresh() {
+        try {
+            const res = await fetch(dataUrl);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const body = await res.json();
+
+            if (body.candles.length === 0) {
+                chartEl.style.display = 'none';
+                emptyEl.style.display = 'block';
+                // 해외 분봉 조회는 아직 KIS 쪽에 구현이 없어서(docs/kis-api/README.md), 영영 안 쌓일 수 있다 —
+                // "곧 쌓입니다"처럼 안 될 걸 될 것처럼 말하지 않는다.
+                emptyEl.textContent = market === 'KR'
+                    ? '아직 오늘 분봉 데이터가 없습니다. 정규장이 열리고 진입 스케줄러가 한 번 돌면 쌓입니다.'
+                    : '해외(' + market + ') 분봉 조회는 아직 구현되지 않았습니다 — 매매 기록은 계좌 화면에서 볼 수 있습니다.';
+                statusEl.textContent = '대기 중 · ' + new Date().toLocaleTimeString('ko-KR');
+                statusEl.classList.remove('error');
+                return;
+            }
+            chartEl.style.display = 'block';
+            emptyEl.style.display = 'none';
+
+            candleSeries.setData(body.candles);
+            volumeSeries.setData(body.candles.map(c => ({
+                time: c.time,
+                value: c.volume,
+                color: c.close >= c.open ? 'rgba(240,68,82,0.5)' : 'rgba(49,130,246,0.5)',
+            })));
+            candleSeries.setMarkers(body.trades.map(markerFor));
+            chart.timeScale().fitContent();
+
+            statusEl.textContent = '마지막 갱신 ' + new Date().toLocaleTimeString('ko-KR');
+            statusEl.classList.remove('error');
+        } catch (e) {
+            statusEl.textContent = '데이터를 불러오지 못했습니다 — 잠시 후 다시 시도합니다.';
+            statusEl.classList.add('error');
+        }
+    }
+
+    // REST: 페이지 열릴 때 그날 전체 히스토리를 한 번 채운다. 이후엔 매매 마커만 가볍게 재확인.
+    refresh();
+    setInterval(refresh, 20000);
+
+    // WebSocket: 실시간 분봉은 여기서만 받는다(KisRealtimeClient → ChartBroadcaster). 꺼져 있으면(연결 실패)
+    // REST 20초 폴링만으로도 계속 동작한다 — 실시간은 있으면 좋은 보강이지 필수 경로가 아니다.
+    function connectLive() {
+        const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const ws = new WebSocket(proto + location.host + '/ws/chart');
+        ws.onopen = () => ws.send('SUBSCRIBE ' + market + ' ' + symbol);
+        ws.onmessage = (event) => {
+            const candle = JSON.parse(event.data);
+            if (chartEl.style.display === 'none') {
+                chartEl.style.display = 'block';
+                emptyEl.style.display = 'none';
+            }
+            candleSeries.update(candle);
+            volumeSeries.update({
+                time: candle.time,
+                value: candle.volume,
+                color: candle.close >= candle.open ? 'rgba(240,68,82,0.5)' : 'rgba(49,130,246,0.5)',
+            });
+            statusEl.textContent = '실시간 · ' + new Date().toLocaleTimeString('ko-KR');
+            statusEl.classList.remove('error');
+        };
+        ws.onclose = () => setTimeout(connectLive, 5000);
+        ws.onerror = () => ws.close();
+    }
+    connectLive();
+</script>
+</body>
+</html>

@@ -19,3 +19,6 @@ application-*.yml
 
 # 대용량 원본 데이터 (분석 산출물 derived/ 는 재생성 가능)
 data/wonyotti/raw/
+
+# Claude Code 개인 로컬 설정
+.claude/settings.local.json

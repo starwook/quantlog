@@ -19,6 +19,11 @@ data class KisProperties(
     val minIntervalMillis: Long = 1100,
     /** true 면 KIS 응답 원문을 로그로 남긴다 (첫 연동 시 응답 필드 확인용). */
     val logRaw: Boolean = false,
+    /** 모의투자 실시간 시세 WebSocket. 경로(/tryitout/H0STCNT0)는 공식 예제 기준 — 첫 연결 실패하면 로그로 확인 후 고친다. */
+    val wsUrl: String = "ws://ops.koreainvestment.com:31000/tryitout/H0STCNT0",
+    /** false 면 실시간 시세를 안 켠다 — REST 폴링만으로 동작(기존과 동일). */
+    val realtimeEnabled: Boolean = false,
+    val realtimeSymbols: List<String> = listOf("005930", "091160"),
 ) {
     val accountNumber: String get() = account.substringBefore("-").trim()
     val accountProductCode: String get() =

@@ -1,10 +1,10 @@
 package com.quantlog.strategy
 
+import com.quantlog.broker.Quote
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.math.BigDecimal
-import java.math.MathContext
 
 enum class ExitSignal { HOLD, TAKE_PROFIT, STOP_LOSS }
 
@@ -15,29 +15,42 @@ data class StrategyProperties(
     val stopLossPercent: BigDecimal = BigDecimal("1"),
 )
 
+/** 청산 목표가. 주문 가능한 가격(호가 단위의 배수)이라 그대로 지정가로 낼 수 있다. */
+data class ExitTargets(
+    val takeProfitPrice: BigDecimal,
+    val stopLossPrice: BigDecimal,
+)
+
 /** 매수 평균가 대비 고정 비율 손절/익절. 개별 청산 판정은 AI 개입 없이 기계적으로 한다. */
 class FixedPercentExitRule(
     private val takeProfitPercent: BigDecimal,
     private val stopLossPercent: BigDecimal,
 ) {
-    fun evaluate(
+    /**
+     * 평단 ±비율에 가장 가까운 호가를 목표가로 잡는다 (예: 평단 272,000원, 호가 500원 → 익절 274,500 / 손절 269,500).
+     * 호가 단위는 현재가 기준이라, 목표가가 다른 가격대 경계를 넘으면 드물게 어긋날 수 있다.
+     */
+    fun targets(
         averagePrice: BigDecimal,
-        currentPrice: BigDecimal,
-    ): ExitSignal {
+        quote: Quote,
+    ): ExitTargets {
         require(averagePrice > BigDecimal.ZERO) { "averagePrice must be positive: $averagePrice" }
-        val changePercent =
-            currentPrice.subtract(averagePrice)
-                .multiply(HUNDRED)
-                .divide(averagePrice, MathContext.DECIMAL64)
-        return when {
-            changePercent >= takeProfitPercent -> ExitSignal.TAKE_PROFIT
-            changePercent <= stopLossPercent.negate() -> ExitSignal.STOP_LOSS
-            else -> ExitSignal.HOLD
-        }
+        return ExitTargets(
+            takeProfitPrice = quote.roundToTick(averagePrice.multiply(BigDecimal.ONE.add(takeProfitPercent.movePointLeft(2)))),
+            stopLossPrice = quote.roundToTick(averagePrice.multiply(BigDecimal.ONE.subtract(stopLossPercent.movePointLeft(2)))),
+        )
     }
 
-    private companion object {
-        val HUNDRED = BigDecimal(100)
+    fun evaluate(
+        averagePrice: BigDecimal,
+        quote: Quote,
+    ): ExitSignal {
+        val targets = targets(averagePrice, quote)
+        return when {
+            quote.price >= targets.takeProfitPrice -> ExitSignal.TAKE_PROFIT
+            quote.price <= targets.stopLossPrice -> ExitSignal.STOP_LOSS
+            else -> ExitSignal.HOLD
+        }
     }
 }
 
