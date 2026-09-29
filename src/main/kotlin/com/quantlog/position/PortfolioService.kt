@@ -68,7 +68,16 @@ class PortfolioService(
     private val tradeRepository: TradeRepository,
     private val broker: BrokerClient,
 ) {
-    fun snapshot(): PortfolioSnapshot {
+    /** 매매 판단용. 보유 현황도 우리 기록(DB)으로 계산한다 — 초당 요청 한도 때문에 REST 잔고를 부르지 않는다. */
+    fun snapshot(): PortfolioSnapshot = buildSnapshot(useAccountHoldings = false)
+
+    /**
+     * 화면용. 보유 종목은 KIS 잔고가 정답이라 DB 기록과 무관하게 그대로 보여준다(DB를 비워도, 서버를 새로 띄워도 동일).
+     * 실현손익·매매 내역만 DB 기록으로 계산한다. 캐시는 없다 — 화면 조회 한 번에 KIS 잔고 조회 2회(국내·해외).
+     */
+    fun accountSnapshot(): PortfolioSnapshot = buildSnapshot(useAccountHoldings = true)
+
+    private fun buildSnapshot(useAccountHoldings: Boolean): PortfolioSnapshot {
         val trades = tradeRepository.findAll().sortedBy { it.executedAt }
         val today = Instant.now().atZone(KST).toLocalDate()
 
@@ -114,26 +123,8 @@ class PortfolioService(
             }
         }
 
-        val holdingsByCurrency = mutableMapOf<String, MutableList<HoldingView>>()
-        lotsByKey.forEach { (key, lots) ->
-            val quantity = lots.sumOf { it.quantity }
-            if (quantity <= 0) return@forEach
-            val (market, symbol) = key
-            val cost = lots.sumOf { it.price.multiply(BigDecimal(it.quantity)) }
-            val avgCost = cost.divide(BigDecimal(quantity), MathContext.DECIMAL64)
-            val (currentPrice, stale) =
-                try {
-                    broker.quote(market, symbol).price to false
-                } catch (e: Exception) {
-                    log.warn(e) { "현재가 조회 실패, 평단가로 대체: $market $symbol" }
-                    avgCost to true
-                }
-            val value = currentPrice.multiply(BigDecimal(quantity))
-            val unrealized = value.subtract(cost)
-            holdingsByCurrency.getOrPut(market.currency) { mutableListOf() }.add(
-                HoldingView(market, symbol, quantity, avgCost, currentPrice, stale, value, unrealized, percentOf(unrealized, cost)),
-            )
-        }
+        val holdingsByCurrency =
+            (if (useAccountHoldings) holdingsFromAccount() else null) ?: holdingsFromTrades(lotsByKey)
 
         val currencies = (holdingsByCurrency.keys + realizedByCurrency.keys).ifEmpty { setOf("USD") }
         val summaryByCurrency =
@@ -158,6 +149,56 @@ class PortfolioService(
             }
 
         return PortfolioSnapshot(trades, pnlByTradeId, summaryByCurrency)
+    }
+
+    private fun holdingsFromTrades(lotsByKey: Map<Pair<Market, String>, ArrayDeque<Lot>>): Map<String, List<HoldingView>> {
+        val holdingsByCurrency = mutableMapOf<String, MutableList<HoldingView>>()
+        lotsByKey.forEach { (key, lots) ->
+            val quantity = lots.sumOf { it.quantity }
+            if (quantity <= 0) return@forEach
+            val (market, symbol) = key
+            val cost = lots.sumOf { it.price.multiply(BigDecimal(it.quantity)) }
+            val avgCost = cost.divide(BigDecimal(quantity), MathContext.DECIMAL64)
+            val (currentPrice, stale) =
+                try {
+                    broker.quote(market, symbol).price to false
+                } catch (e: Exception) {
+                    log.warn(e) { "현재가 조회 실패, 평단가로 대체: $market $symbol" }
+                    avgCost to true
+                }
+            holdingsByCurrency.getOrPut(market.currency) { mutableListOf() }.add(
+                holdingView(market, symbol, quantity, avgCost, currentPrice, stale),
+            )
+        }
+        return holdingsByCurrency
+    }
+
+    /** KIS 잔고(국내 1회 + 해외 미국 전체 1회). 조회에 실패하면 null — 호출한 쪽이 DB 기록 기반으로 대체한다. */
+    private fun holdingsFromAccount(): Map<String, List<HoldingView>>? =
+        try {
+            (broker.holdings(Market.KR) + broker.holdings(Market.NASDAQ))
+                .filter { it.quantity > BigDecimal.ZERO }
+                .groupBy(
+                    { it.market.currency },
+                    { holdingView(it.market, it.symbol, it.quantity.toInt(), it.averagePrice, it.currentPrice, stale = false) },
+                )
+        } catch (e: Exception) {
+            log.warn(e) { "KIS 잔고 조회 실패, 매매 기록 기반 보유 현황으로 대체" }
+            null
+        }
+
+    private fun holdingView(
+        market: Market,
+        symbol: String,
+        quantity: Int,
+        avgCost: BigDecimal,
+        currentPrice: BigDecimal,
+        stale: Boolean,
+    ): HoldingView {
+        val cost = avgCost.multiply(BigDecimal(quantity))
+        val value = currentPrice.multiply(BigDecimal(quantity))
+        val unrealized = value.subtract(cost)
+        return HoldingView(market, symbol, quantity, avgCost, currentPrice, stale, value, unrealized, percentOf(unrealized, cost))
     }
 
     private fun percentOf(

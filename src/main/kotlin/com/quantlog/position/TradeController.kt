@@ -61,7 +61,7 @@ class TradeController(
 ) {
     @GetMapping("/")
     fun trades(model: Model): String {
-        val snapshot = portfolioService.snapshot()
+        val snapshot = portfolioService.accountSnapshot()
 
         val summaries = snapshot.summaryByCurrency.values.sortedBy { it.currency }.map { it.toView() }
         val rows =
