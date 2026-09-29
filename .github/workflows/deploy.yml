@@ -3,6 +3,11 @@ name: deploy
 on:
   push:
     branches: [main]
+    # 문서만 바뀐 머지로 봇이 재시작되지 않게 한다
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "playbook/**"
   workflow_dispatch:
 
 # 동시에 두 배포가 돌지 않게 한다 (서버 쪽에도 flock 이 있다)
