@@ -1,0 +1,19 @@
+services:
+  quantlog:
+    build: .
+    container_name: quantlog
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    # DB 접속 정보(SPRING_DATASOURCE_*). 서버에만 있는 파일 — 저장소에 없다. deploy/DEPLOY.md 참고.
+    env_file: .env
+    environment:
+      TZ: Asia/Seoul
+      SPRING_PROFILES_ACTIVE: local
+    # 호스트에 설치된 MySQL 접속용 (iptables가 172.16.0.0/12 → 3306 만 허용한다)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # KIS 키 등 시크릿. 서버에만 있는 파일 (로컬 application-local.yml 을 동기화해서 둔다)
+      - ./application-local.yml:/app/application-local.yml:ro
+      - ./playbook:/app/playbook
