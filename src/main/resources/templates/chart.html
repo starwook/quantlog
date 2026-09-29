@@ -199,11 +199,7 @@
             if (body.candles.length === 0) {
                 chartEl.style.display = 'none';
                 emptyEl.style.display = 'block';
-                // 해외 분봉 조회는 아직 KIS 쪽에 구현이 없어서(docs/kis-api/README.md), 영영 안 쌓일 수 있다 —
-                // "곧 쌓입니다"처럼 안 될 걸 될 것처럼 말하지 않는다.
-                emptyEl.textContent = market === 'KR'
-                    ? '아직 오늘 분봉 데이터가 없습니다. 정규장이 열리고 진입 스케줄러가 한 번 돌면 쌓입니다.'
-                    : '해외(' + market + ') 분봉 조회는 아직 구현되지 않았습니다 — 매매 기록은 계좌 화면에서 볼 수 있습니다.';
+                emptyEl.textContent = '아직 오늘 분봉 데이터가 없습니다. 장이 열리고 진입 스케줄러가 한 번 돌면 쌓입니다.';
                 statusEl.textContent = '대기 중 · ' + new Date().toLocaleTimeString('ko-KR');
                 statusEl.classList.remove('error');
                 return;

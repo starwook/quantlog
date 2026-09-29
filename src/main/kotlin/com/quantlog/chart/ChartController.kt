@@ -11,14 +11,15 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.ResponseBody
 import java.math.BigDecimal
+import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
-import java.time.ZonedDateTime
 
 private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 
 /** 차트 라이브러리(lightweight-charts)가 요구하는 초 단위 timestamp. KST 벽시계 값을 그대로 UTC로 찍어서,
- * 브라우저의 기본(UTC) 포맷터가 그대로 한국 시각처럼 보이게 한다(2026-09-29: 별도 타임존 설정 없이 맞추는 트릭). */
+ * 브라우저의 기본(UTC) 포맷터가 그대로 한국 시각처럼 보이게 한다(별도 타임존 설정 없이 맞추는 트릭).
+ * 화면은 항상 KST 기준이다 — 미국 분봉(거래소 현지 시각)은 [Market.zone]으로 KST 로 옮겨서 넘긴다. */
 private fun epochSecondsAsIfUtc(dateTime: java.time.LocalDateTime): Long = dateTime.toEpochSecond(ZoneOffset.UTC)
 
 data class CandlePoint(
@@ -67,11 +68,14 @@ class ChartController(
         @PathVariable market: Market,
         @PathVariable symbol: String,
     ): ChartData {
-        val today = ZonedDateTime.now(KST).toLocalDate()
+        // DB 의 분봉 날짜는 거래소 현지 기준이라 "오늘"도 현지 날짜로 조회한다(KST 로 하면 미국장은 자정 이후 0건).
+        // 화면에 찍는 시각만 KST 로 바꾼다.
+        val zone = market.zone
+        val today = Instant.now().atZone(zone).toLocalDate()
         val candles =
             marketDataService.recentCandles(market, symbol, today).map {
                 CandlePoint(
-                    time = epochSecondsAsIfUtc(it.date.atTime(it.time)),
+                    time = epochSecondsAsIfUtc(it.date.atTime(it.time).atZone(zone).withZoneSameInstant(KST).toLocalDateTime()),
                     open = it.open,
                     high = it.high,
                     low = it.low,
@@ -82,7 +86,7 @@ class ChartController(
         val trades =
             tradeRepository
                 .findAllByMarketAndSymbolOrderByExecutedAtAsc(market, symbol)
-                .filter { it.executedAt.atZone(KST).toLocalDate() == today }
+                .filter { it.executedAt.atZone(zone).toLocalDate() == today }
                 .map {
                     TradeMarker(
                         time = epochSecondsAsIfUtc(it.executedAt.atZone(KST).toLocalDateTime()),

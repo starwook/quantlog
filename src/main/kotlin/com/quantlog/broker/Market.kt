@@ -15,6 +15,9 @@ enum class Market(val currency: String) {
 
     val isOverseas: Boolean get() = this != KR
 
+    /** 거래소 현지 시간대. 미국은 뉴욕(서머타임 자동 반영). KIS 분봉의 날짜·시각도 이 기준이다. */
+    val zone: ZoneId get() = if (isOverseas) NEW_YORK else SEOUL
+
     /**
      * 미국 주식 호가 단위: $1 이상 $0.01, 미만 $0.0001 (Reg NMS Rule 612).
      * 국내는 종목(주식/ETF)·가격대마다 달라서 여기서 정하지 않고 증권사 시세 응답의 호가 단위를 쓴다.
