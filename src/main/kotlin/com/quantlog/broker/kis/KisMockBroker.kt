@@ -330,7 +330,7 @@ class KisMockBroker(
      * 해외 주문체결내역(VTTS3035R, docs/kis-api/examples/overseas_stock/inquire_ccnl.py 원문 기준).
      * 모의투자는 종목·구분·거래소 필터가 전체 조회만 되고 주문번호로 검색도 안 돼서(ODNO 는 반드시 ""),
      * 어제~오늘(현지 날짜) 전체를 받아 주문번호를 직접 골라낸다. 첫 페이지만 본다(연속조회 헤더 미지원).
-     * 필드명(odno/ft_ccld_qty/ft_ccld_unpr3)은 원문 컬럼 목록 기준이며 실측은 아직 안 했다.
+     * 필드명(odno/ft_ccld_qty/ft_ccld_unpr3)은 2026-09-30 실측으로 확인했다.
      */
     private fun overseasFilledPrice(
         market: Market,
@@ -357,7 +357,9 @@ class KisMockBroker(
                         "CTX_AREA_FK200" to "",
                     ),
             )
-        val row = res.path("output").firstOrNull { it.path("odno").asText() == orderNo } ?: return null
+        // 실측(2026-09-30): 접수 응답은 "0000037508", 체결내역 odno 는 "37508"로 앞자리 0 이 빠져 있다.
+        val target = orderNo.trimStart('0')
+        val row = res.path("output").firstOrNull { it.path("odno").asText().trimStart('0') == target } ?: return null
         val filledQty = row.path("ft_ccld_qty").asText("0").toBigDecimalOrNull() ?: BigDecimal.ZERO
         if (filledQty <= BigDecimal.ZERO) return null
         return row.decimal("ft_ccld_unpr3")

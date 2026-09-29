@@ -38,7 +38,7 @@
 | 매수/매도 | 국내 | `POST /uapi/domestic-stock/v1/trading/order-cash` | `VTTC0012U` / `VTTC0011U` |
 | 정정/취소 | 미국 | `POST /uapi/overseas-stock/v1/trading/order-rvsecncl` | `VTTT1004U` (미구현) |
 | 당일 분봉 조회 | 국내 | `GET /uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice` | `FHKST03010200` (실전·모의 동일, V 접두 안 씀) — `KisMockBroker.minuteCandles()` |
-| 주문체결내역 | 미국 | `GET /uapi/overseas-stock/v1/trading/inquire-ccnl` | `VTTS3035R` (실전 `TTTS3035R`) — `KisMockBroker.filledPrice()`. **모의는 PDNO/OVRS_EXCG_CD=""·SLL_BUY_DVSN/CCLD_NCCS_DVSN="00"만 가능, ODNO(주문번호) 검색 불가, 정렬 불가** → 기간 전체를 받아 주문번호를 직접 골라냄. 체결 필드 `odno`/`ft_ccld_qty`/`ft_ccld_unpr3` (원문 `examples/overseas_stock/inquire_ccnl.py`, 2026-09-30 저장, 실측 전) |
+| 주문체결내역 | 미국 | `GET /uapi/overseas-stock/v1/trading/inquire-ccnl` | `VTTS3035R` (실전 `TTTS3035R`) — `KisMockBroker.filledPrice()`. **모의는 PDNO/OVRS_EXCG_CD=""·SLL_BUY_DVSN/CCLD_NCCS_DVSN="00"만 가능, ODNO(주문번호) 검색 불가, 정렬 불가** → 기간 전체를 받아 주문번호를 직접 골라냄. 체결 필드 `odno`/`ft_ccld_qty`/`ft_ccld_unpr3` (원문 `examples/overseas_stock/inquire_ccnl.py`, 2026-09-30 SOXL 실측 확인). **주의: 응답 `odno`는 앞자리 0이 빠짐("37508") — 주문 접수 응답 "0000037508"과 앞 0을 떼고 비교** |
 
 ## 주의 / 확인 필요
 

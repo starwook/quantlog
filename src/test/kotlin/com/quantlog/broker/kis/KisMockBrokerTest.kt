@@ -173,17 +173,17 @@ class KisMockBrokerTest {
     }
 
     @Test
-    fun `해외 체결가는 VTTS3035R 결과에서 주문번호로 골라 체결단가를 돌려준다`() {
+    fun `해외 체결가는 VTTS3035R 결과에서 주문번호(앞자리 0 제외)로 골라 체결단가를 돌려준다`() {
         server.expect(requestTo(startsWith("$base/uapi/overseas-stock/v1/trading/inquire-ccnl")))
             .andExpect(header("tr_id", "VTTS3035R"))
             .andRespond(
                 ok(
-                    """[{"odno":"0000000001","ft_ccld_qty":"1","ft_ccld_unpr3":"10.00"},
-                        {"odno":"0000037508","ft_ccld_qty":"1","ft_ccld_unpr3":"149.2500"}]""",
+                    """[{"odno":"1","ft_ccld_qty":"1","ft_ccld_unpr3":"10.00"},
+                        {"odno":"37508","ft_ccld_qty":"1","ft_ccld_unpr3":"148.57000000"}]""",
                 ),
             )
 
-        assertEquals(0, BigDecimal("149.25").compareTo(broker.filledPrice(Market.AMEX, "0000037508")))
+        assertEquals(0, BigDecimal("148.57").compareTo(broker.filledPrice(Market.AMEX, "0000037508")))
     }
 
     @Test
