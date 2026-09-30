@@ -19,11 +19,14 @@ enum class WatchedSymbol(
     val market: Market,
     val symbol: String,
     val displayName: String,
+    /** 설정 행을 처음 만들 때 매수·마틴게일을 켤지. 실제 값은 이후 DB 가 정본이다. */
+    val tradeByDefault: Boolean = false,
 ) {
     SAMSUNG(Market.KR, "005930", "삼성전자"),
     SK_HYNIX(Market.KR, "000660", "SK하이닉스"),
     KODEX_SEMICONDUCTOR(Market.KR, "091160", "KODEX 반도체"),
     SOXL(Market.AMEX, "SOXL", "SOXL"),
+    KODEX_KOSDAQ150_LEVERAGE(Market.KR, "233740", "KODEX 코스닥150레버리지", tradeByDefault = true),
     ;
 
     companion object {

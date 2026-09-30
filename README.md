@@ -77,12 +77,12 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 
 ## 종목별 매매 설정 (DB)
 
-오늘 살 종목, 익절·손절 %, 마틴게일 값은 코드가 아니라 DB의 `symbol_strategy` 테이블에 있다. 웹 화면 `/settings`(상단 메뉴 "설정")에서 바꾸거나 SQL 로 UPDATE 하면 **재시작 없이** 다음 주기(1초 이내)부터 반영된다. 앱이 처음 뜰 때 없는 종목 행만 `application.yml` 기본값으로 채우고(삼성전자만 `auto_trade`·`martingale` 켬), 이미 있는 행은 덮어쓰지 않는다. 행이 없는 종목은 사지 않는다.
+오늘 살 종목, 익절·손절 %, 마틴게일 값은 코드가 아니라 DB의 `symbol_strategy` 테이블에 있다. 웹 화면 `/settings`(상단 메뉴 "설정")에서 바꾸거나 SQL 로 UPDATE 하면 **재시작 없이** 다음 주기(1초 이내)부터 반영된다. 앱이 처음 뜰 때 없는 종목 행만 `application.yml` 기본값으로 채우고(KODEX 코스닥150레버리지만 `auto_trade`·`martingale` 켬), 이미 있는 행은 덮어쓰지 않는다. 행이 없는 종목은 사지 않는다.
 
 ```sql
--- 오늘 살 종목 선택 (삼성전자만 켜고 KODEX 는 끄기)
-UPDATE symbol_strategy SET auto_trade = 1 WHERE symbol = '005930';
-UPDATE symbol_strategy SET auto_trade = 0 WHERE symbol = '091160';
+-- 오늘 살 종목 선택 (코스닥150레버리지만 켜고 삼성전자는 끄기)
+UPDATE symbol_strategy SET auto_trade = 1 WHERE symbol = '233740';
+UPDATE symbol_strategy SET auto_trade = 0 WHERE symbol = '005930';
 -- 삼성전자 익절 +0.5% → +1%, 마틴게일 하락 트리거 0.5% → 1%
 UPDATE symbol_strategy SET take_profit_percent = 1, martingale_drop_percent = 1 WHERE symbol = '005930';
 ```

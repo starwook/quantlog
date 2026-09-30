@@ -15,7 +15,7 @@ class SymbolStrategyServiceTest {
     private val service = SymbolStrategyService(repository, StrategyProperties(), MartingaleProperties())
 
     @Test
-    fun `없는 종목 행만 기본값으로 만들고 삼성전자만 매수와 마틴게일을 켠다`() {
+    fun `없는 종목 행만 기본값으로 만들고 코스닥150레버리지만 매수와 마틴게일을 켠다`() {
         // 삼성전자는 이미 사용자가 값을 바꿔둔 행이 있다고 가정 → 건드리면 안 된다.
         Mockito.`when`(repository.findByMarketAndSymbol(WatchedSymbol.SAMSUNG.market, WatchedSymbol.SAMSUNG.symbol))
             .thenReturn(symbolStrategy(WatchedSymbol.SAMSUNG.market, WatchedSymbol.SAMSUNG.symbol, takeProfit = "7"))
@@ -27,22 +27,25 @@ class SymbolStrategyServiceTest {
         Mockito.verify(repository, Mockito.times(WatchedSymbol.entries.size - 1)).save(captor.capture())
         val saved = captor.allValues
         assertTrue(saved.none { it.symbol == WatchedSymbol.SAMSUNG.symbol })
-        assertTrue(saved.none { it.autoTrade || it.martingale })
+        assertEquals(
+            listOf(WatchedSymbol.KODEX_KOSDAQ150_LEVERAGE.symbol),
+            saved.filter { it.autoTrade && it.martingale }.map { it.symbol },
+        )
     }
 
     @Test
-    fun `행이 하나도 없으면 삼성전자만 매수와 마틴게일이 켜지고 값은 application yml 기본값`() {
+    fun `행이 하나도 없으면 코스닥150레버리지만 매수와 마틴게일이 켜지고 값은 application yml 기본값`() {
         Mockito.`when`(repository.save(Mockito.any(SymbolStrategy::class.java))).thenAnswer { it.arguments[0] }
 
         service.seedMissing()
 
         val captor = ArgumentCaptor.forClass(SymbolStrategy::class.java)
         Mockito.verify(repository, Mockito.times(WatchedSymbol.entries.size)).save(captor.capture())
-        val samsung = captor.allValues.single { it.symbol == WatchedSymbol.SAMSUNG.symbol }
-        assertTrue(samsung.autoTrade && samsung.martingale)
+        val target = captor.allValues.single { it.symbol == WatchedSymbol.KODEX_KOSDAQ150_LEVERAGE.symbol }
+        assertTrue(target.autoTrade && target.martingale)
         assertEquals(1, captor.allValues.count { it.autoTrade })
         assertEquals(0, BigDecimal("0.5").compareTo(MartingaleProperties().dropPercent))
-        assertEquals(0, MartingaleProperties().dropPercent.compareTo(samsung.martingaleDropPercent))
+        assertEquals(0, MartingaleProperties().dropPercent.compareTo(target.martingaleDropPercent))
     }
 
     private fun validForm() =
