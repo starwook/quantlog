@@ -10,6 +10,7 @@ import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
+import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.HoldingView
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
@@ -17,6 +18,7 @@ import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.EntrySignal
+import com.quantlog.strategy.MartingaleCycle
 import com.quantlog.strategy.SupportBounceEntryRule
 import com.quantlog.watchlist.SymbolStrategy
 import com.quantlog.watchlist.WatchedSymbol
@@ -96,7 +98,7 @@ class EntrySchedulerTest {
     /** EntryScheduler 는 이제 "이미 보유 중인지"를 REST 대신 PortfolioService(DB)로 본다. */
     private fun portfolioServiceHolding(symbol: String): PortfolioService {
         val zero = BigDecimal.ZERO
-        val holding = HoldingView(Market.KR, symbol, 1, BigDecimal("9000"), BigDecimal("10000"), false, zero, zero, zero)
+        val holding = HoldingView(Market.KR, symbol, 1, BigDecimal("9000"), BigDecimal("10000"), zero, zero, zero)
         val summary =
             PortfolioSummary(
                 "KRW", listOf(holding), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -131,6 +133,7 @@ class EntrySchedulerTest {
         marketDataService,
         tradeService,
         portfolioService,
+        Mockito.mock(HoldingSyncService::class.java),
         watched,
         EntryProperties(enabled = true),
     )
@@ -186,8 +189,24 @@ class EntrySchedulerTest {
         signal: EntrySignal = EntrySignal.NO_TRADE,
     ): FakeBroker {
         val broker = FakeBroker() // 현재가 10,000 / 호가 10원
-        scheduler(broker, signal, tradeService = tradeServiceWith(*trades)).checkEntries(krOpen)
+        scheduler(broker, signal, portfolioService = portfolioServiceHeldBy(*trades), tradeService = tradeServiceWith(*trades))
+            .checkEntries(krOpen)
         return broker
+    }
+
+    /** 잔고 테이블을 흉내낸다: 마지막 SELL 이후의 매수분이 그대로 잔고에 있다. */
+    private fun portfolioServiceHeldBy(vararg trades: Trade): PortfolioService {
+        val cycle = MartingaleCycle.from(trades.toList())
+        val average = cycle.averagePrice ?: return noopPortfolioService()
+        val zero = BigDecimal.ZERO
+        val holding = HoldingView(Market.KR, "005930", cycle.quantity, average, average, zero, zero, zero)
+        val summary =
+            PortfolioSummary(
+                "KRW", listOf(holding), zero, zero, zero, zero, zero, zero, zero, zero,
+            )
+        val service = Mockito.mock(PortfolioService::class.java)
+        Mockito.`when`(service.snapshot()).thenReturn(PortfolioSnapshot(emptyList(), emptyMap(), mapOf("KRW" to summary)))
+        return service
     }
 
     @Test
@@ -266,12 +285,24 @@ class EntrySchedulerTest {
                 )
             }
         val broker = FakeBroker()
-        scheduler(broker, EntrySignal.NO_TRADE, tradeService = tradeServiceWith(buy(2, "10100")), configs = listOf(onePercent))
+        scheduler(
+            broker,
+            EntrySignal.NO_TRADE,
+            portfolioService = portfolioServiceHeldBy(buy(2, "10100")),
+            tradeService = tradeServiceWith(buy(2, "10100")),
+            configs = listOf(onePercent),
+        )
             .checkEntries(krOpen)
         assertEquals(4, broker.orders.single().quantity) // 보유 2주 × (배수 3 − 1)
 
         val broker2 = FakeBroker()
-        scheduler(broker2, EntrySignal.NO_TRADE, tradeService = tradeServiceWith(buy(2, "10050")), configs = listOf(onePercent))
+        scheduler(
+            broker2,
+            EntrySignal.NO_TRADE,
+            portfolioService = portfolioServiceHeldBy(buy(2, "10050")),
+            tradeService = tradeServiceWith(buy(2, "10050")),
+            configs = listOf(onePercent),
+        )
             .checkEntries(krOpen)
         assertTrue(broker2.orders.isEmpty())
     }

@@ -1,11 +1,7 @@
 package com.quantlog.position
 
-import com.quantlog.broker.BrokerClient
-import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
-import com.quantlog.trading.HoldingSyncService
-import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.math.MathContext
@@ -13,7 +9,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.util.ArrayDeque
 
-private val log = KotlinLogging.logger {}
 private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 private val HUNDRED: BigDecimal = BigDecimal(100)
 
@@ -25,7 +20,6 @@ data class HoldingView(
     val quantity: Int,
     val avgCost: BigDecimal,
     val currentPrice: BigDecimal,
-    val priceStale: Boolean,
     val value: BigDecimal,
     val unrealizedPnl: BigDecimal,
     val unrealizedPnlPercent: BigDecimal,
@@ -69,33 +63,18 @@ private class RealizedAcc {
 }
 
 /**
- * 원시 매매 기록(Trade)만 갖고 FIFO로 실현손익·보유 현황을 계산한다.
+ * 보유 현황은 잔고 테이블([AccountHolding], KIS 잔고 사본)을 그대로 쓰고, 실현손익은 원시 매매 기록(Trade)으로 FIFO 계산한다.
  * 파생값은 저장하지 않고 매번 다시 계산한다 — 기록 건수가 적어 성능 문제가 없고, 저장된 값이
- * 원본 기록과 어긋날 일도 없다.
+ * 원본 기록과 어긋날 일도 없다. KIS 를 직접 부르지 않는다(동기화는 [HoldingSyncService] 가 주기적으로).
  */
 @Service
 class PortfolioService(
     private val tradeRepository: TradeRepository,
-    private val broker: BrokerClient,
-    private val holdingSync: HoldingSyncService,
+    private val accountHoldingRepository: AccountHoldingRepository,
 ) {
-    /** 매매 판단용. 보유 현황도 우리 기록(DB)으로 계산한다 — 초당 요청 한도 때문에 REST 잔고를 부르지 않는다. */
-    fun snapshot(): PortfolioSnapshot = buildSnapshot(accountHoldings = null)
+    fun snapshot(): PortfolioSnapshot = buildSnapshot()
 
-    /**
-     * 화면용. 보유 종목은 KIS 잔고가 정답이라 DB 기록과 무관하게 그대로 보여준다(DB를 비워도, 서버를 새로 띄워도 동일).
-     * 실현손익·매매 내역만 DB 기록으로 계산한다. 캐시는 없다 — 화면 조회 한 번에 KIS 잔고 조회 2회(국내·해외).
-     * 잔고를 받은 김에 봇 기록과 다른 물량(증권사 앱에서 직접 거래한 것)은 DB에 맞춘다([HoldingSyncService]).
-     */
-    fun accountSnapshot(): PortfolioSnapshot {
-        val kis = holdingsFromAccount()
-        if (kis != null) {
-            runCatching { holdingSync.sync(kis) }.onFailure { log.warn(it) { "KIS 잔고 → 매매 기록 동기화 실패" } }
-        }
-        return buildSnapshot(accountHoldings = kis)
-    }
-
-    private fun buildSnapshot(accountHoldings: List<Holding>?): PortfolioSnapshot {
+    private fun buildSnapshot(): PortfolioSnapshot {
         val trades = tradeRepository.findAll().sortedBy { it.executedAt }
         val today = Instant.now().atZone(KST).toLocalDate()
 
@@ -148,8 +127,7 @@ class PortfolioService(
             }
         }
 
-        val holdingsByCurrency =
-            accountHoldings?.let { holdingViewsOf(it) } ?: holdingsFromTrades(lotsByKey)
+        val holdingsByCurrency = holdingViews()
 
         val currencies =
             (holdingsByCurrency.keys + realizedByCurrency.keys + buyCountTodayByCurrency.keys + sellCountTodayByCurrency.keys)
@@ -182,43 +160,13 @@ class PortfolioService(
         return PortfolioSnapshot(trades, pnlByTradeId, summaryByCurrency)
     }
 
-    private fun holdingsFromTrades(lotsByKey: Map<Pair<Market, String>, ArrayDeque<Lot>>): Map<String, List<HoldingView>> {
-        val holdingsByCurrency = mutableMapOf<String, MutableList<HoldingView>>()
-        lotsByKey.forEach { (key, lots) ->
-            val quantity = lots.sumOf { it.quantity }
-            if (quantity <= 0) return@forEach
-            val (market, symbol) = key
-            val cost = lots.sumOf { it.price.multiply(BigDecimal(it.quantity)) }
-            val avgCost = cost.divide(BigDecimal(quantity), MathContext.DECIMAL64)
-            val (currentPrice, stale) =
-                try {
-                    broker.quote(market, symbol).price to false
-                } catch (e: Exception) {
-                    log.warn(e) { "현재가 조회 실패, 평단가로 대체: $market $symbol" }
-                    avgCost to true
-                }
-            holdingsByCurrency.getOrPut(market.currency) { mutableListOf() }.add(
-                holdingView(market, symbol, quantity, avgCost, currentPrice, stale),
-            )
-        }
-        return holdingsByCurrency
-    }
-
-    /** KIS 잔고(국내 1회 + 해외 미국 전체 1회). 조회에 실패하면 null — 호출한 쪽이 DB 기록 기반으로 대체한다. */
-    private fun holdingsFromAccount(): List<Holding>? =
-        try {
-            broker.holdings(Market.KR) + broker.holdings(Market.NASDAQ)
-        } catch (e: Exception) {
-            log.warn(e) { "KIS 잔고 조회 실패, 매매 기록 기반 보유 현황으로 대체" }
-            null
-        }
-
-    private fun holdingViewsOf(holdings: List<Holding>): Map<String, List<HoldingView>> =
-        holdings
-            .filter { it.quantity > BigDecimal.ZERO }
+    private fun holdingViews(): Map<String, List<HoldingView>> =
+        accountHoldingRepository.findAll()
+            .filter { it.quantity > 0 }
+            .sortedWith(compareBy({ it.market }, { it.symbol }))
             .groupBy(
                 { it.market.currency },
-                { holdingView(it.market, it.symbol, it.quantity.toInt(), it.averagePrice, it.currentPrice, stale = false) },
+                { holdingView(it.market, it.symbol, it.quantity, it.avgCost, it.currentPrice) },
             )
 
     private fun holdingView(
@@ -227,12 +175,11 @@ class PortfolioService(
         quantity: Int,
         avgCost: BigDecimal,
         currentPrice: BigDecimal,
-        stale: Boolean,
     ): HoldingView {
         val cost = avgCost.multiply(BigDecimal(quantity))
         val value = currentPrice.multiply(BigDecimal(quantity))
         val unrealized = value.subtract(cost)
-        return HoldingView(market, symbol, quantity, avgCost, currentPrice, stale, value, unrealized, percentOf(unrealized, cost))
+        return HoldingView(market, symbol, quantity, avgCost, currentPrice, value, unrealized, percentOf(unrealized, cost))
     }
 
     private fun percentOf(

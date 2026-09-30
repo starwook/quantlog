@@ -4,7 +4,9 @@ import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
+import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.PortfolioService
+import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.EntrySignal
 import com.quantlog.strategy.MartingaleCycle
@@ -63,6 +65,7 @@ class EntryScheduler(
     private val marketDataService: MarketDataService,
     private val tradeService: TradeService,
     private val portfolioService: PortfolioService,
+    private val holdingSync: HoldingSyncService,
     private val watchedSymbols: List<WatchedSymbol>,
     private val properties: EntryProperties,
 ) {
@@ -96,9 +99,11 @@ class EntryScheduler(
                     .onFailure { log.warn(it) { "[종목 설정] 조회 실패: ${watched.market} ${watched.symbol}" } }
                     .getOrNull()
             if (config == null || !config.autoTrade) return@forEach
+            // 이 종목에 잔고 동기화보다 늦은 주문이 있으면 보유 현황이 낡았다 — 중복 매수를 막으려고 다음 동기화까지 미룬다.
+            if (holdingSync.hasUnsyncedTrade(watched.market, watched.symbol)) return@forEach
 
             if (config.martingale) {
-                runCatching { checkMartingale(watched, config, now.toInstant()) }
+                runCatching { checkMartingale(watched, config, snapshot, now.toInstant()) }
                     .onFailure { log.warn(it) { "[진입 감시] 실패: ${watched.market} ${watched.symbol}" } }
                 return@forEach
             }
@@ -113,7 +118,7 @@ class EntryScheduler(
     }
 
     /**
-     * martingale 종목의 사이클 상태는 매매 기록에서 계산한다([MartingaleCycle], 별도 상태 저장 없음).
+     * martingale 종목의 단계·직전 매도는 매매 기록에서, 보유 수량·평단은 KIS 잔고 테이블에서 온다([MartingaleCycle]).
      * - 보유 중: 평단 -0.5% 에 닿으면 보유 수량이 2배가 되게 추가 매수, 최대 단계면 더 사지 않는다(손절은 ExitScheduler).
      * - 매도로 끝난 직후: 익절이면 매도가 -0.5%, 손절이면 -1% 에 닿을 때 첫 1주부터 재진입. SupportBounce 신호는 보지 않는다.
      * - 매도 기록이 아직 없을 때(처음): SupportBounce 신호로만 시작한다.
@@ -124,6 +129,7 @@ class EntryScheduler(
     private fun checkMartingale(
         watched: WatchedSymbol,
         config: SymbolStrategy,
+        snapshot: PortfolioSnapshot,
         now: Instant,
     ) {
         val martingaleRule = MartingaleRule(config.martingaleProperties())
@@ -131,7 +137,10 @@ class EntryScheduler(
         val lastFailure = lastMartingaleFailureAt[key]
         if (lastFailure != null && Duration.between(lastFailure, now) < properties.cooldown) return
 
-        val cycle = MartingaleCycle.from(tradeService.trades(watched.market, watched.symbol))
+        val held =
+            snapshot.summaryByCurrency[watched.market.currency]?.holdings
+                ?.firstOrNull { it.market == watched.market && it.symbol == watched.symbol }
+        val cycle = MartingaleCycle.from(tradeService.trades(watched.market, watched.symbol)).withAccount(held?.quantity, held?.avgCost)
         val quote = broker.quote(watched.market, watched.symbol)
         val (quantity, reason) =
             when {

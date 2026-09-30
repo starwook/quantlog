@@ -102,7 +102,6 @@
         .holding .right { text-align: right; }
         .holding .value { font-weight: 600; font-size: 15px; }
         .holding .pnl { font-size: 13px; margin-top: 2px; }
-        .stale-mark { color: var(--muted); font-size: 11px; }
 
         .trade {
             padding: 14px 20px;
@@ -239,7 +238,6 @@
                 <div class="right">
                     <div class="value">
                         <span th:text="${h.valueText}"></span>
-                        <span class="stale-mark" th:if="${h.stale}">· 갱신 실패</span>
                     </div>
                     <div class="pnl" th:classappend="${h.pnlCss}" th:text="${h.pnlText}"></div>
                     <form method="post" th:action="@{'/holdings/' + ${h.market} + '/' + ${h.symbol} + '/sell'}"

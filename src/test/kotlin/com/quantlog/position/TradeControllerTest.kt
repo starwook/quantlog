@@ -34,7 +34,7 @@ class TradeControllerTest {
         loss: Int,
     ): SummaryView {
         val summary = summary("KRW", win, loss)
-        Mockito.`when`(portfolioService.accountSnapshot())
+        Mockito.`when`(portfolioService.snapshot())
             .thenReturn(PortfolioSnapshot(emptyList(), emptyMap(), mapOf("KRW" to summary)))
         val model = ExtendedModelMap()
         controller.trades(model)

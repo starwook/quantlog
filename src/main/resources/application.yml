@@ -88,6 +88,10 @@ quantlog:
     # 주문 직후 한 번에 못 구한 실제 체결가를 1분마다 KIS 에 다시 물어봐서 채운다 (국내·해외).
     enabled: ${QUANTLOG_RECONCILE_ENABLED:true}
     interval-millis: 60000
+  holding-sync:
+    # 증권사 앱에서 직접 거래한 물량을 10초마다 KIS 잔고 기준으로 DB에 맞춘다(화면용 현재가도 같이 갱신) (마틴게일이 DB 기준이라 필요).
+    enabled: ${QUANTLOG_HOLDING_SYNC_ENABLED:true}
+    interval-millis: 10000
   risk:
     # 1회 주문 상한은 폐지 (2026-09-30). 시장별 자본 배분(국내 1000만원)·하루 손실 -3%가 한도를 맡는다.
     market-allocation-krw: 10000000
