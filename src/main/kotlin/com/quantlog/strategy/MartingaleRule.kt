@@ -4,8 +4,6 @@ import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import com.quantlog.position.Trade
 import org.springframework.boot.context.properties.ConfigurationProperties
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
 import java.math.BigDecimal
 import java.math.MathContext
 
@@ -13,6 +11,8 @@ import java.math.MathContext
  * 2026-09-30 사용자 지정: 첫 1주 매수 후 직전 매수가 대비 0.5% 떨어질 때마다 직전 매수 수량의 2배 추가 매수(최대 5단계),
  * 5단계까지 산 뒤 5단계 매수가 대비 3% 더 떨어지면 손절. 익절 뒤엔 매도가 -0.5%, 손절 뒤엔 매도가 -1%에서 재진입.
  * (처음 -1%로 시작했다가 "오늘은 수익률보다 최대한 많이 거래"가 목표라 0.5%로 줄임.)
+ *
+ * 종목별 실제 값은 DB(watchlist.SymbolStrategy)가 갖고, 여기(application.yml)는 새 종목 행을 만들 때 쓰는 기본값이다.
  */
 @ConfigurationProperties(prefix = "quantlog.strategy.martingale")
 data class MartingaleProperties(
@@ -124,10 +124,4 @@ class MartingaleRule(
         cycle: MartingaleCycle,
         quote: Quote,
     ): Boolean = reentryTriggerPrice(cycle, quote)?.let { quote.price <= it } == true
-}
-
-@Configuration
-class MartingaleConfig {
-    @Bean
-    fun martingaleRule(properties: MartingaleProperties) = MartingaleRule(properties)
 }

@@ -44,12 +44,13 @@ quantlog:
   playbook:
     dir: playbook   # 원칙·일지·제안 (playbook/README.md)
   strategy:
-    # 초기값. 이후 학습 루프(기획서 6.4)가 결과를 보고 조정한다.
+    # 초기값(종목 설정 행의 기본값, 백테스트 기본값). 종목별 실제 값은 DB symbol_strategy 가 갖는다. 이후 학습 루프(기획서 6.4)가 결과를 보고 조정한다.
     take-profit-percent: 0.5
     # 손절 보류 (2026-09-30, 사용자 결정). 키를 비워두면 손절 매도를 내지 않는다. 다시 켜려면 아래 줄을 살린다.
     # stop-loss-percent: 1
     martingale:
-      # WatchedSymbol.martingale 종목(삼성전자)만: 직전 매수가 대비 이만큼(%) 떨어질 때마다 직전 매수 수량의 배수만큼 추가 매수.
+      # 아래 값은 symbol_strategy 테이블에 종목 행을 새로 만들 때 쓰는 기본값이다. 실제 운영 값은 DB에서 종목별로 바꾼다(README "종목별 매매 설정").
+      # 직전 매수가 대비 이만큼(%) 떨어질 때마다 직전 매수 수량의 배수만큼 추가 매수.
       drop-percent: 0.5
       multiplier: 2
       max-stages: 5
@@ -77,7 +78,7 @@ quantlog:
   entry:
     # 진입 스케줄러: 국내 정규장/미국 프리마켓~애프터마켓 동안 감시 종목(WatchedSymbol) 분봉을 보고
     # 저점 근접+반등 신호가 뜨면 소량 매수한다. 감시 종목 목록·자동매매 대상 여부는
-    # com.quantlog.watchlist.WatchedSymbol 에서 관리한다(여기 yaml이 아님).
+    # 수집 대상은 com.quantlog.watchlist.WatchedSymbol, 실제 매수 대상·종목별 값은 DB symbol_strategy 에서 관리한다(여기 yaml이 아님).
     # 검증 전 규칙(playbook/principles.md "아직 정하는 중") — 끄려면 false로.
     enabled: ${QUANTLOG_ENTRY_ENABLED:true}
     quantity-per-order: 1

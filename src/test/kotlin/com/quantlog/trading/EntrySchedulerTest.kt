@@ -17,10 +17,11 @@ import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.EntrySignal
-import com.quantlog.strategy.MartingaleProperties
-import com.quantlog.strategy.MartingaleRule
 import com.quantlog.strategy.SupportBounceEntryRule
+import com.quantlog.watchlist.SymbolStrategy
 import com.quantlog.watchlist.WatchedSymbol
+import com.quantlog.watchlist.symbolStrategy
+import com.quantlog.watchlist.symbolStrategyServiceOf
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import java.math.BigDecimal
@@ -106,6 +107,14 @@ class EntrySchedulerTest {
         return service
     }
 
+    /** 삼성전자만 마틴게일, KODEX 는 일반 자동매수, SK하이닉스는 매수 끔 (운영 기본 시드와는 다르게 일반 경로도 검증하려고 KODEX 를 켬). */
+    private val defaultConfigs =
+        listOf(
+            symbolStrategy(Market.KR, "005930", martingale = true),
+            symbolStrategy(Market.KR, "091160"),
+            symbolStrategy(Market.KR, "000660", autoTrade = false),
+        )
+
     private fun scheduler(
         broker: FakeBroker,
         signal: EntrySignal,
@@ -113,11 +122,12 @@ class EntrySchedulerTest {
         portfolioService: PortfolioService = noopPortfolioService(),
         marketDataService: MarketDataService = marketDataServiceStub(),
         tradeService: TradeService = Mockito.mock(TradeService::class.java),
+        configs: List<SymbolStrategy> = defaultConfigs,
     ) = EntryScheduler(
         broker,
         RiskGuard(RiskProperties(), noopPortfolioService()),
         entryRuleReturning(signal),
-        MartingaleRule(MartingaleProperties()),
+        symbolStrategyServiceOf(*configs.toTypedArray()),
         marketDataService,
         tradeService,
         portfolioService,
@@ -228,6 +238,42 @@ class EntrySchedulerTest {
     fun `삼성전자 첫 사이클은 매도 기록이 없으면 SupportBounce 신호로 시작한다`() {
         assertEquals(1, martingale(signal = EntrySignal.BUY).orders.single().quantity)
         assertTrue(martingale(signal = EntrySignal.NO_TRADE).orders.isEmpty())
+    }
+
+    @Test
+    fun `DB 설정에서 매수를 끄면 신호가 있어도 사지 않는다`() {
+        val broker = FakeBroker()
+        scheduler(broker, EntrySignal.BUY, configs = listOf(symbolStrategy(Market.KR, "005930", autoTrade = false, martingale = true)))
+            .checkEntries(krOpen)
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `DB 에 설정 행이 없는 종목은 사지 않는다`() {
+        val broker = FakeBroker()
+        scheduler(broker, EntrySignal.BUY, configs = emptyList()).checkEntries(krOpen)
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `DB 설정에서 마틴게일 값을 바꾸면 그대로 반영된다`() {
+        // 하락 트리거 1% 로 설정: 직전 매수가 10,100 → 10,000(9,999 반올림) 에 닿아야 산다. 10,050 이면 안 산다.
+        val onePercent =
+            symbolStrategy(Market.KR, "005930", martingale = true).let {
+                SymbolStrategy(
+                    it.market, it.symbol, true, it.takeProfitPercent, null, true, java.math.BigDecimal("1"), 3, 5,
+                    java.math.BigDecimal("3"), java.math.BigDecimal("0.5"), java.math.BigDecimal("1"),
+                )
+            }
+        val broker = FakeBroker()
+        scheduler(broker, EntrySignal.NO_TRADE, tradeService = tradeServiceWith(buy(2, "10100")), configs = listOf(onePercent))
+            .checkEntries(krOpen)
+        assertEquals(6, broker.orders.single().quantity) // 직전 2주 × 배수 3
+
+        val broker2 = FakeBroker()
+        scheduler(broker2, EntrySignal.NO_TRADE, tradeService = tradeServiceWith(buy(2, "10050")), configs = listOf(onePercent))
+            .checkEntries(krOpen)
+        assertTrue(broker2.orders.isEmpty())
     }
 
     @Test

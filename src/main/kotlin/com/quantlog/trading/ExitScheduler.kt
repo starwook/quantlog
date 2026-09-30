@@ -11,7 +11,7 @@ import com.quantlog.strategy.ExitSignal
 import com.quantlog.strategy.FixedPercentExitRule
 import com.quantlog.strategy.MartingaleCycle
 import com.quantlog.strategy.MartingaleRule
-import com.quantlog.watchlist.WatchedSymbol
+import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.scheduling.annotation.Scheduled
@@ -45,7 +45,7 @@ class ExitScheduler(
     private val broker: BrokerClient,
     private val riskGuard: RiskGuard,
     private val exitRule: FixedPercentExitRule,
-    private val martingaleRule: MartingaleRule,
+    private val symbolStrategyService: SymbolStrategyService,
     private val tradeService: TradeService,
     private val portfolioService: PortfolioService,
     private val properties: ExitProperties,
@@ -85,26 +85,28 @@ class ExitScheduler(
         if (last != null && Duration.between(last, now) < properties.cooldown) return
 
         val quote = broker.quote(holding.market, holding.symbol)
-        var signal = exitRule.evaluate(holding.avgCost, quote)
+        // 익절·손절 %는 종목별 DB 설정(symbol_strategy). 설정 행이 없는 종목은 전역 설정(application.yml)을 쓴다.
+        val config = symbolStrategyService.find(holding.market, holding.symbol)
+        val rule = config?.let { FixedPercentExitRule(it.takeProfitPercent, it.stopLossPercent) } ?: exitRule
+        var signal = rule.evaluate(holding.avgCost, quote)
         // 마틴게일 종목의 손절은 전역 손절(보류)이 아니라 최대 단계 매수 뒤에만 있는 별도 손절이다.
-        if (signal == ExitSignal.HOLD && isMartingale(holding)) {
+        if (signal == ExitSignal.HOLD && config?.martingale == true) {
             val cycle = MartingaleCycle.from(tradeService.trades(holding.market, holding.symbol))
-            if (martingaleRule.shouldStopLoss(cycle, quote)) signal = ExitSignal.STOP_LOSS
+            if (MartingaleRule(config.martingaleProperties()).shouldStopLoss(cycle, quote)) signal = ExitSignal.STOP_LOSS
         }
         if (signal == ExitSignal.HOLD) return
 
-        sell(holding, quote, signal)
+        sell(holding, quote, signal, rule)
         lastSellAt[key] = now
     }
-
-    private fun isMartingale(holding: HoldingView) = WatchedSymbol.find(holding.market, holding.symbol)?.martingale == true
 
     private fun sell(
         holding: HoldingView,
         quote: Quote,
         signal: ExitSignal,
+        rule: FixedPercentExitRule,
     ) {
-        val targets = exitRule.targets(holding.avgCost, quote)
+        val targets = rule.targets(holding.avgCost, quote)
         val request =
             OrderRequest(
                 market = holding.market,
