@@ -2,7 +2,7 @@ package com.quantlog.position
 
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
-import com.quantlog.watchlist.displayNameOf
+import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -18,6 +18,7 @@ private val log = KotlinLogging.logger {}
 class HoldingSyncService(
     private val accountHoldingRepository: AccountHoldingRepository,
     private val tradeRepository: TradeRepository,
+    private val symbolStrategyService: SymbolStrategyService,
 ) {
     /** 마지막으로 잔고를 받기 시작한 시각. 한 번도 못 받았으면 null. */
     @Volatile
@@ -45,6 +46,10 @@ class HoldingSyncService(
         kis: List<Holding>,
         fetchedAt: Instant = Instant.now(),
     ): List<String> {
+        fun nameOf(
+            market: Market,
+            symbol: String,
+        ) = symbolStrategyService.displayName(market, symbol)
         val actual = kis.filter { it.quantity.toInt() > 0 }.associateBy { it.market to it.symbol }
         val existing = accountHoldingRepository.findAll().associateBy { it.market to it.symbol }
         val changes = mutableListOf<String>()
@@ -56,17 +61,17 @@ class HoldingSyncService(
                 accountHoldingRepository.save(
                     AccountHolding(holding.market, holding.symbol, quantity, holding.averagePrice, holding.currentPrice),
                 )
-                changes += "${displayNameOf(holding.market, holding.symbol)} 신규 ${quantity}주 (평단 ${holding.averagePrice})"
+                changes += "${nameOf(holding.market, holding.symbol)} 신규 ${quantity}주 (평단 ${holding.averagePrice})"
             } else {
                 if (row.quantity != quantity) {
-                    changes += "${displayNameOf(row.market, row.symbol)} ${row.quantity}주 → ${quantity}주 (평단 ${holding.averagePrice})"
+                    changes += "${nameOf(row.market, row.symbol)} ${row.quantity}주 → ${quantity}주 (평단 ${holding.averagePrice})"
                 }
                 row.update(quantity, holding.averagePrice, holding.currentPrice)
             }
         }
         existing.filterKeys { it !in actual }.values.forEach {
             accountHoldingRepository.delete(it)
-            changes += "${displayNameOf(it.market, it.symbol)} 잔고에서 사라짐 (${it.quantity}주)"
+            changes += "${nameOf(it.market, it.symbol)} 잔고에서 사라짐 (${it.quantity}주)"
         }
 
         lastSyncedAt = fetchedAt

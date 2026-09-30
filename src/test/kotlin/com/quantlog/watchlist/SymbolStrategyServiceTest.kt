@@ -17,18 +17,18 @@ class SymbolStrategyServiceTest {
     @Test
     fun `없는 종목 행만 기본값으로 만들고 코스닥150레버리지만 매수와 마틴게일을 켠다`() {
         // 삼성전자는 이미 사용자가 값을 바꿔둔 행이 있다고 가정 → 건드리면 안 된다.
-        Mockito.`when`(repository.findByMarketAndSymbol(WatchedSymbol.SAMSUNG.market, WatchedSymbol.SAMSUNG.symbol))
-            .thenReturn(symbolStrategy(WatchedSymbol.SAMSUNG.market, WatchedSymbol.SAMSUNG.symbol, takeProfit = "7"))
+        Mockito.`when`(repository.findByMarketAndSymbol(SeedSymbol.SAMSUNG.market, SeedSymbol.SAMSUNG.symbol))
+            .thenReturn(symbolStrategy(SeedSymbol.SAMSUNG.market, SeedSymbol.SAMSUNG.symbol, takeProfit = "7"))
         Mockito.`when`(repository.save(Mockito.any(SymbolStrategy::class.java))).thenAnswer { it.arguments[0] }
 
         service.seedMissing()
 
         val captor = ArgumentCaptor.forClass(SymbolStrategy::class.java)
-        Mockito.verify(repository, Mockito.times(WatchedSymbol.entries.size - 1)).save(captor.capture())
+        Mockito.verify(repository, Mockito.times(SeedSymbol.entries.size - 1)).save(captor.capture())
         val saved = captor.allValues
-        assertTrue(saved.none { it.symbol == WatchedSymbol.SAMSUNG.symbol })
+        assertTrue(saved.none { it.symbol == SeedSymbol.SAMSUNG.symbol })
         assertEquals(
-            listOf(WatchedSymbol.KODEX_KOSDAQ150_LEVERAGE.symbol),
+            listOf(SeedSymbol.KODEX_KOSDAQ150_LEVERAGE.symbol),
             saved.filter { it.autoTrade && it.martingale }.map { it.symbol },
         )
     }
@@ -40,8 +40,8 @@ class SymbolStrategyServiceTest {
         service.seedMissing()
 
         val captor = ArgumentCaptor.forClass(SymbolStrategy::class.java)
-        Mockito.verify(repository, Mockito.times(WatchedSymbol.entries.size)).save(captor.capture())
-        val target = captor.allValues.single { it.symbol == WatchedSymbol.KODEX_KOSDAQ150_LEVERAGE.symbol }
+        Mockito.verify(repository, Mockito.times(SeedSymbol.entries.size)).save(captor.capture())
+        val target = captor.allValues.single { it.symbol == SeedSymbol.KODEX_KOSDAQ150_LEVERAGE.symbol }
         assertTrue(target.autoTrade && target.martingale)
         assertEquals(1, captor.allValues.count { it.autoTrade })
         assertEquals(0, BigDecimal("0.5").compareTo(MartingaleProperties().dropPercent))
@@ -63,7 +63,7 @@ class SymbolStrategyServiceTest {
 
     @Test
     fun `화면 입력값이 유효하면 기존 행에 반영되고 손절은 비우면 보류`() {
-        val existing = symbolStrategy(WatchedSymbol.SAMSUNG.market, WatchedSymbol.SAMSUNG.symbol, takeProfit = "0.5")
+        val existing = symbolStrategy(SeedSymbol.SAMSUNG.market, SeedSymbol.SAMSUNG.symbol, takeProfit = "0.5")
         Mockito.`when`(repository.findByMarketAndSymbol(existing.market, existing.symbol)).thenReturn(existing)
 
         service.update(existing.market, existing.symbol, validForm())
@@ -76,7 +76,7 @@ class SymbolStrategyServiceTest {
 
     @Test
     fun `익절이 비었거나 배수가 2 미만이면 저장을 거부한다`() {
-        val existing = symbolStrategy(WatchedSymbol.SAMSUNG.market, WatchedSymbol.SAMSUNG.symbol)
+        val existing = symbolStrategy(SeedSymbol.SAMSUNG.market, SeedSymbol.SAMSUNG.symbol)
         Mockito.`when`(repository.findByMarketAndSymbol(existing.market, existing.symbol)).thenReturn(existing)
 
         assertFailsWith<IllegalArgumentException> {

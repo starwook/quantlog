@@ -1,5 +1,6 @@
 package com.quantlog.position
 
+import com.quantlog.watchlist.symbolStrategyServiceOf
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.springframework.ui.ExtendedModelMap
@@ -8,7 +9,7 @@ import kotlin.test.assertEquals
 
 class TradeControllerTest {
     private val portfolioService = Mockito.mock(PortfolioService::class.java)
-    private val controller = TradeController(portfolioService)
+    private val controller = TradeController(portfolioService, symbolStrategyServiceOf())
 
     private fun summary(
         currency: String,

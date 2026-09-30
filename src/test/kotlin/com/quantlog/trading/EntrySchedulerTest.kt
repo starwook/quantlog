@@ -20,8 +20,8 @@ import com.quantlog.position.TradeService
 import com.quantlog.strategy.EntrySignal
 import com.quantlog.strategy.MartingaleCycle
 import com.quantlog.strategy.SupportBounceEntryRule
+import com.quantlog.watchlist.SeedSymbol
 import com.quantlog.watchlist.SymbolStrategy
-import com.quantlog.watchlist.WatchedSymbol
 import com.quantlog.watchlist.symbolStrategy
 import com.quantlog.watchlist.symbolStrategyServiceOf
 import org.junit.jupiter.api.Test
@@ -120,7 +120,7 @@ class EntrySchedulerTest {
     private fun scheduler(
         broker: FakeBroker,
         signal: EntrySignal,
-        watched: List<WatchedSymbol> = listOf(WatchedSymbol.SAMSUNG),
+        watched: List<SeedSymbol> = listOf(SeedSymbol.SAMSUNG),
         portfolioService: PortfolioService = noopPortfolioService(),
         marketDataService: MarketDataService = marketDataServiceStub(),
         tradeService: TradeService = Mockito.mock(TradeService::class.java),
@@ -129,12 +129,14 @@ class EntrySchedulerTest {
         broker,
         RiskGuard(RiskProperties(), noopPortfolioService()),
         entryRuleReturning(signal),
-        symbolStrategyServiceOf(*configs.toTypedArray()),
+        symbolStrategyServiceOf(*configs.toTypedArray()).also { service ->
+            // 감시 종목 목록은 DB(symbol_strategy) 행 목록 — 이 테스트에서 감시 중인 종목의 설정만 돌려준다.
+            Mockito.`when`(service.all()).thenReturn(configs.filter { c -> watched.any { it.market == c.market && it.symbol == c.symbol } })
+        },
         marketDataService,
         tradeService,
         portfolioService,
         Mockito.mock(HoldingSyncService::class.java),
-        watched,
         EntryProperties(enabled = true),
     )
 
@@ -162,7 +164,7 @@ class EntrySchedulerTest {
         scheduler(
             broker,
             EntrySignal.BUY,
-            watched = listOf(WatchedSymbol.KODEX_SEMICONDUCTOR),
+            watched = listOf(SeedSymbol.KODEX_SEMICONDUCTOR),
             portfolioService = portfolioServiceHolding("091160"),
         ).checkEntries(krOpen)
         assertTrue(broker.orders.isEmpty())
@@ -280,7 +282,7 @@ class EntrySchedulerTest {
         val onePercent =
             symbolStrategy(Market.KR, "005930", martingale = true).let {
                 SymbolStrategy(
-                    it.market, it.symbol, true, it.takeProfitPercent, null, true, java.math.BigDecimal("1"), 3, 5,
+                    it.market, it.symbol, it.displayName, true, it.takeProfitPercent, null, true, java.math.BigDecimal("1"), 3, 5,
                     java.math.BigDecimal("3"), java.math.BigDecimal("0.5"), java.math.BigDecimal("1"),
                 )
             }
@@ -311,7 +313,7 @@ class EntrySchedulerTest {
     fun `자동매매 대상이 아니면 분봉은 모으되 사지는 않는다`() {
         val broker = FakeBroker()
         val marketDataService = marketDataServiceStub()
-        scheduler(broker, EntrySignal.BUY, watched = listOf(WatchedSymbol.SK_HYNIX), marketDataService = marketDataService)
+        scheduler(broker, EntrySignal.BUY, watched = listOf(SeedSymbol.SK_HYNIX), marketDataService = marketDataService)
             .checkEntries(krOpen)
 
         assertTrue(broker.orders.isEmpty())

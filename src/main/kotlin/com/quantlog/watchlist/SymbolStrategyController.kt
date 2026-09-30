@@ -27,7 +27,7 @@ class SymbolStrategyController(
         @ModelAttribute form: SymbolStrategyForm,
         redirect: RedirectAttributes,
     ): String {
-        val name = displayNameOf(market, symbol)
+        val name = service.displayName(market, symbol)
         runCatching { service.update(market, symbol, form) }
             .onSuccess { redirect.addFlashAttribute("message", "$name 설정을 저장했어요. 다음 주기(1초 이내)부터 적용됩니다.") }
             .onFailure { redirect.addFlashAttribute("error", "$name 저장 실패: ${it.message}") }

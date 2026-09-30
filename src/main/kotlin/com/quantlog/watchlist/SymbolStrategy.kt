@@ -26,7 +26,7 @@ private val log = KotlinLogging.logger {}
 /**
  * 종목별 매매 설정. 오늘 살 종목, 익절·손절 %, 마틴게일 파라미터처럼 원칙이 바뀔 때마다 만지는 값을
  * 코드가 아니라 DB(`symbol_strategy` 테이블)에 둔다 — 값을 UPDATE 하면 재시작 없이 스케줄러의 다음 주기(1초)부터 반영된다.
- * 스케줄러는 매번 읽기 때문에 캐시가 없다. 종목 목록 자체(분봉 수집·차트 대상)는 [WatchedSymbol] enum 이 그대로 갖는다.
+ * 스케줄러는 매번 읽기 때문에 캐시가 없다. 이 테이블의 행 목록이 곧 감시 종목(분봉 수집·차트·구독 대상)이다 — 종목을 추가하려면 행을 넣으면 된다.
  *
  * 비율은 % 단위다(0.5 = 0.5%). 손절이 null 이면 전역 손절은 보류(안 나감)다.
  * 행이 없는 종목은 자동 매수하지 않는다. 아래 [SymbolStrategySeeder] 가 없는 행만 기본값으로 채운다(기존 값은 안 덮어씀).
@@ -39,6 +39,9 @@ class SymbolStrategy(
     val market: Market,
     @Column(nullable = false, length = 20)
     val symbol: String,
+    /** 화면·로그에 보여줄 이름. */
+    @Column(name = "display_name", nullable = false, length = 100)
+    var displayName: String,
     /** false 면 분봉만 모으고 매수는 안 한다. 매수 종목 선택 스위치. */
     @Column(name = "auto_trade", nullable = false)
     var autoTrade: Boolean,
@@ -110,9 +113,14 @@ class SymbolStrategyService(
         symbol: String,
     ): SymbolStrategy? = repository.findByMarketAndSymbol(market, symbol)
 
-    /** 화면용: 감시 종목 순서대로, 설정 행이 있는 종목만. */
-    fun all(): List<Pair<WatchedSymbol, SymbolStrategy>> =
-        WatchedSymbol.entries.mapNotNull { w -> find(w.market, w.symbol)?.let { w to it } }
+    /** 감시 종목 전체(등록 순서). */
+    fun all(): List<SymbolStrategy> = repository.findAll().sortedBy { it.id }
+
+    /** 등록 안 된 종목이면(직접 URL로 들어온 경우, 앱에서 산 종목 등) 코드를 그대로 이름처럼 보여준다. */
+    fun displayName(
+        market: Market,
+        symbol: String,
+    ): String = find(market, symbol)?.displayName?.takeIf { it.isNotBlank() } ?: symbol
 
     /** 값이 잘못됐으면 [IllegalArgumentException] (메시지는 화면에 그대로 보여준다). 스케줄러가 매번 읽으므로 저장 즉시 반영된다. */
     @Transactional
@@ -155,10 +163,15 @@ class SymbolStrategyService(
 
     /**
      * 없는 종목 행만 기본값으로 채운다. 기본값은 application.yml 의 quantlog.strategy.* 이고,
-     * 자동 매수·마틴게일은 [WatchedSymbol.tradeByDefault] 종목만 켠다(2026-09-30 KODEX 코스닥150레버리지만). 이미 있는 행은 건드리지 않는다.
+     * 자동 매수·마틴게일은 [SeedSymbol.tradeByDefault] 종목만 켠다(2026-09-30 KODEX 코스닥150레버리지만). 이미 있는 행은 건드리지 않는다.
      */
+    @Transactional
     fun seedMissing() {
-        WatchedSymbol.entries
+        // 이름 컬럼이 생기기 전에 만들어진 행은 이름이 비어 있다 — 시드 이름으로 채운다.
+        SeedSymbol.entries.forEach { seed ->
+            repository.findByMarketAndSymbol(seed.market, seed.symbol)?.takeIf { it.displayName.isBlank() }?.displayName = seed.displayName
+        }
+        SeedSymbol.entries
             .filter { repository.findByMarketAndSymbol(it.market, it.symbol) == null }
             .forEach {
                 val trade = it.tradeByDefault
@@ -166,6 +179,7 @@ class SymbolStrategyService(
                     SymbolStrategy(
                         market = it.market,
                         symbol = it.symbol,
+                        displayName = it.displayName,
                         autoTrade = trade,
                         takeProfitPercent = strategyProperties.takeProfitPercent,
                         stopLossPercent = strategyProperties.stopLossPercent,

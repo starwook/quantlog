@@ -2,8 +2,7 @@ package com.quantlog.backtest
 
 import com.quantlog.broker.Market
 import com.quantlog.marketdata.MarketDataService
-import com.quantlog.watchlist.WatchedSymbol
-import com.quantlog.watchlist.displayNameOf
+import com.quantlog.watchlist.SymbolStrategyService
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
@@ -35,6 +34,7 @@ data class SimulatedTradeView(
 class BacktestController(
     private val marketDataService: MarketDataService,
     private val backtestService: BacktestService,
+    private val symbolStrategyService: SymbolStrategyService,
 ) {
     @GetMapping("/backtest/{market}/{symbol}")
     fun page(
@@ -50,11 +50,11 @@ class BacktestController(
 
         model.addAttribute("market", market.name)
         model.addAttribute("symbol", symbol)
-        model.addAttribute("symbolName", displayNameOf(market, symbol))
+        model.addAttribute("symbolName", symbolStrategyService.displayName(market, symbol))
         model.addAttribute("date", targetDate.toString())
         model.addAttribute("prevDate", targetDate.minusDays(1).toString())
         model.addAttribute("nextDate", targetDate.plusDays(1).toString())
-        model.addAttribute("watchedSymbols", WatchedSymbol.entries)
+        model.addAttribute("watchedSymbols", symbolStrategyService.all())
         model.addAttribute("candleCount", result.candleCount)
         model.addAttribute("hasTrades", result.trades.isNotEmpty())
         model.addAttribute("trades", result.trades.map { it.toView(currency) })

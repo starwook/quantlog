@@ -62,43 +62,43 @@
     <p class="hint" th:if="${#lists.isEmpty(rows)}">설정이 있는 종목이 없어요. 앱을 재시작하면 기본값으로 채워집니다.</p>
 
     <form class="card" th:each="row : ${rows}" method="post"
-          th:action="@{'/settings/' + ${row.first.market} + '/' + ${row.first.symbol}}"
+          th:action="@{'/settings/' + ${row.market} + '/' + ${row.symbol}}"
           onsubmit="return confirm('이 설정은 바로 매매에 반영됩니다. 저장할까요?')">
         <div class="head">
-            <div class="name"><span th:text="${row.first.displayName}"></span><span class="code" th:text="${row.first.market} + ' ' + ${row.first.symbol}"></span></div>
-            <label class="toggle"><input type="checkbox" name="autoTrade" value="true" th:checked="${row.second.autoTrade}">자동매수</label>
+            <div class="name"><span th:text="${row.displayName}"></span><span class="code" th:text="${row.market} + ' ' + ${row.symbol}"></span></div>
+            <label class="toggle"><input type="checkbox" name="autoTrade" value="true" th:checked="${row.autoTrade}">자동매수</label>
         </div>
         <div class="grid">
             <label>익절 %
-                <input type="number" step="any" min="0" name="takeProfitPercent" th:value="${row.second.takeProfitPercent.stripTrailingZeros().toPlainString()}" required>
+                <input type="number" step="any" min="0" name="takeProfitPercent" th:value="${row.takeProfitPercent.stripTrailingZeros().toPlainString()}" required>
             </label>
             <label>손절 %
                 <input type="number" step="any" min="0" name="stopLossPercent" placeholder="비우면 손절 안 함"
-                       th:value="${row.second.stopLossPercent != null} ? ${row.second.stopLossPercent.stripTrailingZeros().toPlainString()} : ''">
+                       th:value="${row.stopLossPercent != null} ? ${row.stopLossPercent.stripTrailingZeros().toPlainString()} : ''">
                 <small>마틴게일 종목은 아래 마지막 단계 손절이 따로 있음</small>
             </label>
         </div>
-        <details th:open="${row.second.martingale}">
+        <details th:open="${row.martingale}">
             <summary>마틴게일</summary>
-            <label class="toggle" style="margin-top: 12px;"><input type="checkbox" name="martingale" value="true" th:checked="${row.second.martingale}">사용</label>
+            <label class="toggle" style="margin-top: 12px;"><input type="checkbox" name="martingale" value="true" th:checked="${row.martingale}">사용</label>
             <div class="grid">
                 <label>추가매수 하락 % <small>평단 대비</small>
-                    <input type="number" step="any" min="0" name="martingaleDropPercent" th:value="${row.second.martingaleDropPercent.stripTrailingZeros().toPlainString()}" required>
+                    <input type="number" step="any" min="0" name="martingaleDropPercent" th:value="${row.martingaleDropPercent.stripTrailingZeros().toPlainString()}" required>
                 </label>
                 <label>배수 <small>보유 수량의</small>
-                    <input type="number" step="1" min="2" name="martingaleMultiplier" th:value="${row.second.martingaleMultiplier}" required>
+                    <input type="number" step="1" min="2" name="martingaleMultiplier" th:value="${row.martingaleMultiplier}" required>
                 </label>
                 <label>최대 단계
-                    <input type="number" step="1" min="1" name="martingaleMaxStages" th:value="${row.second.martingaleMaxStages}" required>
+                    <input type="number" step="1" min="1" name="martingaleMaxStages" th:value="${row.martingaleMaxStages}" required>
                 </label>
                 <label>마지막 단계 손절 % <small>평단 대비</small>
-                    <input type="number" step="any" min="0" name="martingaleFinalStageStopLossPercent" th:value="${row.second.martingaleFinalStageStopLossPercent.stripTrailingZeros().toPlainString()}" required>
+                    <input type="number" step="any" min="0" name="martingaleFinalStageStopLossPercent" th:value="${row.martingaleFinalStageStopLossPercent.stripTrailingZeros().toPlainString()}" required>
                 </label>
                 <label>익절 뒤 재진입 하락 % <small>직전 매도가 대비</small>
-                    <input type="number" step="any" min="0" name="martingaleReentryDropPercent" th:value="${row.second.martingaleReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
+                    <input type="number" step="any" min="0" name="martingaleReentryDropPercent" th:value="${row.martingaleReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
                 </label>
                 <label>손절 뒤 재진입 하락 % <small>직전 매도가 대비</small>
-                    <input type="number" step="any" min="0" name="martingaleStopReentryDropPercent" th:value="${row.second.martingaleStopReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
+                    <input type="number" step="any" min="0" name="martingaleStopReentryDropPercent" th:value="${row.martingaleStopReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
                 </label>
             </div>
         </details>

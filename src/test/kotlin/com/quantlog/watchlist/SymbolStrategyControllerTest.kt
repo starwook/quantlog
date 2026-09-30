@@ -22,8 +22,10 @@ class SymbolStrategyControllerTest {
 
     @Test
     fun `설정 화면이 종목 값과 메뉴를 그린다`() {
-        val samsung = WatchedSymbol.SAMSUNG
-        Mockito.`when`(service.all()).thenReturn(listOf(samsung to symbolStrategy(samsung.market, samsung.symbol, takeProfit = "0.5")))
+        val samsung = SeedSymbol.SAMSUNG
+        Mockito.`when`(
+            service.all(),
+        ).thenReturn(listOf(symbolStrategy(samsung.market, samsung.symbol, displayName = samsung.displayName, takeProfit = "0.5")))
 
         mvc.perform(get("/settings"))
             .andExpect(status().isOk)

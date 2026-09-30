@@ -6,6 +6,7 @@ import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeRepository
+import com.quantlog.watchlist.symbolStrategyServiceOf
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import java.math.BigDecimal
@@ -39,7 +40,7 @@ class ChartControllerTest {
         Mockito.`when`(marketDataService.recentCandles(Market.KR, "005930", today)).thenReturn(candles)
         val tradeRepository = Mockito.mock(TradeRepository::class.java)
         Mockito.`when`(tradeRepository.findAllByMarketAndSymbolOrderByExecutedAtAsc(Market.KR, "005930")).thenReturn(trades)
-        return ChartController(marketDataService, tradeRepository)
+        return ChartController(marketDataService, tradeRepository, symbolStrategyServiceOf())
     }
 
     @Test
