@@ -65,7 +65,7 @@ class BacktestService(
                     entryTime = null
                     entryPrice = null
                 }
-                returnPercent <= strategyProperties.stopLossPercent.negate() -> {
+                strategyProperties.stopLossPercent?.let { returnPercent <= it.negate() } == true -> {
                     trades += SimulatedTrade(entryTime!!, price, candle.time, candle.close, returnPercent, "손절")
                     entryTime = null
                     entryPrice = null

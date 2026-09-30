@@ -46,7 +46,12 @@ quantlog:
   strategy:
     # 초기값. 이후 학습 루프(기획서 6.4)가 결과를 보고 조정한다.
     take-profit-percent: 1
-    stop-loss-percent: 1
+    # 손절 보류 (2026-09-30, 사용자 결정). 키를 비워두면 손절 매도를 내지 않는다. 다시 켜려면 아래 줄을 살린다.
+    # stop-loss-percent: 1
+    martingale:
+      # WatchedSymbol.martingale 종목(삼성전자)만: 직전 매수가 대비 이만큼 떨어질 때마다 직전 매수 수량의 배수만큼 추가 매수.
+      drop-percent: 1
+      multiplier: 2
     entry:
       # 분봉 체류시간 기반 지지선 근접+반등 진입 신호. 검증 전 가설값 (playbook/principles.md "아직 정하는 중").
       min-candles: 15

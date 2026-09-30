@@ -1,5 +1,6 @@
 package com.quantlog.position
 
+import com.quantlog.broker.Market
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Side
@@ -13,6 +14,12 @@ class TradeService(
     private val repository: TradeRepository,
     private val notifier: Notifier,
 ) {
+    /** 이 종목의 가장 최근 매수 기록. 보유 중이면 현재 사이클의 직전 매수다. 없으면 null. */
+    fun lastBuy(
+        market: Market,
+        symbol: String,
+    ): Trade? = repository.findAllByMarketAndSymbolOrderByExecutedAtAsc(market, symbol).lastOrNull { it.side == Side.BUY }
+
     /** filledPrice: 실제 체결가(국내만 확인 가능, 호출부가 조회해서 넘긴다). 못 구했으면 null로 둔다 — 지어내지 않는다. */
     fun record(
         order: OrderRequest,

@@ -15,7 +15,10 @@ import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.TradeService
+import com.quantlog.position.Trade
 import com.quantlog.strategy.EntrySignal
+import com.quantlog.strategy.MartingaleEntryRule
+import com.quantlog.strategy.MartingaleProperties
 import com.quantlog.strategy.SupportBounceEntryRule
 import com.quantlog.watchlist.WatchedSymbol
 import org.junit.jupiter.api.Test
@@ -109,12 +112,14 @@ class EntrySchedulerTest {
         watched: List<WatchedSymbol> = listOf(WatchedSymbol.SAMSUNG),
         portfolioService: PortfolioService = noopPortfolioService(),
         marketDataService: MarketDataService = marketDataServiceStub(),
+        tradeService: TradeService = Mockito.mock(TradeService::class.java),
     ) = EntryScheduler(
         broker,
         RiskGuard(RiskProperties(), noopPortfolioService()),
         entryRuleReturning(signal),
+        MartingaleEntryRule(MartingaleProperties()),
         marketDataService,
-        Mockito.mock(TradeService::class.java),
+        tradeService,
         portfolioService,
         watched,
         EntryProperties(enabled = true),
@@ -139,9 +144,51 @@ class EntrySchedulerTest {
     }
 
     @Test
-    fun `이미 보유 중이면 신호가 있어도 사지 않는다`() {
+    fun `martingale 아닌 종목은 이미 보유 중이면 신호가 있어도 사지 않는다`() {
         val broker = FakeBroker()
-        scheduler(broker, EntrySignal.BUY, portfolioService = portfolioServiceHolding("005930")).checkEntries(krOpen)
+        scheduler(
+            broker,
+            EntrySignal.BUY,
+            watched = listOf(WatchedSymbol.KODEX_SEMICONDUCTOR),
+            portfolioService = portfolioServiceHolding("091160"),
+        ).checkEntries(krOpen)
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    private fun tradeServiceWithLastBuy(
+        price: String,
+        quantity: Int,
+    ): TradeService {
+        val service = Mockito.mock(TradeService::class.java)
+        val trade = Trade(Market.KR, "005930", Side.BUY, quantity, BigDecimal(price), "0", "ok", initialFilledPrice = BigDecimal(price))
+        Mockito.`when`(service.lastBuy(Market.KR, "005930")).thenReturn(trade)
+        return service
+    }
+
+    @Test
+    fun `삼성전자 보유 중 직전 매수가 대비 1퍼센트 하락하면 직전 수량의 2배를 산다`() {
+        val broker = FakeBroker() // 현재가 10,000 / 호가 10원
+        scheduler(
+            broker,
+            EntrySignal.NO_TRADE,
+            portfolioService = portfolioServiceHolding("005930"),
+            tradeService = tradeServiceWithLastBuy("10100", 2), // 트리거 = 10,100 × 0.99 = 9,999 → 10,000
+        ).checkEntries(krOpen)
+
+        val order = broker.orders.single()
+        assertEquals(Side.BUY, order.side)
+        assertEquals(4, order.quantity)
+    }
+
+    @Test
+    fun `삼성전자 보유 중 1퍼센트 안 떨어졌으면 추가 매수하지 않는다`() {
+        val broker = FakeBroker()
+        scheduler(
+            broker,
+            EntrySignal.BUY,
+            portfolioService = portfolioServiceHolding("005930"),
+            tradeService = tradeServiceWithLastBuy("10050", 2), // 트리거 = 9,949.5 → 9,950 (현재가 10,000은 그 위)
+        ).checkEntries(krOpen)
         assertTrue(broker.orders.isEmpty())
     }
 
