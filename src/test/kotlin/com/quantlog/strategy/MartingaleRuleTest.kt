@@ -74,9 +74,9 @@ class MartingaleRuleTest {
     }
 
     @Test
-    fun `트리거 경계 - 닿으면 직전 수량의 2배 한 호가 위면 안 산다`() {
+    fun `트리거 경계 - 닿으면 보유 수량만큼 더 한 호가 위면 안 산다`() {
         val cycle = cycleOf(1 to "272000")
-        assertEquals(2, rule.nextQuantity(cycle, krw("270500")))
+        assertEquals(1, rule.nextQuantity(cycle, krw("270500")))
         assertNull(rule.nextQuantity(cycle, krw("271000")))
     }
 
@@ -85,7 +85,7 @@ class MartingaleRuleTest {
         // 평단 = (272,000 + 2×270,500) / 3 ≈ 271,000 → × 0.995 = 269,645 → 269,500. 직전 매수가 기준이었다면 269,000.
         val cycle = cycleOf(1 to "272000", 2 to "270500")
         assertNull(rule.nextQuantity(cycle, krw("270000")))
-        assertEquals(4, rule.nextQuantity(cycle, krw("269500")))
+        assertEquals(3, rule.nextQuantity(cycle, krw("269500"))) // 보유 3주 → 3주 더 = 6주
     }
 
     @Test
@@ -99,7 +99,7 @@ class MartingaleRuleTest {
         val five = cycleOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500", 16 to "266000")
         assertNull(rule.nextQuantity(five, krw("100000")))
         val four = cycleOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500")
-        assertEquals(16, rule.nextQuantity(four, krw("266000")))
+        assertEquals(15, rule.nextQuantity(four, krw("266000")))
     }
 
     @Test

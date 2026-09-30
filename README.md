@@ -11,7 +11,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 | 브로커 추상화 | `broker/BrokerClient.kt` |
 | KIS 모의투자 구현 (시세·매수가능·잔고·지정가 주문) | `broker/kis/` |
 | 청산 판정 (익절 +0.5%, 전역 손절은 보류, 목표가는 가장 가까운 호가로 맞춤, 설정으로 조정) | `strategy/ExitRule.kt` |
-| 삼성전자 마틴게일 (0.5% 하락마다 2배 추가 매수·최대 5단계·5단계 -3% 손절·매도 후 재진입, 사이클은 매매 기록에서 계산) | `strategy/MartingaleRule.kt` |
+| 삼성전자 마틴게일 (평단 -0.5%마다 보유 2배로 추가 매수·최대 5단계·평단 -3% 손절·매도 후 재진입, 사이클은 매매 기록에서 계산) | `strategy/MartingaleRule.kt` |
 | 주문 전 리스크 가드 (주문금액·수량 상한) | `trading/RiskGuard.kt` |
 | 연동 점검 실행기 (READ / BUY / SELL / CANDLES) | `trading/SmokeTestRunner.kt` |
 | 청산 스케줄러 (정규장 동안 1초마다 매매 기록 DB 기준 보유 종목의 현재가 확인 → 익절/손절 목표가에 닿으면 한 호가 낮게 전량 매도, `quantlog.exit.enabled`) | `trading/ExitScheduler.kt` |

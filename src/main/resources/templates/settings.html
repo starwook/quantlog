@@ -85,7 +85,7 @@
                 <label>추가매수 하락 % <small>평단 대비</small>
                     <input type="number" step="any" min="0" name="martingaleDropPercent" th:value="${row.second.martingaleDropPercent.stripTrailingZeros().toPlainString()}" required>
                 </label>
-                <label>배수
+                <label>배수 <small>보유 수량의</small>
                     <input type="number" step="1" min="2" name="martingaleMultiplier" th:value="${row.second.martingaleMultiplier}" required>
                 </label>
                 <label>최대 단계

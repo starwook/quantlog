@@ -191,11 +191,11 @@ class EntrySchedulerTest {
     }
 
     @Test
-    fun `삼성전자 평단 대비 0,5퍼센트 하락하면 직전 수량의 2배를 산다`() {
+    fun `삼성전자 평단 대비 0,5퍼센트 하락하면 보유 수량만큼 더 산다`() {
         // 트리거 = 10,100 × 0.995 = 10,049.5 → 10,050 ≥ 현재가 10,000
         val order = martingale(buy(2, "10100")).orders.single()
         assertEquals(Side.BUY, order.side)
-        assertEquals(4, order.quantity)
+        assertEquals(2, order.quantity)
     }
 
     @Test
@@ -211,10 +211,10 @@ class EntrySchedulerTest {
     }
 
     @Test
-    fun `삼성전자 4단계 다음 5단계 16주 주문이 리스크 가드를 통과해 나간다`() {
-        // 금액 검증은 RiskGuardTest(27만원대 누적 843만원 < 1000만원). 여기선 스케줄러가 16주를 실제로 내는지만 본다.
-        val order = martingale(buy(1, "10500"), buy(2, "10400"), buy(4, "10300"), buy(8, "10100")).orders.single()
-        assertEquals(16, order.quantity)
+    fun `삼성전자 4단계 다음 5단계 8주 주문이 리스크 가드를 통과해 나간다`() {
+        // 금액 검증은 RiskGuardTest(27만원대 누적 843만원 < 1000만원). 여기선 스케줄러가 8주를 실제로 내는지만 본다.
+        val order = martingale(buy(1, "10500"), buy(1, "10400"), buy(2, "10300"), buy(4, "10100")).orders.single()
+        assertEquals(8, order.quantity)
     }
 
     @Test
@@ -268,7 +268,7 @@ class EntrySchedulerTest {
         val broker = FakeBroker()
         scheduler(broker, EntrySignal.NO_TRADE, tradeService = tradeServiceWith(buy(2, "10100")), configs = listOf(onePercent))
             .checkEntries(krOpen)
-        assertEquals(6, broker.orders.single().quantity) // 직전 2주 × 배수 3
+        assertEquals(4, broker.orders.single().quantity) // 보유 2주 × (배수 3 − 1)
 
         val broker2 = FakeBroker()
         scheduler(broker2, EntrySignal.NO_TRADE, tradeService = tradeServiceWith(buy(2, "10050")), configs = listOf(onePercent))

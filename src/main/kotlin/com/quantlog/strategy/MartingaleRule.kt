@@ -8,7 +8,7 @@ import java.math.BigDecimal
 import java.math.MathContext
 
 /**
- * 2026-09-30 사용자 지정: 첫 1주 매수 후 평단 대비 0.5% 떨어질 때마다 직전 매수 수량의 2배 추가 매수(최대 5단계),
+ * 2026-09-30 사용자 지정: 첫 1주 매수 후 평단 대비 0.5% 떨어질 때마다 보유 수량이 2배가 되도록 추가 매수(최대 5단계),
  * 최대 단계까지 산 뒤 평단 대비 3% 더 떨어지면 손절. 익절 뒤엔 매도가 -0.5%, 손절 뒤엔 매도가 -1%에서 재진입.
  * (처음 -1%로 시작했다가 "오늘은 수익률보다 최대한 많이 거래"가 목표라 0.5%로 줄임.)
  *
@@ -43,11 +43,13 @@ data class MartingaleCycle(
     val stage: Int get() = buys.size
     val holding: Boolean get() = buys.isNotEmpty()
 
+    /** 이 사이클에서 지금 들고 있는 총 수량. */
+    val quantity: Int get() = buys.sumOf { it.quantity }
+
     /** 이 사이클의 평단(수량 가중 평균). 보유 중이 아니면 null. */
     val averagePrice: BigDecimal?
         get() {
             if (buys.isEmpty()) return null
-            val quantity = buys.sumOf { it.quantity }
             return buys.sumOf { it.price.multiply(BigDecimal(it.quantity)) }.divide(BigDecimal(quantity), MathContext.DECIMAL64)
         }
 
@@ -77,7 +79,7 @@ data class MartingaleCycle(
 
 /**
  * 마틴게일 판정. 추가 매수 기준은 **평단**이다(2026-09-30 사용자 결정: 증권사 앱에서 직접 산 물량도 KIS 잔고 동기화로
- * 매매 기록에 들어오므로 "직전 매수가"보다 평단이 실제 보유 상태를 그대로 반영한다). 추가 매수 수량은 여전히 직전 매수 수량의 배수다.
+ * 매매 기록에 들어오므로 "직전 매수가"보다 평단이 실제 보유 상태를 그대로 반영한다). 추가 매수 수량도 직전 매수가 아니라 현재 보유 수량 기준이다.
  * 모든 가격은 호가 단위로 맞춘다(청산 목표가와 같은 방식).
  * 물타기(평단 낮추기)를 금지하던 원칙은 이 전략과 정면으로 충돌해서 폐기했다(playbook/principles.md).
  */
@@ -101,10 +103,11 @@ class MartingaleRule(
         cycle: MartingaleCycle,
         quote: Quote,
     ): Int? {
-        val last = cycle.buys.lastOrNull() ?: return null
         val average = cycle.averagePrice ?: return null
         if (cycle.stage >= properties.maxStages) return null
-        return if (quote.price <= addOnTriggerPrice(average, quote)) last.quantity * properties.multiplier else null
+        // 배수는 보유 수량의 배수다: 2배면 지금 들고 있는 만큼을 더 사서 보유가 2배가 된다(1주 → 1주 더 → 2주 더 → 4주 더 ...).
+        val quantity = cycle.quantity * (properties.multiplier - 1)
+        return if (quote.price <= addOnTriggerPrice(average, quote)) quantity else null
     }
 
     /** 최대 단계 매수를 마친 뒤에만 있는 손절가: 평단 -3%(2026-09-30 사용자 결정: 마지막 매수가는 불안정해서 평단 기준). 그 전 단계엔 null(손절 없음). */
