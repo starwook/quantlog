@@ -121,7 +121,8 @@
         <details>
             <summary>
                 <div class="sum">
-                    <span class="name"><span th:text="${row.displayName}"></span><span class="code" th:text="${row.market} + ' ' + ${row.symbol}"></span></span>
+                    <span class="badge" th:text="${row.market == 'KR'} ? '국장' : '미장'"></span>
+                    <span class="name"><span th:text="${row.displayName}"></span><span class="code" th:text="${row.symbol}"></span></span>
                     <span class="badge" th:classappend="${row.autoTrade} ? 'on'" th:text="${row.autoTrade} ? '자동매수' : '수동'"></span>
                     <span class="badge" th:classappend="${row.martingale} ? 'on'" th:if="${row.martingale}">마틴게일</span>
                     <span class="vals" th:text="'익절 ' + ${row.takeProfitPercent.stripTrailingZeros().toPlainString()} + '% · 손절 ' + (${row.stopLossPercent != null} ? ${row.stopLossPercent.stripTrailingZeros().toPlainString()} + '%' : '없음')"></span>
