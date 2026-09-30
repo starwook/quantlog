@@ -19,7 +19,7 @@ enum class WatchedSymbol(
     val symbol: String,
     val displayName: String,
     val autoTradeEnabled: Boolean,
-    /** true 면 보유 중에도 직전 매수가 대비 하락 시 배수 추가 매수(MartingaleEntryRule). 2026-09-30: 삼성전자만. */
+    /** true 면 보유 중에도 직전 매수가 대비 하락 시 배수 추가 매수(MartingaleRule). 2026-09-30: 삼성전자만. */
     val martingale: Boolean = false,
 ) {
     SAMSUNG(Market.KR, "005930", "삼성전자", autoTradeEnabled = true, martingale = true),

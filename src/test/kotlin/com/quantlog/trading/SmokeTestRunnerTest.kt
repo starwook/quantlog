@@ -96,9 +96,9 @@ class SmokeTestRunnerTest {
     }
 
     @Test
-    fun `가드 한도를 넘으면 주문이 나가지 않는다`() {
+    fun `배분 한도를 넘으면 주문이 나가지 않는다`() {
         val broker = FakeBroker()
-        val strict = RiskGuard(RiskProperties(maxOrderUsd = BigDecimal("100")), portfolioService)
+        val strict = RiskGuard(RiskProperties(marketAllocationUsd = BigDecimal("100")), portfolioService)
         runCatching { runner(broker, SmokeProperties(mode = "BUY"), strict).run(DefaultApplicationArguments()) }
         assertTrue(broker.orders.isEmpty())
     }

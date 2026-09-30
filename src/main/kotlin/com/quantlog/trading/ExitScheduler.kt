@@ -9,6 +9,9 @@ import com.quantlog.position.PortfolioService
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.ExitSignal
 import com.quantlog.strategy.FixedPercentExitRule
+import com.quantlog.strategy.MartingaleCycle
+import com.quantlog.strategy.MartingaleRule
+import com.quantlog.watchlist.WatchedSymbol
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.scheduling.annotation.Scheduled
@@ -42,6 +45,7 @@ class ExitScheduler(
     private val broker: BrokerClient,
     private val riskGuard: RiskGuard,
     private val exitRule: FixedPercentExitRule,
+    private val martingaleRule: MartingaleRule,
     private val tradeService: TradeService,
     private val portfolioService: PortfolioService,
     private val properties: ExitProperties,
@@ -81,12 +85,19 @@ class ExitScheduler(
         if (last != null && Duration.between(last, now) < properties.cooldown) return
 
         val quote = broker.quote(holding.market, holding.symbol)
-        val signal = exitRule.evaluate(holding.avgCost, quote)
+        var signal = exitRule.evaluate(holding.avgCost, quote)
+        // 마틴게일 종목의 손절은 전역 손절(보류)이 아니라 최대 단계 매수 뒤에만 있는 별도 손절이다.
+        if (signal == ExitSignal.HOLD && isMartingale(holding)) {
+            val cycle = MartingaleCycle.from(tradeService.trades(holding.market, holding.symbol))
+            if (martingaleRule.shouldStopLoss(cycle, quote)) signal = ExitSignal.STOP_LOSS
+        }
         if (signal == ExitSignal.HOLD) return
 
         sell(holding, quote, signal)
         lastSellAt[key] = now
     }
+
+    private fun isMartingale(holding: HoldingView) = WatchedSymbol.find(holding.market, holding.symbol)?.martingale == true
 
     private fun sell(
         holding: HoldingView,
@@ -111,7 +122,7 @@ class ExitScheduler(
                 .getOrNull()
         val reason =
             "청산 스케줄러: $signal (평단 ${holding.avgCost} → 현재 ${quote.price}, " +
-                "익절 ${targets.takeProfitPrice} / 손절 ${targets.stopLossPrice})"
+                "익절 ${targets.takeProfitPrice} / 손절 ${targets.stopLossPrice ?: "없음(마틴게일은 최대 단계 뒤에만)"})"
         tradeService.record(request, receipt, reason, filledPrice)
         log.info {
             "[청산] ${request.market} ${request.symbol} x${request.quantity} @ ${request.limitPrice} " +
