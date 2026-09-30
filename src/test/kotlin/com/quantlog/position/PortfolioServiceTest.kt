@@ -99,4 +99,99 @@ class PortfolioServiceTest {
         assertEquals(1, summaries.getValue("USD").buyCountToday)
         assertEquals(0, summaries.getValue("USD").sellCountToday)
     }
+
+    private fun tradeAt(
+        market: Market,
+        side: Side,
+        price: String,
+        executedAt: Instant,
+        symbol: String = if (market == Market.KR) "005930" else "AAPL",
+    ) = Trade(
+        market = market,
+        symbol = symbol,
+        side = side,
+        quantity = 1,
+        orderPrice = BigDecimal(price),
+        orderNo = "1",
+        message = "ok",
+        executedAt = executedAt,
+    )
+
+    @Test
+    fun `오늘 매도 승률은 이익은 성공, 손실과 본전은 실패로 센다`() {
+        val now = Instant.now()
+        val bought = now.minusSeconds(60)
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(
+            listOf(
+                tradeAt(Market.KR, Side.BUY, "100", bought),
+                tradeAt(Market.KR, Side.BUY, "100", bought),
+                tradeAt(Market.KR, Side.BUY, "100", bought),
+                // 성공
+                tradeAt(Market.KR, Side.SELL, "101", now),
+                // 본전 → 실패
+                tradeAt(Market.KR, Side.SELL, "100", now),
+                // 손실 → 실패
+                tradeAt(Market.KR, Side.SELL, "99", now),
+            ),
+        )
+
+        val summary = service.snapshot().summaryByCurrency.getValue("KRW")
+
+        assertEquals(1, summary.sellWinToday)
+        assertEquals(2, summary.sellLossToday)
+    }
+
+    @Test
+    fun `오늘 매도가 없으면 성공·실패 모두 0이다`() {
+        val now = Instant.now()
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(listOf(tradeAt(Market.KR, Side.BUY, "100", now)))
+
+        val summary = service.snapshot().summaryByCurrency.getValue("KRW")
+
+        assertEquals(0, summary.sellWinToday)
+        assertEquals(0, summary.sellLossToday)
+    }
+
+    @Test
+    fun `어제 매도와 매수분 없는 매도는 승률에서 제외한다`() {
+        val now = Instant.now()
+        val twoDaysAgo = now.minus(2, ChronoUnit.DAYS)
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(
+            listOf(
+                tradeAt(Market.KR, Side.BUY, "100", twoDaysAgo),
+                // 어제 매도
+                tradeAt(Market.KR, Side.SELL, "110", twoDaysAgo.plusSeconds(60)),
+                // 매칭할 매수분 없음
+                tradeAt(Market.KR, Side.SELL, "110", now),
+            ),
+        )
+
+        val summary = service.snapshot().summaryByCurrency.getValue("KRW")
+
+        assertEquals(0, summary.sellWinToday)
+        assertEquals(0, summary.sellLossToday)
+    }
+
+    @Test
+    fun `매도 승률은 통화별로 따로 센다`() {
+        val now = Instant.now()
+        val bought = now.minusSeconds(60)
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(
+            listOf(
+                tradeAt(Market.KR, Side.BUY, "100", bought),
+                // KRW 성공
+                tradeAt(Market.KR, Side.SELL, "110", now),
+                tradeAt(Market.NASDAQ, Side.BUY, "100", bought),
+                // USD 실패
+                tradeAt(Market.NASDAQ, Side.SELL, "90", now),
+            ),
+        )
+
+        val summaries = service.snapshot().summaryByCurrency
+
+        assertEquals(1, summaries.getValue("KRW").sellWinToday)
+        assertEquals(0, summaries.getValue("KRW").sellLossToday)
+        assertEquals(0, summaries.getValue("USD").sellWinToday)
+        assertEquals(1, summaries.getValue("USD").sellLossToday)
+    }
 }

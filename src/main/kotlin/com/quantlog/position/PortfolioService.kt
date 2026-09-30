@@ -46,6 +46,9 @@ data class PortfolioSummary(
     /** 오늘(KST) 접수된 매수·매도 주문 건수. 손익과 달리 체결 여부와 무관하게 [Trade] 기록 수 그대로 센다. */
     val buyCountToday: Int = 0,
     val sellCountToday: Int = 0,
+    /** 오늘(KST) 실현손익이 계산된 매도 중 성공(손익 > 0)·실패(손익 <= 0, 본전 포함) 건수. 매수분과 매칭 안 된 매도는 제외. */
+    val sellWinToday: Int = 0,
+    val sellLossToday: Int = 0,
 )
 
 data class PortfolioSnapshot(
@@ -61,6 +64,8 @@ private class RealizedAcc {
     var totalCost: BigDecimal = BigDecimal.ZERO
     var todayAmount: BigDecimal = BigDecimal.ZERO
     var todayCost: BigDecimal = BigDecimal.ZERO
+    var winToday: Int = 0
+    var lossToday: Int = 0
 }
 
 /**
@@ -136,6 +141,7 @@ class PortfolioService(
                         if (trade.executedAt.atZone(KST).toLocalDate() == today) {
                             acc.todayAmount = acc.todayAmount.add(amount)
                             acc.todayCost = acc.todayCost.add(cost)
+                            if (amount > BigDecimal.ZERO) acc.winToday++ else acc.lossToday++
                         }
                     }
                 }
@@ -168,6 +174,8 @@ class PortfolioService(
                     realizedPnlTotalPercent = percentOf(realized.totalAmount, realized.totalCost),
                     buyCountToday = buyCountTodayByCurrency[currency] ?: 0,
                     sellCountToday = sellCountTodayByCurrency[currency] ?: 0,
+                    sellWinToday = realized.winToday,
+                    sellLossToday = realized.lossToday,
                 )
             }
 

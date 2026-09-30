@@ -52,6 +52,9 @@ data class SummaryView(
     val realizedTotalCss: String,
     val buyCountTodayText: String,
     val sellCountTodayText: String,
+    val winRateText: String,
+    val winRateDetailText: String,
+    val winRateCss: String,
     val holdingCount: Int,
     val holdings: List<HoldingRow>,
 )
@@ -114,9 +117,30 @@ class TradeController(
             realizedTotalCss = realizedPnlTotal.pnlCss(),
             buyCountTodayText = "${buyCountToday}회",
             sellCountTodayText = "${sellCountToday}회",
+            winRateText = winRatePercent()?.let { "${it.toPlainString()}%" } ?: "—",
+            winRateDetailText = "(성공 ${sellWinToday}건 · 실패 ${sellLossToday}건)",
+            winRateCss = winRateCss(),
             holdingCount = holdings.size,
             holdings = holdings.map { it.toRow() },
         )
+
+    /** 성공 비율(%). 소수점 첫째 자리 HALF_UP. 오늘 실현된 매도가 없으면 null. */
+    private fun PortfolioSummary.winRatePercent(): BigDecimal? {
+        val total = sellWinToday + sellLossToday
+        if (total == 0) return null
+        return BigDecimal(sellWinToday * 100).divide(BigDecimal(total), 1, RoundingMode.HALF_UP)
+    }
+
+    /** 성공이 절반 초과면 이익색, 미만이면 손실색, 딱 절반이면 중립, 데이터가 없으면 흐리게. */
+    private fun PortfolioSummary.winRateCss(): String {
+        val total = sellWinToday + sellLossToday
+        return when {
+            total == 0 -> "muted"
+            sellWinToday * 2 > total -> "pos"
+            sellWinToday * 2 < total -> "neg"
+            else -> "zero"
+        }
+    }
 
     private fun HoldingView.toRow() =
         HoldingRow(
