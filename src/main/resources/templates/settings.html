@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>quantlog · 설정</title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --pos: #f04452;
+            --ok: #00a862;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 24px 16px 48px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { max-width: 720px; margin: 0 auto; }
+        h1 { font-size: 18px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+        .hint { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
+        .banner { padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; font-size: 14px; background: var(--card); }
+        .banner.ok { border-left: 4px solid var(--ok); }
+        .banner.error { border-left: 4px solid var(--pos); color: var(--pos); }
+        .card { background: var(--card); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+        .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .name { font-size: 17px; font-weight: 700; }
+        .code { font-size: 12px; color: var(--muted); margin-left: 6px; font-weight: 400; }
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+        label small { font-size: 11px; }
+        input[type=number] {
+            width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px;
+            font-size: 15px; color: var(--text); background: #fff;
+        }
+        .toggle { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--text); font-weight: 600; }
+        .toggle input { width: 18px; height: 18px; }
+        details { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+        summary { font-size: 14px; font-weight: 600; cursor: pointer; }
+        details .grid { margin-top: 12px; }
+        button {
+            margin-top: 16px; width: 100%; padding: 12px; border: 0; border-radius: 10px;
+            background: var(--text); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('settings')}"></nav>
+    <h1>종목별 매매 설정</h1>
+    <p class="hint">저장하면 재시작 없이 다음 주기(1초 이내)부터 <b>실제 매매에 바로 적용</b>됩니다. 비율은 % 단위(0.5 = 0.5%).</p>
+
+    <div class="banner ok" th:if="${message}" th:text="${message}"></div>
+    <div class="banner error" th:if="${error}" th:text="${error}"></div>
+
+    <p class="hint" th:if="${#lists.isEmpty(rows)}">설정이 있는 종목이 없어요. 앱을 재시작하면 기본값으로 채워집니다.</p>
+
+    <form class="card" th:each="row : ${rows}" method="post"
+          th:action="@{'/settings/' + ${row.first.market} + '/' + ${row.first.symbol}}"
+          onsubmit="return confirm('이 설정은 바로 매매에 반영됩니다. 저장할까요?')">
+        <div class="head">
+            <div class="name"><span th:text="${row.first.displayName}"></span><span class="code" th:text="${row.first.market} + ' ' + ${row.first.symbol}"></span></div>
+            <label class="toggle"><input type="checkbox" name="autoTrade" value="true" th:checked="${row.second.autoTrade}">자동매수</label>
+        </div>
+        <div class="grid">
+            <label>익절 %
+                <input type="number" step="any" min="0" name="takeProfitPercent" th:value="${row.second.takeProfitPercent.stripTrailingZeros().toPlainString()}" required>
+            </label>
+            <label>손절 %
+                <input type="number" step="any" min="0" name="stopLossPercent" placeholder="비우면 손절 안 함"
+                       th:value="${row.second.stopLossPercent != null} ? ${row.second.stopLossPercent.stripTrailingZeros().toPlainString()} : ''">
+                <small>마틴게일 종목은 아래 마지막 단계 손절이 따로 있음</small>
+            </label>
+        </div>
+        <details th:open="${row.second.martingale}">
+            <summary>마틴게일</summary>
+            <label class="toggle" style="margin-top: 12px;"><input type="checkbox" name="martingale" value="true" th:checked="${row.second.martingale}">사용</label>
+            <div class="grid">
+                <label>추가매수 하락 % <small>직전 매수가 대비</small>
+                    <input type="number" step="any" min="0" name="martingaleDropPercent" th:value="${row.second.martingaleDropPercent.stripTrailingZeros().toPlainString()}" required>
+                </label>
+                <label>배수
+                    <input type="number" step="1" min="2" name="martingaleMultiplier" th:value="${row.second.martingaleMultiplier}" required>
+                </label>
+                <label>최대 단계
+                    <input type="number" step="1" min="1" name="martingaleMaxStages" th:value="${row.second.martingaleMaxStages}" required>
+                </label>
+                <label>마지막 단계 손절 % <small>마지막 매수가 대비</small>
+                    <input type="number" step="any" min="0" name="martingaleFinalStageStopLossPercent" th:value="${row.second.martingaleFinalStageStopLossPercent.stripTrailingZeros().toPlainString()}" required>
+                </label>
+                <label>익절 뒤 재진입 하락 % <small>직전 매도가 대비</small>
+                    <input type="number" step="any" min="0" name="martingaleReentryDropPercent" th:value="${row.second.martingaleReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
+                </label>
+                <label>손절 뒤 재진입 하락 % <small>직전 매도가 대비</small>
+                    <input type="number" step="any" min="0" name="martingaleStopReentryDropPercent" th:value="${row.second.martingaleStopReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
+                </label>
+            </div>
+        </details>
+        <button type="submit">저장</button>
+    </form>
+</main>
+</body>
+</html>

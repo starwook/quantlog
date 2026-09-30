@@ -7,6 +7,7 @@ import org.mockito.ArgumentCaptor
 import org.mockito.Mockito
 import java.math.BigDecimal
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class SymbolStrategyServiceTest {
@@ -42,5 +43,44 @@ class SymbolStrategyServiceTest {
         assertEquals(1, captor.allValues.count { it.autoTrade })
         assertEquals(0, BigDecimal("0.5").compareTo(MartingaleProperties().dropPercent))
         assertEquals(0, MartingaleProperties().dropPercent.compareTo(samsung.martingaleDropPercent))
+    }
+
+    private fun validForm() =
+        SymbolStrategyForm().apply {
+            autoTrade = true
+            takeProfitPercent = BigDecimal("1")
+            martingale = true
+            martingaleDropPercent = BigDecimal("2")
+            martingaleMultiplier = 3
+            martingaleMaxStages = 4
+            martingaleFinalStageStopLossPercent = BigDecimal("5")
+            martingaleReentryDropPercent = BigDecimal("1")
+            martingaleStopReentryDropPercent = BigDecimal("1.5")
+        }
+
+    @Test
+    fun `화면 입력값이 유효하면 기존 행에 반영되고 손절은 비우면 보류`() {
+        val existing = symbolStrategy(WatchedSymbol.SAMSUNG.market, WatchedSymbol.SAMSUNG.symbol, takeProfit = "0.5")
+        Mockito.`when`(repository.findByMarketAndSymbol(existing.market, existing.symbol)).thenReturn(existing)
+
+        service.update(existing.market, existing.symbol, validForm())
+
+        assertEquals(0, BigDecimal("1").compareTo(existing.takeProfitPercent))
+        assertEquals(null, existing.stopLossPercent)
+        assertEquals(3, existing.martingaleMultiplier)
+        assertEquals(4, existing.martingaleMaxStages)
+    }
+
+    @Test
+    fun `익절이 비었거나 배수가 2 미만이면 저장을 거부한다`() {
+        val existing = symbolStrategy(WatchedSymbol.SAMSUNG.market, WatchedSymbol.SAMSUNG.symbol)
+        Mockito.`when`(repository.findByMarketAndSymbol(existing.market, existing.symbol)).thenReturn(existing)
+
+        assertFailsWith<IllegalArgumentException> {
+            service.update(existing.market, existing.symbol, validForm().apply { takeProfitPercent = null })
+        }
+        assertFailsWith<IllegalArgumentException> {
+            service.update(existing.market, existing.symbol, validForm().apply { martingaleMultiplier = 1 })
+        }
     }
 }
