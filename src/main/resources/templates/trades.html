@@ -211,6 +211,14 @@
                     <span class="v" th:classappend="${s.realizedTodayCss}" th:text="${s.realizedTodayText}"></span>
                 </div>
                 <div class="row">
+                    <span class="k">오늘 매수 횟수</span>
+                    <span class="v" th:text="${s.buyCountTodayText}"></span>
+                </div>
+                <div class="row">
+                    <span class="k">오늘 매도 횟수</span>
+                    <span class="v" th:text="${s.sellCountTodayText}"></span>
+                </div>
+                <div class="row">
                     <span class="k">누적 실현손익</span>
                     <span class="v" th:classappend="${s.realizedTotalCss}" th:text="${s.realizedTotalText}"></span>
                 </div>
@@ -262,7 +270,7 @@
         </div>
     </div>
 
-    <footer>모의투자 실험 기록입니다. 투자 권유가 아닙니다. 매매 기록의 가격은 실제 체결가(국내만 확인됨)를 우선 보여주고, 못 구했으면 지정가를 보여줍니다.</footer>
+    <footer>모의투자 실험 기록입니다. 투자 권유가 아닙니다. 매매 기록의 가격은 실제 체결가를 우선 보여주고, 못 구했으면 지정가를 보여줍니다.</footer>
 </main>
 </body>
 </html>

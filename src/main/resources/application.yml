@@ -85,7 +85,7 @@ quantlog:
     interval-millis: 1000
     cooldown: 10m
   reconcile:
-    # 주문 직후 한 번에 못 구한 실제 체결가를 1분마다 KIS 에 다시 물어봐서 채운다 (국내만).
+    # 주문 직후 한 번에 못 구한 실제 체결가를 1분마다 KIS 에 다시 물어봐서 채운다 (국내·해외).
     enabled: ${QUANTLOG_RECONCILE_ENABLED:true}
     interval-millis: 60000
   risk:

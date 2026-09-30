@@ -3,11 +3,14 @@ package com.quantlog.position
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
+import com.quantlog.broker.Side
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import java.math.BigDecimal
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -57,5 +60,42 @@ class PortfolioServiceTest {
         service.snapshot()
 
         verify(broker, never()).holdings(Market.KR)
+    }
+
+    private fun trade(
+        market: Market,
+        side: Side,
+        executedAt: Instant,
+    ) = Trade(
+        market = market,
+        symbol = if (market == Market.KR) "005930" else "AAPL",
+        side = side,
+        quantity = 1,
+        orderPrice = BigDecimal("100"),
+        orderNo = "1",
+        message = "ok",
+        executedAt = executedAt,
+    )
+
+    @Test
+    fun `오늘 매수·매도 횟수를 통화별로 세고 어제 기록은 제외한다`() {
+        val now = Instant.now()
+        val yesterday = now.minus(2, ChronoUnit.DAYS)
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(
+            listOf(
+                trade(Market.KR, Side.BUY, now),
+                trade(Market.KR, Side.BUY, now),
+                trade(Market.KR, Side.SELL, now),
+                trade(Market.KR, Side.BUY, yesterday),
+                trade(Market.NASDAQ, Side.BUY, now),
+            ),
+        )
+
+        val summaries = service.snapshot().summaryByCurrency
+
+        assertEquals(2, summaries.getValue("KRW").buyCountToday)
+        assertEquals(1, summaries.getValue("KRW").sellCountToday)
+        assertEquals(1, summaries.getValue("USD").buyCountToday)
+        assertEquals(0, summaries.getValue("USD").sellCountToday)
     }
 }

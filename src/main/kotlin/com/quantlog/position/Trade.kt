@@ -14,7 +14,7 @@ import java.math.BigDecimal
 import java.time.Instant
 
 /**
- * 브로커에 접수된 주문 1건의 기록 (매수/매도). `orderPrice`는 제출한 지정가, `filledPrice`는 실제 체결가(국내만,
+ * 브로커에 접수된 주문 1건의 기록 (매수/매도). `orderPrice`는 제출한 지정가, `filledPrice`는 실제 체결가(
  * KIS 체결내역 조회로 채움 — 2026-09-29 도입, 이전엔 지정가를 체결가처럼 화면에 보여준 적이 있었다).
  * 실현손익은 저장하지 않는다 — FIFO로 그때그때 계산한다 (PortfolioService).
  */
@@ -52,7 +52,7 @@ class Trade(
         protected set
 
     /**
-     * 실제 체결가(평균). 국내만 채워짐(KIS 체결내역 조회) — 해외는 아직 null, [orderPrice] 로 대체.
+     * 실제 체결가(평균). KIS 체결내역 조회로 채움(국내·해외). 못 구했으면 null, [orderPrice] 로 대체.
      * 2026-09-29 실측: 지정가와 체결가가 꽤 다를 수 있었다(삼성전자 273,000 지정 → 272,000 체결).
      * 실현손익·평단 계산은 이 값을 우선한다 (PortfolioService). 주문 직후 한 번 조회해서 못 구했으면
      * null 로 남는데, [TradeReconciler] 가 KIS 를 다시 물어봐서 나중에 채운다 — KIS 가 "정답"이고
