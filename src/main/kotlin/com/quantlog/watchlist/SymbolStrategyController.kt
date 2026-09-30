@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.servlet.mvc.support.RedirectAttributes
 
 /** 종목별 매매 설정 화면. 값을 저장하면 스케줄러가 다음 주기부터 그대로 쓴다(재시작 불필요). */
@@ -17,7 +18,21 @@ class SymbolStrategyController(
     @GetMapping("/settings")
     fun settings(model: Model): String {
         model.addAttribute("rows", service.all())
+        model.addAttribute("markets", Market.entries)
         return "settings"
+    }
+
+    @PostMapping("/settings")
+    fun add(
+        @RequestParam market: Market,
+        @RequestParam symbol: String,
+        @RequestParam displayName: String,
+        redirect: RedirectAttributes,
+    ): String {
+        runCatching { service.add(market, symbol, displayName) }
+            .onSuccess { redirect.addFlashAttribute("message", "$displayName 종목을 추가했어요. 자동매수는 꺼진 상태예요.") }
+            .onFailure { redirect.addFlashAttribute("error", "종목 추가 실패: ${it.message}") }
+        return "redirect:/settings"
     }
 
     @PostMapping("/settings/{market}/{symbol}")

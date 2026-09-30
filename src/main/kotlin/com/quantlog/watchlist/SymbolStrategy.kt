@@ -162,6 +162,23 @@ class SymbolStrategyService(
     }
 
     /**
+     * 감시 종목을 새로 등록한다. 값은 application.yml 기본값이고 자동매수·마틴게일은 꺼진 채로 시작한다 — 화면에서 켠다.
+     * 입력이 잘못됐거나 이미 있는 종목이면 [IllegalArgumentException] (메시지는 화면에 그대로 보여준다).
+     */
+    @Transactional
+    fun add(
+        market: Market,
+        symbol: String,
+        displayName: String,
+    ) {
+        val code = symbol.trim().uppercase()
+        require(code.isNotEmpty()) { "종목 코드를 입력해 주세요" }
+        require(displayName.isNotBlank()) { "종목 이름을 입력해 주세요" }
+        require(find(market, code) == null) { "이미 등록된 종목입니다: $code" }
+        repository.save(defaultRow(market, code, displayName.trim(), trade = false))
+    }
+
+    /**
      * 없는 종목 행만 기본값으로 채운다. 기본값은 application.yml 의 quantlog.strategy.* 이고,
      * 자동 매수·마틴게일은 [SeedSymbol.tradeByDefault] 종목만 켠다(2026-09-30 KODEX 코스닥150레버리지만). 이미 있는 행은 건드리지 않는다.
      */
@@ -174,27 +191,31 @@ class SymbolStrategyService(
         SeedSymbol.entries
             .filter { repository.findByMarketAndSymbol(it.market, it.symbol) == null }
             .forEach {
-                val trade = it.tradeByDefault
-                repository.save(
-                    SymbolStrategy(
-                        market = it.market,
-                        symbol = it.symbol,
-                        displayName = it.displayName,
-                        autoTrade = trade,
-                        takeProfitPercent = strategyProperties.takeProfitPercent,
-                        stopLossPercent = strategyProperties.stopLossPercent,
-                        martingale = trade,
-                        martingaleDropPercent = martingaleProperties.dropPercent,
-                        martingaleMultiplier = martingaleProperties.multiplier,
-                        martingaleMaxStages = martingaleProperties.maxStages,
-                        martingaleFinalStageStopLossPercent = martingaleProperties.finalStageStopLossPercent,
-                        martingaleReentryDropPercent = martingaleProperties.reentryDropPercent,
-                        martingaleStopReentryDropPercent = martingaleProperties.stopReentryDropPercent,
-                    ),
-                )
-                log.info { "[종목 설정] 기본값으로 생성: ${it.market} ${it.symbol} autoTrade=$trade" }
+                repository.save(defaultRow(it.market, it.symbol, it.displayName, it.tradeByDefault))
+                log.info { "[종목 설정] 기본값으로 생성: ${it.market} ${it.symbol} autoTrade=${it.tradeByDefault}" }
             }
     }
+
+    private fun defaultRow(
+        market: Market,
+        symbol: String,
+        displayName: String,
+        trade: Boolean,
+    ) = SymbolStrategy(
+        market = market,
+        symbol = symbol,
+        displayName = displayName,
+        autoTrade = trade,
+        takeProfitPercent = strategyProperties.takeProfitPercent,
+        stopLossPercent = strategyProperties.stopLossPercent,
+        martingale = trade,
+        martingaleDropPercent = martingaleProperties.dropPercent,
+        martingaleMultiplier = martingaleProperties.multiplier,
+        martingaleMaxStages = martingaleProperties.maxStages,
+        martingaleFinalStageStopLossPercent = martingaleProperties.finalStageStopLossPercent,
+        martingaleReentryDropPercent = martingaleProperties.reentryDropPercent,
+        martingaleStopReentryDropPercent = martingaleProperties.stopReentryDropPercent,
+    )
 }
 
 @Component
