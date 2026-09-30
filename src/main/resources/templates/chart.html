@@ -48,23 +48,18 @@
             text-decoration: none;
             font-size: 14px;
         }
-        .symbols {
-            display: flex;
-            gap: 8px;
+        /* 종목이 40개여도 한 줄: [이전] [종목 선택] [다음]. 키보드 ←/→ 로도 넘긴다. */
+        .symbols { display: flex; gap: 8px; width: 100%; }
+        .symbols select {
+            flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+            background: var(--card); color: var(--text); font-size: 15px; font-weight: 600;
         }
         .symbols a {
-            padding: 6px 12px;
-            border-radius: 999px;
-            background: var(--card);
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--muted);
-            text-decoration: none;
+            padding: 10px 14px; border-radius: 10px; background: var(--card);
+            font-size: 15px; font-weight: 700; color: var(--text); text-decoration: none;
         }
-        .symbols a.active {
-            background: var(--text);
-            color: #fff;
-        }
+        .symbols a.disabled { opacity: .3; pointer-events: none; }
+        .pos { font-size: 12px; color: var(--muted); align-self: center; white-space: nowrap; }
         h1 {
             font-size: 18px;
             margin: 0 0 4px;
@@ -119,12 +114,18 @@
 <main>
     <nav th:replace="~{fragments/nav :: menu('chart')}"></nav>
     <div class="nav">
-        <div class="symbols">
-            <a th:each="s : ${watchedSymbols}"
-               th:href="@{'/chart/' + ${s.market} + '/' + ${s.symbol}}"
-               th:text="${s.displayName}"
-               th:classappend="${s.symbol == symbol} ? 'active' : ''"></a>
+        <div class="symbols" id="symbols">
+            <a href="#" id="prev" title="이전 종목 (←)">‹</a>
+            <select id="symbolSelect" aria-label="종목 선택">
+                <option th:each="s : ${watchedSymbols}"
+                        th:value="@{'/chart/' + ${s.market} + '/' + ${s.symbol}}"
+                        th:text="${s.displayName} + ' (' + ${s.market} + ' ' + ${s.symbol} + ')'"
+                        th:selected="${s.symbol == symbol and s.market == market}"></option>
+            </select>
+            <a href="#" id="next" title="다음 종목 (→)">›</a>
+            <span class="pos" id="pos"></span>
         </div>
+    </div>
     </div>
 
     <div class="nav" style="margin-top: -4px;">
@@ -150,6 +151,20 @@
     const market = /*[[${market}]]*/ 'KR';
     const symbol = /*[[${symbol}]]*/ '';
     const dataUrl = '/chart/' + market + '/' + symbol + '/data';
+
+    const sel = document.getElementById('symbolSelect');
+    const go = (i) => { if (i >= 0 && i < sel.options.length) location.href = sel.options[i].value; };
+    sel.addEventListener('change', () => { location.href = sel.value; });
+    document.getElementById('prev').addEventListener('click', (e) => { e.preventDefault(); go(sel.selectedIndex - 1); });
+    document.getElementById('next').addEventListener('click', (e) => { e.preventDefault(); go(sel.selectedIndex + 1); });
+    document.getElementById('prev').classList.toggle('disabled', sel.selectedIndex <= 0);
+    document.getElementById('next').classList.toggle('disabled', sel.selectedIndex >= sel.options.length - 1);
+    document.getElementById('pos').textContent = (sel.selectedIndex + 1) + '/' + sel.options.length;
+    document.addEventListener('keydown', (e) => {
+        if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+        if (e.key === 'ArrowLeft') go(sel.selectedIndex - 1);
+        if (e.key === 'ArrowRight') go(sel.selectedIndex + 1);
+    });
 
     const chartEl = document.getElementById('chart');
     const statusEl = document.getElementById('status');

@@ -42,12 +42,32 @@
         }
         .toggle { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--text); font-weight: 600; }
         .toggle input { width: 18px; height: 18px; }
-        details { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+        .body details { border-top: 1px solid var(--border); padding-top: 12px; }
         summary { font-size: 14px; font-weight: 600; cursor: pointer; }
         details .grid { margin-top: 12px; }
         /* 마틴게일이 꺼져 있으면 세부값은 흐리게 — 값은 그대로 저장되고, 켜면 바로 쓰인다. */
-        .card:has(input[name=martingale]:not(:checked)) details { opacity: .5; }
+        form.item:has(input[name=martingale]:not(:checked)) .body details { opacity: .5; }
         .add summary { font-size: 15px; }
+        /* 종목이 많아도 훑을 수 있게: 종목 1개 = 한 줄 요약, 눌러야 편집 폼이 펼쳐진다. */
+        .tools { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .tools input[type=search] { flex: 1 1 180px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; }
+        .chip { padding: 8px 12px; border-radius: 999px; background: var(--card); border: 1px solid var(--border); font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+        .chip.on { background: var(--text); color: #fff; border-color: var(--text); }
+        .count { font-size: 12px; color: var(--muted); width: 100%; }
+        form.item { background: var(--card); border-radius: 12px; margin-bottom: 8px; }
+        form.item[hidden] { display: none; }
+        form.item > details { margin: 0; border: 0; padding: 0; }
+        form.item > details > summary { display: flex; align-items: center; gap: 8px; padding: 14px 16px; list-style: none; }
+        form.item > details > summary::-webkit-details-marker { display: none; }
+        form.item > details > summary::after { content: '▾'; margin-left: auto; color: var(--muted); }
+        form.item > details[open] > summary::after { content: '▴'; }
+        .sum { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; flex: 1; min-width: 0; }
+        .badge { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--bg); color: var(--muted); }
+        .badge.on { background: #e6f7ef; color: var(--ok); }
+        .vals { font-size: 12px; color: var(--muted); font-weight: 400; }
+        .body { padding: 0 16px 16px; }
+        .body .head { margin-bottom: 12px; }
+        .body details { margin-top: 16px; }
         button {
             margin-top: 16px; width: 100%; padding: 12px; border: 0; border-radius: 10px;
             background: var(--text); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
@@ -86,51 +106,100 @@
 
     <p class="hint" th:if="${#lists.isEmpty(rows)}">감시 중인 종목이 없어요. 위에서 추가해 주세요.</p>
 
-    <form class="card" th:each="row : ${rows}" method="post"
+    <div class="tools" th:unless="${#lists.isEmpty(rows)}">
+        <input type="search" id="q" placeholder="종목 이름·코드 검색" autocomplete="off">
+        <button type="button" class="chip on" data-f="all" style="margin:0;width:auto;">전체</button>
+        <button type="button" class="chip" data-f="auto" style="margin:0;width:auto;">자동매수 켜짐</button>
+        <button type="button" class="chip" data-f="marti" style="margin:0;width:auto;">마틴게일 켜짐</button>
+        <span class="count" id="count"></span>
+    </div>
+
+    <form class="item" th:each="row : ${rows}" method="post"
           th:action="@{'/settings/' + ${row.market} + '/' + ${row.symbol}}"
+          th:attr="data-name=${row.displayName + ' ' + row.symbol}, data-auto=${row.autoTrade}, data-marti=${row.martingale}"
           onsubmit="return confirm('이 설정은 바로 매매에 반영됩니다. 저장할까요?')">
-        <div class="head">
-            <div class="name"><span th:text="${row.displayName}"></span><span class="code" th:text="${row.market} + ' ' + ${row.symbol}"></span></div>
-            <div class="toggles">
-                <label class="toggle"><input type="checkbox" name="autoTrade" value="true" th:checked="${row.autoTrade}">자동매수</label>
-                <label class="toggle"><input type="checkbox" name="martingale" value="true" th:checked="${row.martingale}">마틴게일</label>
-            </div>
-        </div>
-        <div class="grid">
-            <label>익절 %
-                <input type="number" step="any" min="0" name="takeProfitPercent" th:value="${row.takeProfitPercent.stripTrailingZeros().toPlainString()}" required>
-            </label>
-            <label>손절 %
-                <input type="number" step="any" min="0" name="stopLossPercent" placeholder="비우면 손절 안 함"
-                       th:value="${row.stopLossPercent != null} ? ${row.stopLossPercent.stripTrailingZeros().toPlainString()} : ''">
-                <small>마틴게일은 아래 마지막 단계 손절이 따로 있음</small>
-            </label>
-        </div>
-        <details th:open="${row.martingale}">
-            <summary>마틴게일 세부값</summary>
-            <div class="grid">
-                <label>추가매수 하락 % <small>평단 대비</small>
-                    <input type="number" step="any" min="0" name="martingaleDropPercent" th:value="${row.martingaleDropPercent.stripTrailingZeros().toPlainString()}" required>
-                </label>
-                <label>배수 <small>보유 수량의</small>
-                    <input type="number" step="1" min="2" name="martingaleMultiplier" th:value="${row.martingaleMultiplier}" required>
-                </label>
-                <label>최대 단계
-                    <input type="number" step="1" min="1" name="martingaleMaxStages" th:value="${row.martingaleMaxStages}" required>
-                </label>
-                <label>마지막 단계 손절 % <small>평단 대비</small>
-                    <input type="number" step="any" min="0" name="martingaleFinalStageStopLossPercent" th:value="${row.martingaleFinalStageStopLossPercent.stripTrailingZeros().toPlainString()}" required>
-                </label>
-                <label>익절 뒤 재진입 하락 % <small>직전 매도가 대비</small>
-                    <input type="number" step="any" min="0" name="martingaleReentryDropPercent" th:value="${row.martingaleReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
-                </label>
-                <label>손절 뒤 재진입 하락 % <small>직전 매도가 대비</small>
-                    <input type="number" step="any" min="0" name="martingaleStopReentryDropPercent" th:value="${row.martingaleStopReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
-                </label>
+        <details>
+            <summary>
+                <div class="sum">
+                    <span class="name"><span th:text="${row.displayName}"></span><span class="code" th:text="${row.market} + ' ' + ${row.symbol}"></span></span>
+                    <span class="badge" th:classappend="${row.autoTrade} ? 'on'" th:text="${row.autoTrade} ? '자동매수' : '수동'"></span>
+                    <span class="badge" th:classappend="${row.martingale} ? 'on'" th:if="${row.martingale}">마틴게일</span>
+                    <span class="vals" th:text="'익절 ' + ${row.takeProfitPercent.stripTrailingZeros().toPlainString()} + '% · 손절 ' + (${row.stopLossPercent != null} ? ${row.stopLossPercent.stripTrailingZeros().toPlainString()} + '%' : '없음')"></span>
+                </div>
+            </summary>
+            <div class="body">
+                <div class="head">
+                    <div class="toggles">
+                        <label class="toggle"><input type="checkbox" name="autoTrade" value="true" th:checked="${row.autoTrade}">자동매수</label>
+                        <label class="toggle"><input type="checkbox" name="martingale" value="true" th:checked="${row.martingale}">마틴게일</label>
+                    </div>
+                    <a th:href="@{'/chart/' + ${row.market} + '/' + ${row.symbol}}" class="vals">차트 →</a>
+                </div>
+                <div class="grid">
+                    <label>익절 %
+                        <input type="number" step="any" min="0" name="takeProfitPercent" th:value="${row.takeProfitPercent.stripTrailingZeros().toPlainString()}" required>
+                    </label>
+                    <label>손절 %
+                        <input type="number" step="any" min="0" name="stopLossPercent" placeholder="비우면 손절 안 함"
+                               th:value="${row.stopLossPercent != null} ? ${row.stopLossPercent.stripTrailingZeros().toPlainString()} : ''">
+                        <small>마틴게일은 아래 마지막 단계 손절이 따로 있음</small>
+                    </label>
+                </div>
+                <details th:open="${row.martingale}">
+                    <summary>마틴게일 세부값</summary>
+                    <div class="grid">
+                        <label>추가매수 하락 % <small>평단 대비</small>
+                            <input type="number" step="any" min="0" name="martingaleDropPercent" th:value="${row.martingaleDropPercent.stripTrailingZeros().toPlainString()}" required>
+                        </label>
+                        <label>배수 <small>보유 수량의</small>
+                            <input type="number" step="1" min="2" name="martingaleMultiplier" th:value="${row.martingaleMultiplier}" required>
+                        </label>
+                        <label>최대 단계
+                            <input type="number" step="1" min="1" name="martingaleMaxStages" th:value="${row.martingaleMaxStages}" required>
+                        </label>
+                        <label>마지막 단계 손절 % <small>평단 대비</small>
+                            <input type="number" step="any" min="0" name="martingaleFinalStageStopLossPercent" th:value="${row.martingaleFinalStageStopLossPercent.stripTrailingZeros().toPlainString()}" required>
+                        </label>
+                        <label>익절 뒤 재진입 하락 % <small>직전 매도가 대비</small>
+                            <input type="number" step="any" min="0" name="martingaleReentryDropPercent" th:value="${row.martingaleReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
+                        </label>
+                        <label>손절 뒤 재진입 하락 % <small>직전 매도가 대비</small>
+                            <input type="number" step="any" min="0" name="martingaleStopReentryDropPercent" th:value="${row.martingaleStopReentryDropPercent.stripTrailingZeros().toPlainString()}" required>
+                        </label>
+                    </div>
+                </details>
+                <button type="submit">저장</button>
             </div>
         </details>
-        <button type="submit">저장</button>
     </form>
+    <p class="hint" id="none" hidden>조건에 맞는 종목이 없어요.</p>
 </main>
+<script>
+    const items = [...document.querySelectorAll('form.item')];
+    const q = document.getElementById('q');
+    let filter = 'all';
+    function apply() {
+        if (!q) return;
+        const t = q.value.trim().toLowerCase();
+        let n = 0;
+        items.forEach(f => {
+            const ok = (!t || f.dataset.name.toLowerCase().includes(t))
+                && (filter === 'all' || (filter === 'auto' && f.dataset.auto === 'true') || (filter === 'marti' && f.dataset.marti === 'true'));
+            f.hidden = !ok;
+            if (ok) n++;
+        });
+        document.getElementById('count').textContent = n + ' / ' + items.length + '개 종목';
+        document.getElementById('none').hidden = n !== 0;
+    }
+    if (q) {
+        q.addEventListener('input', apply);
+        document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+            filter = c.dataset.f;
+            document.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x === c));
+            apply();
+        }));
+        apply();
+    }
+</script>
 </body>
 </html>
