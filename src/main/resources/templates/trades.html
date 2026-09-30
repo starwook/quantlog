@@ -160,35 +160,11 @@
             font-size: 12px;
             color: var(--muted);
         }
-        .chart-nav {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 20px;
-        }
-        .chart-nav a {
-            padding: 6px 12px;
-            border-radius: 999px;
-            background: var(--card);
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--muted);
-            text-decoration: none;
-        }
-        .chart-nav a.backtest {
-            background: var(--text);
-            color: #fff;
-        }
     </style>
 </head>
 <body>
 <main>
-    <div class="chart-nav" th:if="${not #lists.isEmpty(chartSymbols)}">
-        <a th:each="s : ${chartSymbols}"
-           th:href="@{'/chart/' + ${s.market} + '/' + ${s.symbol}}"
-           th:text="${s.displayName} + ' 차트'"></a>
-        <a class="backtest" th:if="${not #lists.isEmpty(chartSymbols)}"
-           th:href="@{'/backtest/' + ${chartSymbols[0].market} + '/' + ${chartSymbols[0].symbol}}">백테스트</a>
-    </div>
+    <nav th:replace="~{fragments/nav :: menu('account')}"></nav>
 
     <div th:each="s : ${summaries}" style="margin-bottom: 24px;">
         <h1 th:text="${s.currency} + ' 계좌'"></h1>

@@ -18,6 +18,7 @@ import org.springframework.boot.ApplicationRunner
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 
 private val log = KotlinLogging.logger {}
@@ -40,26 +41,26 @@ class SymbolStrategy(
     val symbol: String,
     /** false 면 분봉만 모으고 매수는 안 한다. 매수 종목 선택 스위치. */
     @Column(name = "auto_trade", nullable = false)
-    val autoTrade: Boolean,
+    var autoTrade: Boolean,
     @Column(name = "take_profit_percent", nullable = false, precision = 10, scale = 4)
-    val takeProfitPercent: BigDecimal,
+    var takeProfitPercent: BigDecimal,
     @Column(name = "stop_loss_percent", precision = 10, scale = 4)
-    val stopLossPercent: BigDecimal?,
+    var stopLossPercent: BigDecimal?,
     /** true 면 보유 중에도 마틴게일 규칙(MartingaleRule)으로 추가 매수·재진입한다. 아래 martingale_* 는 이때만 쓴다. */
     @Column(nullable = false)
-    val martingale: Boolean,
+    var martingale: Boolean,
     @Column(name = "martingale_drop_percent", nullable = false, precision = 10, scale = 4)
-    val martingaleDropPercent: BigDecimal,
+    var martingaleDropPercent: BigDecimal,
     @Column(name = "martingale_multiplier", nullable = false)
-    val martingaleMultiplier: Int,
+    var martingaleMultiplier: Int,
     @Column(name = "martingale_max_stages", nullable = false)
-    val martingaleMaxStages: Int,
+    var martingaleMaxStages: Int,
     @Column(name = "martingale_final_stage_stop_loss_percent", nullable = false, precision = 10, scale = 4)
-    val martingaleFinalStageStopLossPercent: BigDecimal,
+    var martingaleFinalStageStopLossPercent: BigDecimal,
     @Column(name = "martingale_reentry_drop_percent", nullable = false, precision = 10, scale = 4)
-    val martingaleReentryDropPercent: BigDecimal,
+    var martingaleReentryDropPercent: BigDecimal,
     @Column(name = "martingale_stop_reentry_drop_percent", nullable = false, precision = 10, scale = 4)
-    val martingaleStopReentryDropPercent: BigDecimal,
+    var martingaleStopReentryDropPercent: BigDecimal,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -75,6 +76,20 @@ class SymbolStrategy(
             maxStages = martingaleMaxStages,
             finalStageStopLossPercent = martingaleFinalStageStopLossPercent,
         )
+}
+
+/** 설정 화면 입력값. 비어 있는 칸도 받아서 [SymbolStrategyService.update] 가 검증 메시지로 돌려준다. */
+class SymbolStrategyForm {
+    var autoTrade: Boolean = false
+    var takeProfitPercent: BigDecimal? = null
+    var stopLossPercent: BigDecimal? = null
+    var martingale: Boolean = false
+    var martingaleDropPercent: BigDecimal? = null
+    var martingaleMultiplier: Int? = null
+    var martingaleMaxStages: Int? = null
+    var martingaleFinalStageStopLossPercent: BigDecimal? = null
+    var martingaleReentryDropPercent: BigDecimal? = null
+    var martingaleStopReentryDropPercent: BigDecimal? = null
 }
 
 interface SymbolStrategyRepository : JpaRepository<SymbolStrategy, Long> {
@@ -94,6 +109,49 @@ class SymbolStrategyService(
         market: Market,
         symbol: String,
     ): SymbolStrategy? = repository.findByMarketAndSymbol(market, symbol)
+
+    /** 화면용: 감시 종목 순서대로, 설정 행이 있는 종목만. */
+    fun all(): List<Pair<WatchedSymbol, SymbolStrategy>> =
+        WatchedSymbol.entries.mapNotNull { w -> find(w.market, w.symbol)?.let { w to it } }
+
+    /** 값이 잘못됐으면 [IllegalArgumentException] (메시지는 화면에 그대로 보여준다). 스케줄러가 매번 읽으므로 저장 즉시 반영된다. */
+    @Transactional
+    fun update(
+        market: Market,
+        symbol: String,
+        form: SymbolStrategyForm,
+    ) {
+        val target = requireNotNull(find(market, symbol)) { "설정이 없는 종목입니다: $symbol" }
+        val takeProfit = positive(form.takeProfitPercent, "익절 %")
+        val stopLoss = form.stopLossPercent?.also { positive(it, "손절 %") }
+        target.autoTrade = form.autoTrade
+        target.takeProfitPercent = takeProfit
+        target.stopLossPercent = stopLoss
+        target.martingale = form.martingale
+        target.martingaleDropPercent = positive(form.martingaleDropPercent, "마틴게일 추가매수 하락 %")
+        target.martingaleMultiplier = atLeast(form.martingaleMultiplier, 2, "마틴게일 배수")
+        target.martingaleMaxStages = atLeast(form.martingaleMaxStages, 1, "마틴게일 최대 단계")
+        target.martingaleFinalStageStopLossPercent = positive(form.martingaleFinalStageStopLossPercent, "마지막 단계 손절 %")
+        target.martingaleReentryDropPercent = positive(form.martingaleReentryDropPercent, "익절 뒤 재진입 하락 %")
+        target.martingaleStopReentryDropPercent = positive(form.martingaleStopReentryDropPercent, "손절 뒤 재진입 하락 %")
+    }
+
+    private fun atLeast(
+        value: Int?,
+        min: Int,
+        name: String,
+    ): Int {
+        require(value != null && value >= min) { "$name 는 $min 이상의 정수여야 합니다" }
+        return value
+    }
+
+    private fun positive(
+        value: BigDecimal?,
+        name: String,
+    ): BigDecimal {
+        require(value != null && value > BigDecimal.ZERO) { "$name 는 0보다 큰 숫자여야 합니다" }
+        return value
+    }
 
     /**
      * 없는 종목 행만 기본값으로 채운다. 기본값은 application.yml 의 quantlog.strategy.* 이고,

@@ -1,6 +1,5 @@
 package com.quantlog.position
 
-import com.quantlog.watchlist.WatchedSymbol
 import com.quantlog.watchlist.displayNameOf
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
@@ -75,7 +74,6 @@ class TradeController(
         model.addAttribute("hasSummaries", summaries.isNotEmpty())
         model.addAttribute("trades", rows)
         model.addAttribute("hasTrades", rows.isNotEmpty())
-        model.addAttribute("chartSymbols", WatchedSymbol.entries)
         return "trades"
     }
 

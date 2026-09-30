@@ -80,8 +80,8 @@
 </head>
 <body>
 <main>
+    <nav th:replace="~{fragments/nav :: menu('backtest')}"></nav>
     <div class="nav">
-        <a href="/">← 계좌로</a>
         <div class="symbols">
             <a th:each="s : ${watchedSymbols}"
                th:href="@{'/backtest/' + ${s.market} + '/' + ${s.symbol} + '?date=' + ${date}}"
