@@ -68,24 +68,30 @@ class MartingaleRuleTest {
     // ── 추가 매수 ──
 
     @Test
-    fun `트리거 가격은 직전 매수가 -0,5퍼센트에 가장 가까운 호가`() {
+    fun `트리거 가격은 평단 -0,5퍼센트에 가장 가까운 호가`() {
         // 272,000 × 0.995 = 270,640 → 270,500
         assertEquals("270500", price(rule.addOnTriggerPrice(BigDecimal("272000"), krw("271000"))))
     }
 
     @Test
-    fun `트리거 경계 - 닿으면 직전 수량의 2배 한 호가 위면 안 산다`() {
+    fun `트리거 경계 - 닿으면 보유 수량만큼 더 한 호가 위면 안 산다`() {
         val cycle = cycleOf(1 to "272000")
-        assertEquals(2, rule.nextQuantity(cycle, krw("270500")))
+        assertEquals(1, rule.nextQuantity(cycle, krw("270500")))
         assertNull(rule.nextQuantity(cycle, krw("271000")))
     }
 
     @Test
-    fun `기준은 평단이 아니라 직전 매수가`() {
-        // 평단 ≈ 270,667 이지만 트리거는 직전 매수가 270,500 × 0.995 = 269,147.5 → 269,000
+    fun `기준은 직전 매수가가 아니라 평단`() {
+        // 평단 = (272,000 + 2×270,500) / 3 ≈ 271,000 → × 0.995 = 269,645 → 269,500. 직전 매수가 기준이었다면 269,000.
         val cycle = cycleOf(1 to "272000", 2 to "270500")
-        assertNull(rule.nextQuantity(cycle, krw("269500")))
-        assertEquals(4, rule.nextQuantity(cycle, krw("269000")))
+        assertNull(rule.nextQuantity(cycle, krw("270000")))
+        assertEquals(3, rule.nextQuantity(cycle, krw("269500"))) // 보유 3주 → 3주 더 = 6주
+    }
+
+    @Test
+    fun `사이클 평단은 수량 가중 평균이고 보유 중이 아니면 null`() {
+        assertEquals("271000", price(cycleOf(1 to "272000", 2 to "270500").averagePrice!!.setScale(0, java.math.RoundingMode.HALF_UP)))
+        assertNull(MartingaleCycle(emptyList(), null).averagePrice)
     }
 
     @Test
@@ -93,7 +99,7 @@ class MartingaleRuleTest {
         val five = cycleOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500", 16 to "266000")
         assertNull(rule.nextQuantity(five, krw("100000")))
         val four = cycleOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500")
-        assertEquals(16, rule.nextQuantity(four, krw("266000")))
+        assertEquals(15, rule.nextQuantity(four, krw("266000")))
     }
 
     @Test
@@ -111,12 +117,12 @@ class MartingaleRuleTest {
     }
 
     @Test
-    fun `5단계 손절 경계 - 마지막 매수가 -3퍼센트 호가 이하`() {
+    fun `5단계 손절 경계 - 평단 -3퍼센트 호가 이하`() {
         val five = cycleOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500", 16 to "266000")
-        // 266,000 × 0.97 = 258,020 → 258,000
-        assertEquals("258000", price(rule.stopLossPrice(five, krw("260000"))))
-        assertTrue(rule.shouldStopLoss(five, krw("258000")))
-        assertFalse(rule.shouldStopLoss(five, krw("258500")))
+        // 평단 8,285,000 / 31 ≈ 267,258 × 0.97 = 259,240 → 259,000 (마지막 매수가 기준이었다면 258,000)
+        assertEquals("259000", price(rule.stopLossPrice(five, krw("260000"))))
+        assertTrue(rule.shouldStopLoss(five, krw("259000")))
+        assertFalse(rule.shouldStopLoss(five, krw("259500")))
     }
 
     // ── 재진입 ──

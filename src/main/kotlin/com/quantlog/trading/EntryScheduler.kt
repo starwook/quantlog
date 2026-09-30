@@ -48,7 +48,7 @@ data class EntryProperties(
  * (2026-09-29: "SK하이닉스는 화면엔 있는데 분봉이 안 쌓인다"는 지적으로, 수집 대상과 매매 대상을 분리함).
  * 매매는 그중 DB 설정([SymbolStrategy.autoTrade])이 켜진 것만 — SupportBounceEntryRule 이 BUY 를 내면 소량
  * 매수 1건을 건다. 이미 보유 중인 종목은 다시 사지 않는다 — 단 DB 설정에서 martingale 을 켠 종목(기본값: 삼성전자)은
- * 예외로, 직전 매수가 대비 0.5% 떨어질 때마다 직전 수량의 2배를 추가 매수하고 매도 뒤엔 가격이 내려오면 재진입한다
+ * 예외로, 평단 대비 0.5% 떨어질 때마다 보유 수량이 2배가 되게 추가 매수하고 매도 뒤엔 가격이 내려오면 재진입한다
  * (2026-09-30, 물타기 금지 원칙 폐기 — [checkMartingale]). 주문은
  * SmokeTestRunner/ExitScheduler 와 같은 RiskGuard.checkBuy(자본 배분·하루 손실 킬스위치 포함) →
  * 주문 → 매매 기록 순서를 거친다. "이미 보유 중인지"는 REST 잔고 조회 대신 PortfolioService(우리
@@ -114,12 +114,12 @@ class EntryScheduler(
 
     /**
      * martingale 종목의 사이클 상태는 매매 기록에서 계산한다([MartingaleCycle], 별도 상태 저장 없음).
-     * - 보유 중: 직전 매수가 -0.5% 에 닿으면 직전 수량의 2배 추가 매수, 최대 단계면 더 사지 않는다(손절은 ExitScheduler).
+     * - 보유 중: 평단 -0.5% 에 닿으면 보유 수량이 2배가 되게 추가 매수, 최대 단계면 더 사지 않는다(손절은 ExitScheduler).
      * - 매도로 끝난 직후: 익절이면 매도가 -0.5%, 손절이면 -1% 에 닿을 때 첫 1주부터 재진입. SupportBounce 신호는 보지 않는다.
      * - 매도 기록이 아직 없을 때(처음): SupportBounce 신호로만 시작한다.
      * 가격 조건이라 성공한 매수 뒤엔 쿨다운이 필요 없다(다음 트리거는 또 -0.5%가 필요해서 자연히 걸러짐).
      * 실패(리스크 가드 거부 등)했을 땐 매초 재시도·로그 스팸을 막으려고 쿨다운을 건다.
-     * 직전 매수가는 체결가가 아직 안 채워졌으면 지정가(현재가+0.5%)라 최대 0.5% 어긋날 수 있다.
+     * 평단은 체결가가 아직 안 채워졌으면 지정가(현재가+0.5%)라 최대 0.5% 어긋날 수 있다.
      */
     private fun checkMartingale(
         watched: WatchedSymbol,
@@ -137,10 +137,10 @@ class EntryScheduler(
             when {
                 cycle.holding -> {
                     val quantity = martingaleRule.nextQuantity(cycle, quote) ?: return
-                    val last = cycle.buys.last()
+                    val average = cycle.averagePrice!!
                     quantity to
-                        "진입 스케줄러: ${cycle.stage + 1}단계 — 직전 매수가 ${last.price} 대비 " +
-                        "${martingaleRule.addOnTriggerPrice(last.price, quote)} 이하로 하락 → 직전 ${last.quantity}주의 배수 ${quantity}주 " +
+                        "진입 스케줄러: ${cycle.stage + 1}단계 — 평단 $average 대비 " +
+                        "${martingaleRule.addOnTriggerPrice(average, quote)} 이하로 하락 → 보유 ${cycle.quantity}주 기준 ${quantity}주 " +
                         "추가 매수 (MartingaleRule)"
                 }
                 martingaleRule.shouldReenter(cycle, quote) ->
