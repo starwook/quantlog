@@ -211,6 +211,14 @@
                     <span class="v" th:classappend="${s.realizedTodayCss}" th:text="${s.realizedTodayText}"></span>
                 </div>
                 <div class="row">
+                    <span class="k">오늘 매수 횟수</span>
+                    <span class="v" th:text="${s.buyCountTodayText}"></span>
+                </div>
+                <div class="row">
+                    <span class="k">오늘 매도 횟수</span>
+                    <span class="v" th:text="${s.sellCountTodayText}"></span>
+                </div>
+                <div class="row">
                     <span class="k">누적 실현손익</span>
                     <span class="v" th:classappend="${s.realizedTotalCss}" th:text="${s.realizedTotalText}"></span>
                 </div>
