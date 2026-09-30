@@ -1,8 +1,10 @@
 package com.quantlog.position
 
 import com.quantlog.broker.BrokerClient
+import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
+import com.quantlog.trading.HoldingSyncService
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
@@ -70,17 +72,25 @@ private class RealizedAcc {
 class PortfolioService(
     private val tradeRepository: TradeRepository,
     private val broker: BrokerClient,
+    private val holdingSync: HoldingSyncService,
 ) {
     /** 매매 판단용. 보유 현황도 우리 기록(DB)으로 계산한다 — 초당 요청 한도 때문에 REST 잔고를 부르지 않는다. */
-    fun snapshot(): PortfolioSnapshot = buildSnapshot(useAccountHoldings = false)
+    fun snapshot(): PortfolioSnapshot = buildSnapshot(accountHoldings = null)
 
     /**
      * 화면용. 보유 종목은 KIS 잔고가 정답이라 DB 기록과 무관하게 그대로 보여준다(DB를 비워도, 서버를 새로 띄워도 동일).
      * 실현손익·매매 내역만 DB 기록으로 계산한다. 캐시는 없다 — 화면 조회 한 번에 KIS 잔고 조회 2회(국내·해외).
+     * 잔고를 받은 김에 봇 기록과 다른 물량(증권사 앱에서 직접 거래한 것)은 DB에 맞춘다([HoldingSyncService]).
      */
-    fun accountSnapshot(): PortfolioSnapshot = buildSnapshot(useAccountHoldings = true)
+    fun accountSnapshot(): PortfolioSnapshot {
+        val kis = holdingsFromAccount()
+        if (kis != null) {
+            runCatching { holdingSync.sync(kis) }.onFailure { log.warn(it) { "KIS 잔고 → 매매 기록 동기화 실패" } }
+        }
+        return buildSnapshot(accountHoldings = kis)
+    }
 
-    private fun buildSnapshot(useAccountHoldings: Boolean): PortfolioSnapshot {
+    private fun buildSnapshot(accountHoldings: List<Holding>?): PortfolioSnapshot {
         val trades = tradeRepository.findAll().sortedBy { it.executedAt }
         val today = Instant.now().atZone(KST).toLocalDate()
 
@@ -133,7 +143,7 @@ class PortfolioService(
         }
 
         val holdingsByCurrency =
-            (if (useAccountHoldings) holdingsFromAccount() else null) ?: holdingsFromTrades(lotsByKey)
+            accountHoldings?.let { holdingViewsOf(it) } ?: holdingsFromTrades(lotsByKey)
 
         val currencies =
             (holdingsByCurrency.keys + realizedByCurrency.keys + buyCountTodayByCurrency.keys + sellCountTodayByCurrency.keys)
@@ -187,18 +197,21 @@ class PortfolioService(
     }
 
     /** KIS 잔고(국내 1회 + 해외 미국 전체 1회). 조회에 실패하면 null — 호출한 쪽이 DB 기록 기반으로 대체한다. */
-    private fun holdingsFromAccount(): Map<String, List<HoldingView>>? =
+    private fun holdingsFromAccount(): List<Holding>? =
         try {
-            (broker.holdings(Market.KR) + broker.holdings(Market.NASDAQ))
-                .filter { it.quantity > BigDecimal.ZERO }
-                .groupBy(
-                    { it.market.currency },
-                    { holdingView(it.market, it.symbol, it.quantity.toInt(), it.averagePrice, it.currentPrice, stale = false) },
-                )
+            broker.holdings(Market.KR) + broker.holdings(Market.NASDAQ)
         } catch (e: Exception) {
             log.warn(e) { "KIS 잔고 조회 실패, 매매 기록 기반 보유 현황으로 대체" }
             null
         }
+
+    private fun holdingViewsOf(holdings: List<Holding>): Map<String, List<HoldingView>> =
+        holdings
+            .filter { it.quantity > BigDecimal.ZERO }
+            .groupBy(
+                { it.market.currency },
+                { holdingView(it.market, it.symbol, it.quantity.toInt(), it.averagePrice, it.currentPrice, stale = false) },
+            )
 
     private fun holdingView(
         market: Market,
