@@ -154,6 +154,20 @@
             color: var(--muted);
             font-size: 14px;
         }
+        .banner { padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; font-size: 14px; background: var(--card); }
+        .banner.ok { border-left: 4px solid var(--neg); }
+        .banner.error { border-left: 4px solid var(--pos); color: var(--pos); }
+        .sell-btn {
+            margin-top: 6px;
+            padding: 4px 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--card);
+            color: var(--neg);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
         footer {
             margin-top: 16px;
             padding: 0 4px;
@@ -165,6 +179,8 @@
 <body>
 <main>
     <nav th:replace="~{fragments/nav :: menu('account')}"></nav>
+    <div class="banner ok" th:if="${message}" th:text="${message}"></div>
+    <div class="banner error" th:if="${error}" th:text="${error}"></div>
 
     <div th:each="s : ${summaries}" style="margin-bottom: 24px;">
         <h1 th:text="${s.currency} + ' 계좌'"></h1>
@@ -218,6 +234,10 @@
                         <span class="stale-mark" th:if="${h.stale}">· 갱신 실패</span>
                     </div>
                     <div class="pnl" th:classappend="${h.pnlCss}" th:text="${h.pnlText}"></div>
+                    <form method="post" th:action="@{'/holdings/' + ${h.market} + '/' + ${h.symbol} + '/sell'}"
+                          th:attr="onsubmit=|return confirm('${h.symbolName} ${h.quantity}주를 전량 매도할까요?')|">
+                        <button type="submit" class="sell-btn">전량 매도</button>
+                    </form>
                 </div>
             </div>
         </div>
