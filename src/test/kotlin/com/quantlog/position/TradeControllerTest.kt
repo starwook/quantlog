@@ -9,7 +9,8 @@ import kotlin.test.assertEquals
 
 class TradeControllerTest {
     private val portfolioService = Mockito.mock(PortfolioService::class.java)
-    private val controller = TradeController(portfolioService, symbolStrategyServiceOf())
+    private val cashService = Mockito.mock(CashService::class.java)
+    private val controller = TradeController(portfolioService, cashService, symbolStrategyServiceOf())
 
     private fun summary(
         currency: String,
@@ -81,5 +82,16 @@ class TradeControllerTest {
     fun `반올림은 HALF_UP이다`() {
         // 1/8 = 12.5% (정확히 떨어짐), 1/16 = 6.25% → 6.3%
         assertEquals("6.3%", viewOf(win = 1, loss = 15).winRateText)
+    }
+
+    @Test
+    fun `주문 가능 금액을 통화와 함께 찍고 조회에 실패하면 그렇게 적는다`() {
+        assertEquals("조회 실패", viewOf(win = 0, loss = 0).orderableCashText)
+
+        Mockito.`when`(cashService.orderableCash("KRW")).thenReturn(OrderableCash(BigDecimal("9000000"), stale = false))
+        assertEquals("9,000,000 KRW", viewOf(win = 0, loss = 0).orderableCashText)
+
+        Mockito.`when`(cashService.orderableCash("KRW")).thenReturn(OrderableCash(BigDecimal("9000000"), stale = true))
+        assertEquals("9,000,000 KRW (갱신 실패, 마지막 값)", viewOf(win = 0, loss = 0).orderableCashText)
     }
 }
