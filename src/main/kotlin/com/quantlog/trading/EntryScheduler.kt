@@ -10,6 +10,8 @@ import com.quantlog.strategy.EntrySignal
 import com.quantlog.strategy.MartingaleCycle
 import com.quantlog.strategy.MartingaleRule
 import com.quantlog.strategy.SupportBounceEntryRule
+import com.quantlog.watchlist.SymbolStrategy
+import com.quantlog.watchlist.SymbolStrategyService
 import com.quantlog.watchlist.WatchedSymbol
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -44,8 +46,8 @@ data class EntryProperties(
  * 정규장(국내) 또는 프리마켓~애프터마켓(미국, Market.isTradable) 동안 [WatchedSymbol] 전체의 분봉을 받아
  * DB에 쌓는다 — 차트·백테스트가 쓸 데이터라 매매 대상 여부와 무관하게 항상 수집한다
  * (2026-09-29: "SK하이닉스는 화면엔 있는데 분봉이 안 쌓인다"는 지적으로, 수집 대상과 매매 대상을 분리함).
- * 매매는 그중 [WatchedSymbol.autoTradeEnabled] 인 것만 — SupportBounceEntryRule 이 BUY 를 내면 소량
- * 매수 1건을 건다. 이미 보유 중인 종목은 다시 사지 않는다 — 단 [WatchedSymbol.martingale] 종목(삼성전자)은
+ * 매매는 그중 DB 설정([SymbolStrategy.autoTrade])이 켜진 것만 — SupportBounceEntryRule 이 BUY 를 내면 소량
+ * 매수 1건을 건다. 이미 보유 중인 종목은 다시 사지 않는다 — 단 DB 설정에서 martingale 을 켠 종목(기본값: 삼성전자)은
  * 예외로, 직전 매수가 대비 0.5% 떨어질 때마다 직전 수량의 2배를 추가 매수하고 매도 뒤엔 가격이 내려오면 재진입한다
  * (2026-09-30, 물타기 금지 원칙 폐기 — [checkMartingale]). 주문은
  * SmokeTestRunner/ExitScheduler 와 같은 RiskGuard.checkBuy(자본 배분·하루 손실 킬스위치 포함) →
@@ -57,7 +59,7 @@ class EntryScheduler(
     private val broker: BrokerClient,
     private val riskGuard: RiskGuard,
     private val entryRule: SupportBounceEntryRule,
-    private val martingaleRule: MartingaleRule,
+    private val symbolStrategyService: SymbolStrategyService,
     private val marketDataService: MarketDataService,
     private val tradeService: TradeService,
     private val portfolioService: PortfolioService,
@@ -88,10 +90,15 @@ class EntryScheduler(
             runCatching { marketDataService.fetchAndStoreRecentMinutes(watched.market, watched.symbol, LocalTime.now(KST)) }
                 .onFailure { log.warn(it) { "[분봉 수집] 실패: ${watched.market} ${watched.symbol}" } }
 
-            if (!watched.autoTradeEnabled) return@forEach
+            // 어떤 종목을 살지·마틴게일 여부는 DB(symbol_strategy)가 정한다. 행이 없거나 조회 실패면 사지 않는다.
+            val config =
+                runCatching { symbolStrategyService.find(watched.market, watched.symbol) }
+                    .onFailure { log.warn(it) { "[종목 설정] 조회 실패: ${watched.market} ${watched.symbol}" } }
+                    .getOrNull()
+            if (config == null || !config.autoTrade) return@forEach
 
-            if (watched.martingale) {
-                runCatching { checkMartingale(watched, now.toInstant()) }
+            if (config.martingale) {
+                runCatching { checkMartingale(watched, config, now.toInstant()) }
                     .onFailure { log.warn(it) { "[진입 감시] 실패: ${watched.market} ${watched.symbol}" } }
                 return@forEach
             }
@@ -106,7 +113,7 @@ class EntryScheduler(
     }
 
     /**
-     * martingale 종목(삼성전자)의 사이클 상태는 매매 기록에서 계산한다([MartingaleCycle], 별도 상태 저장 없음).
+     * martingale 종목의 사이클 상태는 매매 기록에서 계산한다([MartingaleCycle], 별도 상태 저장 없음).
      * - 보유 중: 직전 매수가 -0.5% 에 닿으면 직전 수량의 2배 추가 매수, 최대 단계면 더 사지 않는다(손절은 ExitScheduler).
      * - 매도로 끝난 직후: 익절이면 매도가 -0.5%, 손절이면 -1% 에 닿을 때 첫 1주부터 재진입. SupportBounce 신호는 보지 않는다.
      * - 매도 기록이 아직 없을 때(처음): SupportBounce 신호로만 시작한다.
@@ -116,8 +123,10 @@ class EntryScheduler(
      */
     private fun checkMartingale(
         watched: WatchedSymbol,
+        config: SymbolStrategy,
         now: Instant,
     ) {
+        val martingaleRule = MartingaleRule(config.martingaleProperties())
         val key = "${watched.market}:${watched.symbol}"
         val lastFailure = lastMartingaleFailureAt[key]
         if (lastFailure != null && Duration.between(lastFailure, now) < properties.cooldown) return

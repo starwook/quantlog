@@ -10,27 +10,23 @@ import org.springframework.context.annotation.Configuration
  * 화면엔 있는데 분봉이 안 쌓이던 문제) — 이제 여기 하나로 합친다.
  *
  * - 분봉 수집(EntryScheduler)·차트·백테스트·거래내역 이름 표시는 여기 전체(entries)를 쓴다.
- * - 실제 자동매수 대상만 [autoTradeEnabled] 로 가른다 — 데이터는 다 모으되 매매는 일부만.
+ * - 어느 종목을 실제로 살지, 익절·손절·마틴게일 값은 여기 없고 DB의 [SymbolStrategy] 가 갖는다
+ *   (2026-09-30: 원칙이 자주 바뀌어서 코드 수정 없이 값만 바꾸려고 분리). 데이터는 다 모으되 매매는 DB 설정으로 일부만.
  *
- * 고정된 소수 종목이고 런타임에 안 바뀌어서 DB 엔티티가 아니라 enum으로 둔다.
+ * 수집·표시 대상 목록은 고정된 소수 종목이고 런타임에 안 바뀌어서 enum으로 둔다.
  */
 enum class WatchedSymbol(
     val market: Market,
     val symbol: String,
     val displayName: String,
-    val autoTradeEnabled: Boolean,
-    /** true 면 보유 중에도 직전 매수가 대비 하락 시 배수 추가 매수(MartingaleRule). 2026-09-30: 삼성전자만. */
-    val martingale: Boolean = false,
 ) {
-    SAMSUNG(Market.KR, "005930", "삼성전자", autoTradeEnabled = true, martingale = true),
-    SK_HYNIX(Market.KR, "000660", "SK하이닉스", autoTradeEnabled = false),
-    KODEX_SEMICONDUCTOR(Market.KR, "091160", "KODEX 반도체", autoTradeEnabled = true),
-    SOXL(Market.AMEX, "SOXL", "SOXL", autoTradeEnabled = true),
+    SAMSUNG(Market.KR, "005930", "삼성전자"),
+    SK_HYNIX(Market.KR, "000660", "SK하이닉스"),
+    KODEX_SEMICONDUCTOR(Market.KR, "091160", "KODEX 반도체"),
+    SOXL(Market.AMEX, "SOXL", "SOXL"),
     ;
 
     companion object {
-        fun autoTradeTargets(): List<WatchedSymbol> = entries.filter { it.autoTradeEnabled }
-
         fun find(
             market: Market,
             symbol: String,

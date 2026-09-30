@@ -16,8 +16,9 @@ import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.FixedPercentExitRule
-import com.quantlog.strategy.MartingaleProperties
-import com.quantlog.strategy.MartingaleRule
+import com.quantlog.watchlist.SymbolStrategyService
+import com.quantlog.watchlist.symbolStrategy
+import com.quantlog.watchlist.symbolStrategyServiceOf
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import java.math.BigDecimal
@@ -89,7 +90,8 @@ class ExitSchedulerTest {
         broker,
         RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
         FixedPercentExitRule(BigDecimal.ONE, BigDecimal.ONE),
-        MartingaleRule(MartingaleProperties()),
+        // 설정 행 없음 → 전역 익절/손절 규칙으로 폴백
+        Mockito.mock(SymbolStrategyService::class.java),
         tradeService,
         portfolioServiceWithHolding(),
         ExitProperties(enabled = true),
@@ -155,7 +157,7 @@ class ExitSchedulerTest {
             broker,
             RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
             FixedPercentExitRule(BigDecimal("0.5"), null),
-            MartingaleRule(MartingaleProperties()),
+            symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", martingale = true)),
             tradeService,
             portfolioServiceWithHolding(),
             ExitProperties(enabled = true),
@@ -183,5 +185,25 @@ class ExitSchedulerTest {
         val broker = FakeBroker(BigDecimal("150000"))
         martingaleScheduler(broker, *fiveStages.take(4).toTypedArray()).checkExits(krOpen)
         assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `종목별 DB 설정의 익절 퍼센트가 전역 설정보다 우선한다`() {
+        // 전역은 +1%(274,500). DB 에서 삼성전자만 +2%(277,500)로 바꾸면 274,500 에서 안 팔고 277,500 에서 판다.
+        fun sellsAt(price: String): Boolean {
+            val broker = FakeBroker(BigDecimal(price))
+            ExitScheduler(
+                broker,
+                RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
+                FixedPercentExitRule(BigDecimal.ONE, BigDecimal.ONE),
+                symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", takeProfit = "2")),
+                Mockito.mock(TradeService::class.java),
+                portfolioServiceWithHolding(),
+                ExitProperties(enabled = true),
+            ).checkExits(krOpen)
+            return broker.orders.isNotEmpty()
+        }
+        assertTrue(!sellsAt("274500"))
+        assertTrue(sellsAt("277500"))
     }
 }
