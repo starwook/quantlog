@@ -1,5 +1,6 @@
 package com.quantlog.watchlist
 
+import com.quantlog.broker.Market
 import com.quantlog.strategy.MartingaleProperties
 import com.quantlog.strategy.StrategyProperties
 import org.junit.jupiter.api.Test
@@ -85,5 +86,29 @@ class SymbolStrategyServiceTest {
         assertFailsWith<IllegalArgumentException> {
             service.update(existing.market, existing.symbol, validForm().apply { martingaleMultiplier = 1 })
         }
+    }
+
+    @Test
+    fun `종목을 추가하면 코드는 대문자로, 자동매수와 마틴게일은 꺼진 기본값으로 저장한다`() {
+        Mockito.`when`(repository.save(Mockito.any(SymbolStrategy::class.java))).thenAnswer { it.arguments[0] }
+
+        service.add(Market.NASDAQ, " tsla ", " 테슬라 ")
+
+        val captor = ArgumentCaptor.forClass(SymbolStrategy::class.java)
+        Mockito.verify(repository).save(captor.capture())
+        val saved = captor.value
+        assertEquals("TSLA", saved.symbol)
+        assertEquals("테슬라", saved.displayName)
+        assertTrue(!saved.autoTrade && !saved.martingale)
+    }
+
+    @Test
+    fun `이미 있거나 비어 있는 종목은 추가할 수 없다`() {
+        Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, "005930")).thenReturn(symbolStrategy(Market.KR, "005930"))
+
+        assertFailsWith<IllegalArgumentException> { service.add(Market.KR, "005930", "삼성전자") }
+        assertFailsWith<IllegalArgumentException> { service.add(Market.KR, " ", "이름") }
+        assertFailsWith<IllegalArgumentException> { service.add(Market.KR, "000660", " ") }
+        Mockito.verify(repository, Mockito.never()).save(Mockito.any(SymbolStrategy::class.java))
     }
 }

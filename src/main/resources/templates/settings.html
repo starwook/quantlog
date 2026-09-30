@@ -23,19 +23,20 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
         }
         main { max-width: 720px; margin: 0 auto; }
-        h1 { font-size: 18px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+        h1 { font-size: 22px; margin: 0 0 8px; font-weight: 700; }
         .hint { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
         .banner { padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; font-size: 14px; background: var(--card); }
         .banner.ok { border-left: 4px solid var(--ok); }
         .banner.error { border-left: 4px solid var(--pos); color: var(--pos); }
         .card { background: var(--card); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
-        .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; margin-bottom: 16px; }
         .name { font-size: 17px; font-weight: 700; }
         .code { font-size: 12px; color: var(--muted); margin-left: 6px; font-weight: 400; }
-        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .toggles { display: flex; gap: 16px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
         label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
         label small { font-size: 11px; }
-        input[type=number] {
+        input[type=number], input[type=text], select {
             width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px;
             font-size: 15px; color: var(--text); background: #fff;
         }
@@ -44,6 +45,9 @@
         details { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
         summary { font-size: 14px; font-weight: 600; cursor: pointer; }
         details .grid { margin-top: 12px; }
+        /* 마틴게일이 꺼져 있으면 세부값은 흐리게 — 값은 그대로 저장되고, 켜면 바로 쓰인다. */
+        .card:has(input[name=martingale]:not(:checked)) details { opacity: .5; }
+        .add summary { font-size: 15px; }
         button {
             margin-top: 16px; width: 100%; padding: 12px; border: 0; border-radius: 10px;
             background: var(--text); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
@@ -59,14 +63,38 @@
     <div class="banner ok" th:if="${message}" th:text="${message}"></div>
     <div class="banner error" th:if="${error}" th:text="${error}"></div>
 
-    <p class="hint" th:if="${#lists.isEmpty(rows)}">설정이 있는 종목이 없어요. 앱을 재시작하면 기본값으로 채워집니다.</p>
+    <details class="card add" style="margin-top: 0; padding: 20px;">
+        <summary>+ 종목 추가</summary>
+        <form method="post" action="/settings">
+            <div class="grid" style="margin-top: 12px;">
+                <label>시장
+                    <select name="market">
+                        <option th:each="m : ${markets}" th:value="${m}" th:text="${m}"></option>
+                    </select>
+                </label>
+                <label>종목 코드 <small>예: 005930, SOXL</small>
+                    <input type="text" name="symbol" required>
+                </label>
+                <label>표시 이름
+                    <input type="text" name="displayName" required>
+                </label>
+            </div>
+            <button type="submit">추가</button>
+        </form>
+        <p class="hint" style="margin: 12px 0 0;">추가하면 분봉 수집·차트 대상이 됩니다. 자동매수·마틴게일은 꺼진 채로 시작해요.</p>
+    </details>
+
+    <p class="hint" th:if="${#lists.isEmpty(rows)}">감시 중인 종목이 없어요. 위에서 추가해 주세요.</p>
 
     <form class="card" th:each="row : ${rows}" method="post"
           th:action="@{'/settings/' + ${row.market} + '/' + ${row.symbol}}"
           onsubmit="return confirm('이 설정은 바로 매매에 반영됩니다. 저장할까요?')">
         <div class="head">
             <div class="name"><span th:text="${row.displayName}"></span><span class="code" th:text="${row.market} + ' ' + ${row.symbol}"></span></div>
-            <label class="toggle"><input type="checkbox" name="autoTrade" value="true" th:checked="${row.autoTrade}">자동매수</label>
+            <div class="toggles">
+                <label class="toggle"><input type="checkbox" name="autoTrade" value="true" th:checked="${row.autoTrade}">자동매수</label>
+                <label class="toggle"><input type="checkbox" name="martingale" value="true" th:checked="${row.martingale}">마틴게일</label>
+            </div>
         </div>
         <div class="grid">
             <label>익절 %
@@ -75,12 +103,11 @@
             <label>손절 %
                 <input type="number" step="any" min="0" name="stopLossPercent" placeholder="비우면 손절 안 함"
                        th:value="${row.stopLossPercent != null} ? ${row.stopLossPercent.stripTrailingZeros().toPlainString()} : ''">
-                <small>마틴게일 종목은 아래 마지막 단계 손절이 따로 있음</small>
+                <small>마틴게일은 아래 마지막 단계 손절이 따로 있음</small>
             </label>
         </div>
         <details th:open="${row.martingale}">
-            <summary>마틴게일</summary>
-            <label class="toggle" style="margin-top: 12px;"><input type="checkbox" name="martingale" value="true" th:checked="${row.martingale}">사용</label>
+            <summary>마틴게일 세부값</summary>
             <div class="grid">
                 <label>추가매수 하락 % <small>평단 대비</small>
                     <input type="number" step="any" min="0" name="martingaleDropPercent" th:value="${row.martingaleDropPercent.stripTrailingZeros().toPlainString()}" required>
