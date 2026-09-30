@@ -219,6 +219,13 @@
                     <span class="v" th:text="${s.sellCountTodayText}"></span>
                 </div>
                 <div class="row">
+                    <span class="k">오늘 매도 승률</span>
+                    <span class="v">
+                        <span th:classappend="${s.winRateCss}" th:text="${s.winRateText}"></span>
+                        <span class="muted" style="font-weight: 400; font-size: 13px;" th:text="'(' + ${s.winRateDetailText} + ')'"></span>
+                    </span>
+                </div>
+                <div class="row">
                     <span class="k">누적 실현손익</span>
                     <span class="v" th:classappend="${s.realizedTotalCss}" th:text="${s.realizedTotalText}"></span>
                 </div>
