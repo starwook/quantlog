@@ -4,6 +4,7 @@ import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
+import com.quantlog.trading.HoldingSyncService
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.mockito.Mockito.never
@@ -17,7 +18,7 @@ import kotlin.test.assertTrue
 class PortfolioServiceTest {
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
     private val broker = Mockito.mock(BrokerClient::class.java)
-    private val service = PortfolioService(tradeRepository, broker)
+    private val service = PortfolioService(tradeRepository, broker, Mockito.mock(HoldingSyncService::class.java))
 
     private val samsung =
         Holding(

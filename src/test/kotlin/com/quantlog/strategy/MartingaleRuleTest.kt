@@ -68,7 +68,7 @@ class MartingaleRuleTest {
     // ── 추가 매수 ──
 
     @Test
-    fun `트리거 가격은 직전 매수가 -0,5퍼센트에 가장 가까운 호가`() {
+    fun `트리거 가격은 평단 -0,5퍼센트에 가장 가까운 호가`() {
         // 272,000 × 0.995 = 270,640 → 270,500
         assertEquals("270500", price(rule.addOnTriggerPrice(BigDecimal("272000"), krw("271000"))))
     }
@@ -81,11 +81,17 @@ class MartingaleRuleTest {
     }
 
     @Test
-    fun `기준은 평단이 아니라 직전 매수가`() {
-        // 평단 ≈ 270,667 이지만 트리거는 직전 매수가 270,500 × 0.995 = 269,147.5 → 269,000
+    fun `기준은 직전 매수가가 아니라 평단`() {
+        // 평단 = (272,000 + 2×270,500) / 3 ≈ 271,000 → × 0.995 = 269,645 → 269,500. 직전 매수가 기준이었다면 269,000.
         val cycle = cycleOf(1 to "272000", 2 to "270500")
-        assertNull(rule.nextQuantity(cycle, krw("269500")))
-        assertEquals(4, rule.nextQuantity(cycle, krw("269000")))
+        assertNull(rule.nextQuantity(cycle, krw("270000")))
+        assertEquals(4, rule.nextQuantity(cycle, krw("269500")))
+    }
+
+    @Test
+    fun `사이클 평단은 수량 가중 평균이고 보유 중이 아니면 null`() {
+        assertEquals("271000", price(cycleOf(1 to "272000", 2 to "270500").averagePrice!!.setScale(0, java.math.RoundingMode.HALF_UP)))
+        assertNull(MartingaleCycle(emptyList(), null).averagePrice)
     }
 
     @Test

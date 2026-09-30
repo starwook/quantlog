@@ -191,7 +191,7 @@ class EntrySchedulerTest {
     }
 
     @Test
-    fun `삼성전자 직전 매수가 대비 0,5퍼센트 하락하면 직전 수량의 2배를 산다`() {
+    fun `삼성전자 평단 대비 0,5퍼센트 하락하면 직전 수량의 2배를 산다`() {
         // 트리거 = 10,100 × 0.995 = 10,049.5 → 10,050 ≥ 현재가 10,000
         val order = martingale(buy(2, "10100")).orders.single()
         assertEquals(Side.BUY, order.side)
