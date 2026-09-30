@@ -67,6 +67,7 @@
         .row:first-child { border-top: none; }
         .row .k { color: var(--muted); }
         .row .v { font-weight: 600; }
+        .row .v small { font-weight: 400; }
         .pos { color: var(--pos); }
         .neg { color: var(--neg); }
         .zero, .muted { color: var(--muted); }
@@ -209,6 +210,13 @@
                 <div class="row">
                     <span class="k">오늘 매도 횟수</span>
                     <span class="v" th:text="${s.sellCountTodayText}"></span>
+                </div>
+                <div class="row">
+                    <span class="k">오늘 매도 승률</span>
+                    <span class="v">
+                        <span th:classappend="${s.winRateCss}" th:text="${s.winRateText}"></span>
+                        <small class="muted" th:text="${s.winRateDetailText}"></small>
+                    </span>
                 </div>
                 <div class="row">
                     <span class="k">누적 실현손익</span>
