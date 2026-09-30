@@ -181,6 +181,10 @@
     <nav th:replace="~{fragments/nav :: menu('account')}"></nav>
     <div class="banner ok" th:if="${message}" th:text="${message}"></div>
     <div class="banner error" th:if="${error}" th:text="${error}"></div>
+    <form method="post" th:action="@{/holdings/sync}" style="margin-bottom: 16px;"
+          onsubmit="return confirm('증권사 앱에서 직접 거래한 물량을 봇 기록에 반영할까요?')">
+        <button type="submit" class="sell-btn" style="margin-top: 0;">KIS 잔고와 맞추기</button>
+    </form>
 
     <div th:each="s : ${summaries}" style="margin-bottom: 24px;">
         <h1 th:text="${s.currency} + ' 계좌'"></h1>

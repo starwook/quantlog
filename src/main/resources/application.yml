@@ -53,7 +53,7 @@ quantlog:
       # 직전 매수가 대비 이만큼(%) 떨어질 때마다 직전 매수 수량의 배수만큼 추가 매수.
       drop-percent: 0.5
       multiplier: 2
-      max-stages: 5
+      max-stages: 10
       # 최대 단계 매수를 마친 뒤, 그 매수가 대비 이만큼(%) 더 떨어지면 전량 손절. 1~4단계엔 손절 없음.
       final-stage-stop-loss-percent: 3
       # 매도 뒤 재진입: 매도가 대비 이만큼(%) 떨어지면 첫 1주부터 다시 시작 (익절 뒤 / 손절 뒤).
