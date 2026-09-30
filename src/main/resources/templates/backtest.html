@@ -35,17 +35,11 @@
             flex-wrap: wrap;
         }
         .nav a { color: var(--muted); text-decoration: none; font-size: 14px; }
-        .symbols { display: flex; gap: 8px; }
-        .symbols a {
-            padding: 6px 12px;
-            border-radius: 999px;
-            background: var(--card);
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--muted);
-            text-decoration: none;
+        .symbols { display: flex; gap: 8px; width: 100%; }
+        .symbols select {
+            flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+            background: var(--card); color: var(--text); font-size: 15px; font-weight: 600;
         }
-        .symbols a.active { background: var(--text); color: #fff; }
         .date-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 14px; }
         .date-nav a { color: var(--muted); text-decoration: none; }
         .date-nav .current { font-weight: 700; }
@@ -83,11 +77,14 @@
     <nav th:replace="~{fragments/nav :: menu('backtest')}"></nav>
     <div class="nav">
         <div class="symbols">
-            <a th:each="s : ${watchedSymbols}"
-               th:href="@{'/backtest/' + ${s.market} + '/' + ${s.symbol} + '?date=' + ${date}}"
-               th:text="${s.displayName}"
-               th:classappend="${s.symbol == symbol} ? 'active' : ''"></a>
+            <select aria-label="종목 선택" onchange="location.href = this.value">
+                <option th:each="s : ${watchedSymbols}"
+                        th:value="@{'/backtest/' + ${s.market} + '/' + ${s.symbol} + '?date=' + ${date}}"
+                        th:text="${s.displayName} + ' (' + ${s.market} + ' ' + ${s.symbol} + ')'"
+                        th:selected="${s.symbol == symbol and s.market == market}"></option>
+            </select>
         </div>
+    </div>
     </div>
 
     <div class="date-nav">
