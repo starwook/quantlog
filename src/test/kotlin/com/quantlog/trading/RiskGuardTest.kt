@@ -9,6 +9,7 @@ import com.quantlog.position.PortfolioSummary
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import java.math.BigDecimal
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class RiskGuardTest {
@@ -41,32 +42,30 @@ class RiskGuardTest {
         return service
     }
 
-    private val emptyPortfolio = Mockito.mock(PortfolioService::class.java)
-    private val guard =
-        RiskGuard(
-            RiskProperties(maxOrderUsd = BigDecimal("1000"), maxOrderKrw = BigDecimal("1000000"), maxOrderQuantity = 10),
-            emptyPortfolio,
-        )
-
     @Test
-    fun `한도 이내 주문은 통과`() {
-        guard.check(order(Market.NASDAQ, 2, "150.00"))
-        guard.check(order(Market.KR, 5, "70000"))
+    fun `1회 주문 상한은 없다 - 큰 주문도 check 를 통과`() {
+        val guard = RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java))
+        guard.check(order(Market.NASDAQ, 100, "150.00"))
+        guard.check(order(Market.KR, 30, "272000"))
     }
 
     @Test
-    fun `달러 금액 상한 초과는 거부`() {
-        assertFailsWith<RiskViolationException> { guard.check(order(Market.NASDAQ, 10, "150.00")) }
+    fun `삼성전자 1-2-4-8-16주 마틴게일 매수가 국내 배분 한도 안에서 모두 통과`() {
+        // 누적 31주 × 27.2만 ≈ 843만원 < 1000만원. 각 매수 직전 보유 원가를 넣어 checkBuy 를 단계별로 확인한다.
+        var invested = BigDecimal.ZERO
+        listOf(1, 2, 4, 8, 16).forEach { qty ->
+            val guard = RiskGuard(RiskProperties(), portfolioServiceWith("KRW", costBasis = invested))
+            val order = order(Market.KR, qty, "272000")
+            guard.checkBuy(order)
+            invested = invested.add(order.notional)
+        }
+        assertEquals(0, BigDecimal("8432000").compareTo(invested))
     }
 
     @Test
-    fun `원화 금액 상한 초과는 거부`() {
-        assertFailsWith<RiskViolationException> { guard.check(order(Market.KR, 10, "150000")) }
-    }
-
-    @Test
-    fun `수량 상한 초과는 거부`() {
-        assertFailsWith<RiskViolationException> { guard.check(order(Market.NASDAQ, 11, "1.00")) }
+    fun `배분 한도는 국내 1000만원이 기본이라 32주째는 막힌다`() {
+        val guard = RiskGuard(RiskProperties(), portfolioServiceWith("KRW", costBasis = BigDecimal("8432000")))
+        assertFailsWith<RiskViolationException> { guard.checkBuy(order(Market.KR, 6, "272000")) }
     }
 
     @Test

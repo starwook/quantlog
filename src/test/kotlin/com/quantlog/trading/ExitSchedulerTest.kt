@@ -13,8 +13,11 @@ import com.quantlog.position.HoldingView
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.PortfolioSummary
+import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.FixedPercentExitRule
+import com.quantlog.strategy.MartingaleProperties
+import com.quantlog.strategy.MartingaleRule
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import java.math.BigDecimal
@@ -79,15 +82,18 @@ class ExitSchedulerTest {
         return service
     }
 
-    private fun scheduler(broker: FakeBroker) =
-        ExitScheduler(
-            broker,
-            RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
-            FixedPercentExitRule(BigDecimal.ONE, BigDecimal.ONE),
-            Mockito.mock(TradeService::class.java),
-            portfolioServiceWithHolding(),
-            ExitProperties(enabled = true),
-        )
+    private fun scheduler(
+        broker: FakeBroker,
+        tradeService: TradeService = Mockito.mock(TradeService::class.java),
+    ) = ExitScheduler(
+        broker,
+        RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
+        FixedPercentExitRule(BigDecimal.ONE, BigDecimal.ONE),
+        MartingaleRule(MartingaleProperties()),
+        tradeService,
+        portfolioServiceWithHolding(),
+        ExitProperties(enabled = true),
+    )
 
     @Test
     fun `익절 목표가에 닿으면 현재가보다 한 호가 낮게 전량 매도한다`() {
@@ -130,6 +136,52 @@ class ExitSchedulerTest {
     fun `장 시간이 아니면 아무것도 안 한다`() {
         val broker = FakeBroker(BigDecimal("274500"))
         scheduler(broker).checkExits(krOpen.withHour(16))
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    // ── 마틴게일(삼성전자) 손절: 전역 손절은 보류(null)이고, 5단계 매수 뒤에만 별도 손절이 있다 ──
+
+    private fun martingaleScheduler(
+        broker: FakeBroker,
+        vararg buyPrices: Pair<Int, String>,
+    ): ExitScheduler {
+        val tradeService = Mockito.mock(TradeService::class.java)
+        val trades =
+            buyPrices.map { (qty, price) ->
+                Trade(Market.KR, "005930", Side.BUY, qty, BigDecimal(price), "0", "ok", initialFilledPrice = BigDecimal(price))
+            }
+        Mockito.`when`(tradeService.trades(Market.KR, "005930")).thenReturn(trades)
+        return ExitScheduler(
+            broker,
+            RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
+            FixedPercentExitRule(BigDecimal("0.5"), null),
+            MartingaleRule(MartingaleProperties()),
+            tradeService,
+            portfolioServiceWithHolding(),
+            ExitProperties(enabled = true),
+        )
+    }
+
+    private val fiveStages = arrayOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500", 16 to "266000")
+
+    @Test
+    fun `마틴게일 5단계 손절 경계 - 마지막 매수가 -3퍼센트 이하면 전량 매도`() {
+        val broker = FakeBroker(BigDecimal("258000"))
+        martingaleScheduler(broker, *fiveStages).checkExits(krOpen)
+        assertEquals(Side.SELL, broker.orders.single().side)
+    }
+
+    @Test
+    fun `마틴게일 5단계라도 손절가 위면 팔지 않는다`() {
+        val broker = FakeBroker(BigDecimal("258500"))
+        martingaleScheduler(broker, *fiveStages).checkExits(krOpen)
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `마틴게일 1~4단계에서는 아무리 떨어져도 손절 안 한다`() {
+        val broker = FakeBroker(BigDecimal("150000"))
+        martingaleScheduler(broker, *fiveStages.take(4).toTypedArray()).checkExits(krOpen)
         assertTrue(broker.orders.isEmpty())
     }
 }

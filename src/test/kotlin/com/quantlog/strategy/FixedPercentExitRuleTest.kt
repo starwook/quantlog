@@ -43,7 +43,15 @@ class FixedPercentExitRuleTest {
         // 평단 272,000원, 호가 500원: +1% = 274,720 → 274,500 / -1% = 269,280 → 269,500
         val targets = rule.targets(BigDecimal("272000"), Quote(BigDecimal("271750"), BigDecimal("500")))
         assertEquals(0, BigDecimal("274500").compareTo(targets.takeProfitPrice))
-        assertEquals(0, BigDecimal("269500").compareTo(targets.stopLossPrice))
+        assertEquals(0, BigDecimal("269500").compareTo(targets.stopLossPrice!!))
+    }
+
+    @Test
+    fun `손절을 보류하면 얼마나 떨어져도 보유한다`() {
+        val noStop = FixedPercentExitRule(takeProfitPercent = BigDecimal("1"), stopLossPercent = null)
+        assertEquals(ExitSignal.HOLD, noStop.evaluate(avg, usd("50")))
+        assertEquals(ExitSignal.TAKE_PROFIT, noStop.evaluate(avg, usd("101")))
+        assertEquals(null, noStop.targets(avg, usd("100")).stopLossPrice)
     }
 
     @Test

@@ -45,8 +45,19 @@ quantlog:
     dir: playbook   # 원칙·일지·제안 (playbook/README.md)
   strategy:
     # 초기값. 이후 학습 루프(기획서 6.4)가 결과를 보고 조정한다.
-    take-profit-percent: 1
-    stop-loss-percent: 1
+    take-profit-percent: 0.5
+    # 손절 보류 (2026-09-30, 사용자 결정). 키를 비워두면 손절 매도를 내지 않는다. 다시 켜려면 아래 줄을 살린다.
+    # stop-loss-percent: 1
+    martingale:
+      # WatchedSymbol.martingale 종목(삼성전자)만: 직전 매수가 대비 이만큼(%) 떨어질 때마다 직전 매수 수량의 배수만큼 추가 매수.
+      drop-percent: 0.5
+      multiplier: 2
+      max-stages: 5
+      # 최대 단계 매수를 마친 뒤, 그 매수가 대비 이만큼(%) 더 떨어지면 전량 손절. 1~4단계엔 손절 없음.
+      final-stage-stop-loss-percent: 3
+      # 매도 뒤 재진입: 매도가 대비 이만큼(%) 떨어지면 첫 1주부터 다시 시작 (익절 뒤 / 손절 뒤).
+      reentry-drop-percent: 0.5
+      stop-reentry-drop-percent: 1
     entry:
       # 분봉 체류시간 기반 지지선 근접+반등 진입 신호. 검증 전 가설값 (playbook/principles.md "아직 정하는 중").
       min-candles: 15
@@ -77,6 +88,5 @@ quantlog:
     enabled: ${QUANTLOG_RECONCILE_ENABLED:true}
     interval-millis: 60000
   risk:
-    max-order-usd: 1000
-    max-order-krw: 2000000
-    max-order-quantity: 10
+    # 1회 주문 상한은 폐지 (2026-09-30). 시장별 자본 배분(국내 1000만원)·하루 손실 -3%가 한도를 맡는다.
+    market-allocation-krw: 10000000

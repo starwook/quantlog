@@ -1,5 +1,6 @@
 package com.quantlog.position
 
+import com.quantlog.broker.Market
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Side
@@ -13,6 +14,12 @@ class TradeService(
     private val repository: TradeRepository,
     private val notifier: Notifier,
 ) {
+    /** 이 종목의 매매 기록(체결 시각 오름차순). 마틴게일 사이클 계산에 쓴다. */
+    fun trades(
+        market: Market,
+        symbol: String,
+    ): List<Trade> = repository.findAllByMarketAndSymbolOrderByExecutedAtAsc(market, symbol)
+
     /** filledPrice: 실제 체결가(호출부가 조회해서 넘긴다). 못 구했으면 null로 둔다 — 지어내지 않는다. */
     fun record(
         order: OrderRequest,

@@ -14,8 +14,11 @@ import com.quantlog.position.HoldingView
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.PortfolioSummary
+import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.EntrySignal
+import com.quantlog.strategy.MartingaleProperties
+import com.quantlog.strategy.MartingaleRule
 import com.quantlog.strategy.SupportBounceEntryRule
 import com.quantlog.watchlist.WatchedSymbol
 import org.junit.jupiter.api.Test
@@ -109,12 +112,14 @@ class EntrySchedulerTest {
         watched: List<WatchedSymbol> = listOf(WatchedSymbol.SAMSUNG),
         portfolioService: PortfolioService = noopPortfolioService(),
         marketDataService: MarketDataService = marketDataServiceStub(),
+        tradeService: TradeService = Mockito.mock(TradeService::class.java),
     ) = EntryScheduler(
         broker,
         RiskGuard(RiskProperties(), noopPortfolioService()),
         entryRuleReturning(signal),
+        MartingaleRule(MartingaleProperties()),
         marketDataService,
-        Mockito.mock(TradeService::class.java),
+        tradeService,
         portfolioService,
         watched,
         EntryProperties(enabled = true),
@@ -139,10 +144,90 @@ class EntrySchedulerTest {
     }
 
     @Test
-    fun `이미 보유 중이면 신호가 있어도 사지 않는다`() {
+    fun `martingale 아닌 종목은 이미 보유 중이면 신호가 있어도 사지 않는다`() {
         val broker = FakeBroker()
-        scheduler(broker, EntrySignal.BUY, portfolioService = portfolioServiceHolding("005930")).checkEntries(krOpen)
+        scheduler(
+            broker,
+            EntrySignal.BUY,
+            watched = listOf(WatchedSymbol.KODEX_SEMICONDUCTOR),
+            portfolioService = portfolioServiceHolding("091160"),
+        ).checkEntries(krOpen)
         assertTrue(broker.orders.isEmpty())
+    }
+
+    private fun buy(
+        quantity: Int,
+        price: String,
+    ) = Trade(Market.KR, "005930", Side.BUY, quantity, BigDecimal(price), "0", "ok", initialFilledPrice = BigDecimal(price))
+
+    private fun sell(
+        quantity: Int,
+        price: String,
+    ) = Trade(Market.KR, "005930", Side.SELL, quantity, BigDecimal(price), "0", "ok", initialFilledPrice = BigDecimal(price))
+
+    private fun tradeServiceWith(vararg trades: Trade): TradeService {
+        val service = Mockito.mock(TradeService::class.java)
+        Mockito.`when`(service.trades(Market.KR, "005930")).thenReturn(trades.toList())
+        return service
+    }
+
+    private fun martingale(
+        vararg trades: Trade,
+        signal: EntrySignal = EntrySignal.NO_TRADE,
+    ): FakeBroker {
+        val broker = FakeBroker() // 현재가 10,000 / 호가 10원
+        scheduler(broker, signal, tradeService = tradeServiceWith(*trades)).checkEntries(krOpen)
+        return broker
+    }
+
+    @Test
+    fun `삼성전자 직전 매수가 대비 0,5퍼센트 하락하면 직전 수량의 2배를 산다`() {
+        // 트리거 = 10,100 × 0.995 = 10,049.5 → 10,050 ≥ 현재가 10,000
+        val order = martingale(buy(2, "10100")).orders.single()
+        assertEquals(Side.BUY, order.side)
+        assertEquals(4, order.quantity)
+    }
+
+    @Test
+    fun `삼성전자 트리거 위면 신호가 있어도 추가 매수하지 않는다`() {
+        // 트리거 = 10,000 × 0.995 = 9,950 < 현재가 10,000
+        assertTrue(martingale(buy(2, "10000"), signal = EntrySignal.BUY).orders.isEmpty())
+    }
+
+    @Test
+    fun `삼성전자 5단계 뒤엔 더 떨어져도 사지 않는다`() {
+        val five = arrayOf(buy(1, "20000"), buy(2, "19000"), buy(4, "18000"), buy(8, "17000"), buy(16, "16000"))
+        assertTrue(martingale(*five).orders.isEmpty())
+    }
+
+    @Test
+    fun `삼성전자 4단계 다음 5단계 16주 주문이 리스크 가드를 통과해 나간다`() {
+        // 금액 검증은 RiskGuardTest(27만원대 누적 843만원 < 1000만원). 여기선 스케줄러가 16주를 실제로 내는지만 본다.
+        val order = martingale(buy(1, "10500"), buy(2, "10400"), buy(4, "10300"), buy(8, "10100")).orders.single()
+        assertEquals(16, order.quantity)
+    }
+
+    @Test
+    fun `익절 뒤 매도가 -0,5퍼센트에 닿으면 첫 1주부터 재진입 - 신호 불필요`() {
+        // 평단 9,900 → 10,000 에 익절. 트리거 = 10,000 × 0.995 = 9,950 → 현재가 10,000 은 위라 대기
+        assertTrue(martingale(buy(1, "9900"), sell(1, "10000"), signal = EntrySignal.BUY).orders.isEmpty())
+        // 10,050 에 익절 → 트리거 10,000(9,999.75 반올림) ≥ 현재가 → 재진입
+        val order = martingale(buy(1, "9900"), sell(1, "10050")).orders.single()
+        assertEquals(1, order.quantity)
+    }
+
+    @Test
+    fun `손절 뒤엔 매도가 -1퍼센트에 닿으면 재진입한다`() {
+        // 평단 10,500 → 10,100 손절. 트리거 = 10,100 × 0.99 = 9,999 → 10,000 ≥ 현재가
+        assertEquals(1, martingale(buy(1, "10500"), sell(1, "10100")).orders.single().quantity)
+        // 10,000 손절 → 트리거 9,900 < 현재가 → 대기 (SupportBounce 신호도 안 봄)
+        assertTrue(martingale(buy(1, "10500"), sell(1, "10000"), signal = EntrySignal.BUY).orders.isEmpty())
+    }
+
+    @Test
+    fun `삼성전자 첫 사이클은 매도 기록이 없으면 SupportBounce 신호로 시작한다`() {
+        assertEquals(1, martingale(signal = EntrySignal.BUY).orders.single().quantity)
+        assertTrue(martingale(signal = EntrySignal.NO_TRADE).orders.isEmpty())
     }
 
     @Test

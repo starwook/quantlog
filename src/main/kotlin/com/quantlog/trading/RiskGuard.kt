@@ -8,11 +8,8 @@ import java.math.BigDecimal
 
 @ConfigurationProperties(prefix = "quantlog.risk")
 data class RiskProperties(
-    val maxOrderUsd: BigDecimal = BigDecimal("1000"),
-    val maxOrderKrw: BigDecimal = BigDecimal("1000000"),
-    val maxOrderQuantity: Int = 10,
-    /** 시장별 자본 배분 한도 (playbook/principles.md: "시장별로 쓸 돈을 나눈다. 국내 500만원 / 미국 500만원 상당"). */
-    val marketAllocationKrw: BigDecimal = BigDecimal("5000000"),
+    /** 시장별 자본 배분 한도 (playbook/principles.md: "시장별로 쓸 돈을 나눈다. 국내 1000만원 / 미국 500만원 상당"). */
+    val marketAllocationKrw: BigDecimal = BigDecimal("10000000"),
     val marketAllocationUsd: BigDecimal = BigDecimal("2700"),
     /** 하루 손실 한도(킬스위치) — 배분 자본 대비 %. */
     val dailyLossLimitPercent: BigDecimal = BigDecimal("3"),
@@ -30,15 +27,12 @@ class RiskGuard(
     private val properties: RiskProperties,
     private val portfolioService: PortfolioService,
 ) {
-    fun check(order: OrderRequest) {
-        if (order.quantity > properties.maxOrderQuantity) {
-            throw RiskViolationException("주문 수량 ${order.quantity} > 상한 ${properties.maxOrderQuantity}")
-        }
-        val limit = if (order.market.isOverseas) properties.maxOrderUsd else properties.maxOrderKrw
-        if (order.notional > limit) {
-            throw RiskViolationException("주문 금액 ${order.notional} ${order.market.currency} > 상한 $limit")
-        }
-    }
+    /**
+     * 모든 주문(매수·매도)이 거치는 자리. 1회 주문 상한(금액·수량)은 2026-09-30 사용자 결정으로 폐지해서 지금은 걸 조건이 없다 —
+     * 한도는 매수 쪽 시장별 자본 배분·하루 손실 한도가 맡는다. 우회 경로를 만들지 않으려고 호출 자리는 그대로 둔다.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun check(order: OrderRequest) = Unit
 
     fun checkBuy(order: OrderRequest) {
         check(order)
