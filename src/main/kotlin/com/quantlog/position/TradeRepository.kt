@@ -14,4 +14,10 @@ interface TradeRepository : JpaRepository<Trade, Long> {
         market: Market,
         symbol: String,
     ): List<Trade>
+
+    /** 이 종목의 가장 최근 주문. 잔고 동기화가 그 주문을 반영했는지 판단할 때 쓴다. */
+    fun findFirstByMarketAndSymbolOrderByExecutedAtDesc(
+        market: Market,
+        symbol: String,
+    ): Trade?
 }

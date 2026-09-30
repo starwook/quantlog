@@ -9,6 +9,7 @@ import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
+import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.HoldingView
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
@@ -16,6 +17,7 @@ import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.FixedPercentExitRule
+import com.quantlog.strategy.MartingaleCycle
 import com.quantlog.watchlist.SymbolStrategyService
 import com.quantlog.watchlist.symbolStrategy
 import com.quantlog.watchlist.symbolStrategyServiceOf
@@ -69,10 +71,12 @@ class ExitSchedulerTest {
     private val krOpen = ZonedDateTime.of(2026, 9, 29, 10, 0, 0, 0, seoul)
 
     /** ExitScheduler 는 이제 보유 현황을 REST 대신 PortfolioService(DB)로 본다. */
-    private fun portfolioServiceWithHolding(): PortfolioService {
-        val price = BigDecimal("272000")
+    private fun portfolioServiceWithHolding(
+        quantity: Int = 1,
+        price: BigDecimal = BigDecimal("272000"),
+    ): PortfolioService {
         val zero = BigDecimal.ZERO
-        val holding = HoldingView(Market.KR, "005930", 1, price, price, false, zero, zero, zero)
+        val holding = HoldingView(Market.KR, "005930", quantity, price, price, zero, zero, zero)
         val summary =
             PortfolioSummary(
                 "KRW", listOf(holding), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -94,6 +98,7 @@ class ExitSchedulerTest {
         Mockito.mock(SymbolStrategyService::class.java),
         tradeService,
         portfolioServiceWithHolding(),
+        Mockito.mock(HoldingSyncService::class.java),
         ExitProperties(enabled = true),
     )
 
@@ -153,13 +158,16 @@ class ExitSchedulerTest {
                 Trade(Market.KR, "005930", Side.BUY, qty, BigDecimal(price), "0", "ok", initialFilledPrice = BigDecimal(price))
             }
         Mockito.`when`(tradeService.trades(Market.KR, "005930")).thenReturn(trades)
+        // 잔고 테이블은 사이클의 실제 보유 수량·평단과 같다고 본다.
+        val cycle = MartingaleCycle.from(trades)
         return ExitScheduler(
             broker,
             RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
             FixedPercentExitRule(BigDecimal("0.5"), null),
             symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", martingale = true)),
             tradeService,
-            portfolioServiceWithHolding(),
+            portfolioServiceWithHolding(cycle.quantity, cycle.averagePrice!!),
+            Mockito.mock(HoldingSyncService::class.java),
             ExitProperties(enabled = true),
         )
     }
@@ -200,6 +208,7 @@ class ExitSchedulerTest {
                 symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", takeProfit = "2")),
                 Mockito.mock(TradeService::class.java),
                 portfolioServiceWithHolding(),
+                Mockito.mock(HoldingSyncService::class.java),
                 ExitProperties(enabled = true),
             ).checkExits(krOpen)
             return broker.orders.isNotEmpty()

@@ -4,6 +4,7 @@ import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
+import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.HoldingView
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.TradeService
@@ -48,6 +49,7 @@ class ExitScheduler(
     private val symbolStrategyService: SymbolStrategyService,
     private val tradeService: TradeService,
     private val portfolioService: PortfolioService,
+    private val holdingSync: HoldingSyncService,
     private val properties: ExitProperties,
 ) {
     private val lastSellAt = ConcurrentHashMap<String, Instant>()
@@ -80,6 +82,8 @@ class ExitScheduler(
         now: Instant,
     ) {
         if (holding.quantity <= 0) return
+        // 이 종목에 잔고 동기화보다 늦은 주문이 있으면 잔고 테이블이 아직 낡았다 — 이미 판 수량을 또 팔지 않게 다음 동기화까지 미룬다.
+        if (holdingSync.hasUnsyncedTrade(holding.market, holding.symbol)) return
         val key = "${holding.market}:${holding.symbol}"
         val last = lastSellAt[key]
         if (last != null && Duration.between(last, now) < properties.cooldown) return
@@ -91,7 +95,10 @@ class ExitScheduler(
         var signal = rule.evaluate(holding.avgCost, quote)
         // 마틴게일 종목의 손절은 전역 손절(보류)이 아니라 최대 단계 매수 뒤에만 있는 별도 손절이다.
         if (signal == ExitSignal.HOLD && config?.martingale == true) {
-            val cycle = MartingaleCycle.from(tradeService.trades(holding.market, holding.symbol))
+            val cycle =
+                MartingaleCycle.from(
+                    tradeService.trades(holding.market, holding.symbol),
+                ).withAccount(holding.quantity, holding.avgCost)
             if (MartingaleRule(config.martingaleProperties()).shouldStopLoss(cycle, quote)) signal = ExitSignal.STOP_LOSS
         }
         if (signal == ExitSignal.HOLD) return

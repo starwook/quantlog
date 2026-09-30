@@ -65,6 +65,22 @@ class MartingaleRuleTest {
         assertFalse(stopLoss.holding)
     }
 
+    @Test
+    fun `잔고가 있으면 수량·평단은 잔고 값이고 단계는 최소 1이다`() {
+        val cycle = MartingaleCycle(emptyList(), null).withAccount(3, BigDecimal("271000"))
+        assertTrue(cycle.holding)
+        assertEquals(3, cycle.quantity)
+        assertEquals("271000", price(cycle.averagePrice))
+        assertEquals(1, cycle.stage)
+    }
+
+    @Test
+    fun `매매 기록에 매수가 남아도 잔고에 없으면 보유 중이 아니다`() {
+        val cycle = cycleOf(1 to "272000").withAccount(null, null)
+        assertFalse(cycle.holding)
+        assertNull(cycle.averagePrice)
+    }
+
     // ── 추가 매수 ──
 
     @Test

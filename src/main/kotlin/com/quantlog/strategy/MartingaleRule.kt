@@ -39,18 +39,37 @@ data class CycleSell(val price: BigDecimal, val takeProfit: Boolean)
 data class MartingaleCycle(
     val buys: List<CycleBuy>,
     val lastSell: CycleSell?,
+    /** KIS 잔고 테이블의 실제 보유 수량·평단. 있으면 매매 기록 대신 이 값이 기준이다([withAccount]). */
+    private val accountQuantity: Int? = null,
+    private val accountAverage: BigDecimal? = null,
 ) {
-    val stage: Int get() = buys.size
-    val holding: Boolean get() = buys.isNotEmpty()
+    /** 단계 = 사이클의 매수 건수. 증권사 앱에서 직접 산 물량만 있고 봇 매수가 없어도 보유 중이면 최소 1단계. */
+    val stage: Int get() = if (accountQuantity != null) maxOf(buys.size, 1) else buys.size
+    val holding: Boolean get() = accountQuantity != null || buys.isNotEmpty()
 
     /** 이 사이클에서 지금 들고 있는 총 수량. */
-    val quantity: Int get() = buys.sumOf { it.quantity }
+    val quantity: Int get() = accountQuantity ?: buys.sumOf { it.quantity }
 
-    /** 이 사이클의 평단(수량 가중 평균). 보유 중이 아니면 null. */
+    /** 이 사이클의 평단. 잔고가 있으면 그 평단, 없으면 매수 기록의 수량 가중 평균. 보유 중이 아니면 null. */
     val averagePrice: BigDecimal?
         get() {
+            if (accountAverage != null) return accountAverage
             if (buys.isEmpty()) return null
             return buys.sumOf { it.price.multiply(BigDecimal(it.quantity)) }.divide(BigDecimal(quantity), MathContext.DECIMAL64)
+        }
+
+    /**
+     * 실제 보유(KIS 잔고 테이블)를 반영한다: 잔고에 없으면 보유 중이 아니고(매매 기록상 매수가 남았어도 앱에서 팔았을 수 있다),
+     * 있으면 수량·평단은 잔고 값을 쓴다. 단계와 직전 매도는 매매 기록에서 온다.
+     */
+    fun withAccount(
+        quantity: Int?,
+        average: BigDecimal?,
+    ): MartingaleCycle =
+        if (quantity == null || quantity <= 0) {
+            copy(buys = emptyList(), accountQuantity = null, accountAverage = null)
+        } else {
+            copy(accountQuantity = quantity, accountAverage = average)
         }
 
     companion object {
@@ -78,8 +97,8 @@ data class MartingaleCycle(
 }
 
 /**
- * 마틴게일 판정. 추가 매수 기준은 **평단**이다(2026-09-30 사용자 결정: 증권사 앱에서 직접 산 물량도 KIS 잔고 동기화로
- * 매매 기록에 들어오므로 "직전 매수가"보다 평단이 실제 보유 상태를 그대로 반영한다). 추가 매수 수량도 직전 매수가 아니라 현재 보유 수량 기준이다.
+ * 마틴게일 판정. 추가 매수 기준은 **평단**이다(2026-09-30 사용자 결정: 증권사 앱에서 직접 산 물량도 KIS 잔고에
+ * 들어 있으므로 "직전 매수가"보다 평단이 실제 보유 상태를 그대로 반영한다). 추가 매수 수량도 직전 매수가 아니라 현재 보유 수량 기준이다.
  * 모든 가격은 호가 단위로 맞춘다(청산 목표가와 같은 방식).
  * 물타기(평단 낮추기)를 금지하던 원칙은 이 전략과 정면으로 충돌해서 폐기했다(playbook/principles.md).
  */

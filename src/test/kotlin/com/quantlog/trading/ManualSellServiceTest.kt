@@ -68,7 +68,7 @@ class ManualSellServiceTest {
     private fun holding(quantity: Int) {
         val price = BigDecimal("272000")
         val zero = BigDecimal.ZERO
-        val holding = HoldingView(Market.KR, "005930", quantity, price, price, false, zero, zero, zero)
+        val holding = HoldingView(Market.KR, "005930", quantity, price, price, zero, zero, zero)
         val summary = PortfolioSummary("KRW", listOf(holding), zero, zero, zero, zero, zero, zero, zero, zero)
         Mockito.`when`(portfolioService.snapshot()).thenReturn(PortfolioSnapshot(emptyList(), emptyMap(), mapOf("KRW" to summary)))
     }

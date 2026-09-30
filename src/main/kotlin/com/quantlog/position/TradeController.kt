@@ -34,7 +34,6 @@ data class HoldingRow(
     val quantity: Int,
     val avgCost: String,
     val currentPrice: String,
-    val stale: Boolean,
     val valueText: String,
     val pnlText: String,
     val pnlCss: String,
@@ -65,7 +64,7 @@ class TradeController(
 ) {
     @GetMapping("/")
     fun trades(model: Model): String {
-        val snapshot = portfolioService.accountSnapshot()
+        val snapshot = portfolioService.snapshot()
 
         val summaries = snapshot.summaryByCurrency.values.sortedBy { it.currency }.map { it.toView() }
         val rows =
@@ -150,7 +149,6 @@ class TradeController(
             quantity = quantity,
             avgCost = avgCost.money(market.currency),
             currentPrice = currentPrice.money(market.currency),
-            stale = priceStale,
             valueText = value.money(market.currency),
             pnlText = "${unrealizedPnl.signedMoney(market.currency)} (${unrealizedPnlPercent.percentText()})",
             pnlCss = unrealizedPnl.pnlCss(),

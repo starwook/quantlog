@@ -1,14 +1,9 @@
 package com.quantlog.position
 
-import com.quantlog.broker.BrokerClient
-import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
-import com.quantlog.trading.HoldingSyncService
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
-import org.mockito.Mockito.never
-import org.mockito.Mockito.verify
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -17,62 +12,49 @@ import kotlin.test.assertTrue
 
 class PortfolioServiceTest {
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
-    private val broker = Mockito.mock(BrokerClient::class.java)
-    private val service = PortfolioService(tradeRepository, broker, Mockito.mock(HoldingSyncService::class.java))
+    private val accountHoldingRepository = Mockito.mock(AccountHoldingRepository::class.java)
+    private val service = PortfolioService(tradeRepository, accountHoldingRepository)
 
-    private val samsung =
-        Holding(
-            market = Market.KR,
-            symbol = "005930",
-            name = "삼성전자",
-            quantity = BigDecimal(3),
-            averagePrice = BigDecimal("70000"),
-            currentPrice = BigDecimal("71000"),
-        )
+    private fun holdingRow(
+        quantity: Int,
+        avg: String,
+        current: String,
+    ) = AccountHolding(Market.KR, "005930", quantity, BigDecimal(avg), BigDecimal(current))
 
     @Test
-    fun `화면용 스냅샷은 매매 기록이 비어 있어도 KIS 잔고를 보여준다`() {
+    fun `보유 현황은 매매 기록이 비어 있어도 잔고 테이블 값을 그대로 보여준다`() {
         Mockito.`when`(tradeRepository.findAll()).thenReturn(emptyList())
-        Mockito.`when`(broker.holdings(Market.KR)).thenReturn(listOf(samsung))
+        Mockito.`when`(accountHoldingRepository.findAll()).thenReturn(listOf(holdingRow(3, "70000", "71000")))
 
-        val summary = service.accountSnapshot().summaryByCurrency.getValue("KRW")
+        val holding = service.snapshot().summaryByCurrency.getValue("KRW").holdings.single()
 
-        val holding = summary.holdings.single()
         assertEquals("005930", holding.symbol)
         assertEquals(3, holding.quantity)
+        assertEquals(0, BigDecimal("70000").compareTo(holding.avgCost))
         assertEquals(0, BigDecimal("213000").compareTo(holding.value))
         assertEquals(0, BigDecimal("3000").compareTo(holding.unrealizedPnl))
     }
 
     @Test
-    fun `KIS 잔고 조회가 실패하면 매매 기록 기반 보유 현황으로 대체한다`() {
-        Mockito.`when`(tradeRepository.findAll()).thenReturn(emptyList())
-        Mockito.`when`(broker.holdings(Market.KR)).thenThrow(RuntimeException("KIS 오류"))
+    fun `매매 기록에 매수가 남아 있어도 잔고 테이블에 없으면 보유 중이 아니다`() {
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(listOf(trade(Market.KR, Side.BUY, Instant.now())))
+        Mockito.`when`(accountHoldingRepository.findAll()).thenReturn(emptyList())
 
-        val snapshot = service.accountSnapshot()
-
-        assertTrue(snapshot.summaryByCurrency.values.all { it.holdings.isEmpty() })
-    }
-
-    @Test
-    fun `매매 판단용 스냅샷은 KIS 잔고를 조회하지 않는다`() {
-        Mockito.`when`(tradeRepository.findAll()).thenReturn(emptyList())
-
-        service.snapshot()
-
-        verify(broker, never()).holdings(Market.KR)
+        assertTrue(service.snapshot().summaryByCurrency.values.all { it.holdings.isEmpty() })
     }
 
     private fun trade(
         market: Market,
         side: Side,
         executedAt: Instant,
+        quantity: Int = 1,
+        price: String = "100",
     ) = Trade(
         market = market,
         symbol = if (market == Market.KR) "005930" else "AAPL",
         side = side,
-        quantity = 1,
-        orderPrice = BigDecimal("100"),
+        quantity = quantity,
+        orderPrice = BigDecimal(price),
         orderNo = "1",
         message = "ok",
         executedAt = executedAt,
