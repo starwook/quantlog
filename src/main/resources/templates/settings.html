@@ -91,7 +91,7 @@
                 <label>최대 단계
                     <input type="number" step="1" min="1" name="martingaleMaxStages" th:value="${row.second.martingaleMaxStages}" required>
                 </label>
-                <label>마지막 단계 손절 % <small>마지막 매수가 대비</small>
+                <label>마지막 단계 손절 % <small>평단 대비</small>
                     <input type="number" step="any" min="0" name="martingaleFinalStageStopLossPercent" th:value="${row.second.martingaleFinalStageStopLossPercent.stripTrailingZeros().toPlainString()}" required>
                 </label>
                 <label>익절 뒤 재진입 하락 % <small>직전 매도가 대비</small>

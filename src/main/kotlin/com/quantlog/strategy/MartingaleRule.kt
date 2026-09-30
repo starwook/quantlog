@@ -9,7 +9,7 @@ import java.math.MathContext
 
 /**
  * 2026-09-30 사용자 지정: 첫 1주 매수 후 평단 대비 0.5% 떨어질 때마다 직전 매수 수량의 2배 추가 매수(최대 5단계),
- * 5단계까지 산 뒤 5단계 매수가 대비 3% 더 떨어지면 손절. 익절 뒤엔 매도가 -0.5%, 손절 뒤엔 매도가 -1%에서 재진입.
+ * 최대 단계까지 산 뒤 평단 대비 3% 더 떨어지면 손절. 익절 뒤엔 매도가 -0.5%, 손절 뒤엔 매도가 -1%에서 재진입.
  * (처음 -1%로 시작했다가 "오늘은 수익률보다 최대한 많이 거래"가 목표라 0.5%로 줄임.)
  *
  * 종목별 실제 값은 DB(watchlist.SymbolStrategy)가 갖고, 여기(application.yml)는 새 종목 행을 만들 때 쓰는 기본값이다.
@@ -34,7 +34,7 @@ data class CycleSell(val price: BigDecimal, val takeProfit: Boolean)
  * [lastSell] 은 그 직전에 끝난 사이클의 매도다.
  *
  * 익절/손절 구분은 "매도가 > 그 사이클 평단"으로 한다. 매도 사유 컬럼을 새로 두면 스키마·기록 경로가 늘어나는데,
- * 이 전략에선 손절 매도가가 항상 평단보다 한참 아래(5단계 매수가 -3%)이고 익절은 평단 +1% 근처라 가격만으로 갈린다.
+ * 이 전략에선 손절 매도가가 항상 평단보다 한참 아래(평단 -3%)이고 익절은 평단 +1% 근처라 가격만으로 갈린다.
  */
 data class MartingaleCycle(
     val buys: List<CycleBuy>,
@@ -107,13 +107,13 @@ class MartingaleRule(
         return if (quote.price <= addOnTriggerPrice(average, quote)) last.quantity * properties.multiplier else null
     }
 
-    /** 최대 단계 매수를 마친 뒤에만 있는 손절가: 마지막 매수가 -3%. 1~4단계엔 null(손절 없음). */
+    /** 최대 단계 매수를 마친 뒤에만 있는 손절가: 평단 -3%(2026-09-30 사용자 결정: 마지막 매수가는 불안정해서 평단 기준). 그 전 단계엔 null(손절 없음). */
     fun stopLossPrice(
         cycle: MartingaleCycle,
         quote: Quote,
     ): BigDecimal? {
         if (cycle.stage < properties.maxStages) return null
-        return below(cycle.buys.last().price, properties.finalStageStopLossPercent, quote)
+        return below(cycle.averagePrice ?: return null, properties.finalStageStopLossPercent, quote)
     }
 
     fun shouldStopLoss(

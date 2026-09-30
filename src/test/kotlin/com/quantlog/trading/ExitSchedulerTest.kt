@@ -167,15 +167,16 @@ class ExitSchedulerTest {
     private val fiveStages = arrayOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500", 16 to "266000")
 
     @Test
-    fun `마틴게일 5단계 손절 경계 - 마지막 매수가 -3퍼센트 이하면 전량 매도`() {
-        val broker = FakeBroker(BigDecimal("258000"))
+    fun `마틴게일 5단계 손절 경계 - 평단 -3퍼센트 이하면 전량 매도`() {
+        // 평단 = 8,285,000 / 31 ≈ 267,258 → × 0.97 = 259,240 → 259,000
+        val broker = FakeBroker(BigDecimal("259000"))
         martingaleScheduler(broker, *fiveStages).checkExits(krOpen)
         assertEquals(Side.SELL, broker.orders.single().side)
     }
 
     @Test
     fun `마틴게일 5단계라도 손절가 위면 팔지 않는다`() {
-        val broker = FakeBroker(BigDecimal("258500"))
+        val broker = FakeBroker(BigDecimal("259500"))
         martingaleScheduler(broker, *fiveStages).checkExits(krOpen)
         assertTrue(broker.orders.isEmpty())
     }
