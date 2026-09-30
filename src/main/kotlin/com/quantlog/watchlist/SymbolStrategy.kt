@@ -155,21 +155,21 @@ class SymbolStrategyService(
 
     /**
      * 없는 종목 행만 기본값으로 채운다. 기본값은 application.yml 의 quantlog.strategy.* 이고,
-     * 자동 매수·마틴게일은 삼성전자만 켠다(2026-09-30 "오늘은 삼전만 매수"). 이미 있는 행은 건드리지 않는다.
+     * 자동 매수·마틴게일은 [WatchedSymbol.tradeByDefault] 종목만 켠다(2026-09-30 KODEX 코스닥150레버리지만). 이미 있는 행은 건드리지 않는다.
      */
     fun seedMissing() {
         WatchedSymbol.entries
             .filter { repository.findByMarketAndSymbol(it.market, it.symbol) == null }
             .forEach {
-                val samsung = it == WatchedSymbol.SAMSUNG
+                val trade = it.tradeByDefault
                 repository.save(
                     SymbolStrategy(
                         market = it.market,
                         symbol = it.symbol,
-                        autoTrade = samsung,
+                        autoTrade = trade,
                         takeProfitPercent = strategyProperties.takeProfitPercent,
                         stopLossPercent = strategyProperties.stopLossPercent,
-                        martingale = samsung,
+                        martingale = trade,
                         martingaleDropPercent = martingaleProperties.dropPercent,
                         martingaleMultiplier = martingaleProperties.multiplier,
                         martingaleMaxStages = martingaleProperties.maxStages,
@@ -178,7 +178,7 @@ class SymbolStrategyService(
                         martingaleStopReentryDropPercent = martingaleProperties.stopReentryDropPercent,
                     ),
                 )
-                log.info { "[종목 설정] 기본값으로 생성: ${it.market} ${it.symbol} autoTrade=$samsung" }
+                log.info { "[종목 설정] 기본값으로 생성: ${it.market} ${it.symbol} autoTrade=$trade" }
             }
     }
 }
