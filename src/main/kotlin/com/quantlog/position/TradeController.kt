@@ -51,6 +51,8 @@ data class SummaryView(
     val realizedTodayCss: String,
     val realizedTotalText: String,
     val realizedTotalCss: String,
+    val buyCountTodayText: String,
+    val sellCountTodayText: String,
     val holdingCount: Int,
     val holdings: List<HoldingRow>,
 )
@@ -112,6 +114,8 @@ class TradeController(
             realizedTodayCss = realizedPnlToday.pnlCss(),
             realizedTotalText = "${realizedPnlTotal.signedMoney(currency)} (${realizedPnlTotalPercent.percentText()})",
             realizedTotalCss = realizedPnlTotal.pnlCss(),
+            buyCountTodayText = "${buyCountToday}회",
+            sellCountTodayText = "${sellCountToday}회",
             holdingCount = holdings.size,
             holdings = holdings.map { it.toRow() },
         )

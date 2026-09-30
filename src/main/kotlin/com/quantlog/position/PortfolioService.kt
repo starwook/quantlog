@@ -41,6 +41,9 @@ data class PortfolioSummary(
     val realizedPnlTodayPercent: BigDecimal,
     val realizedPnlTotal: BigDecimal,
     val realizedPnlTotalPercent: BigDecimal,
+    /** 오늘(KST) 접수된 매수·매도 주문 건수. 손익과 달리 체결 여부와 무관하게 [Trade] 기록 수 그대로 센다. */
+    val buyCountToday: Int = 0,
+    val sellCountToday: Int = 0,
 )
 
 data class PortfolioSnapshot(
@@ -84,12 +87,18 @@ class PortfolioService(
         val lotsByKey = mutableMapOf<Pair<Market, String>, ArrayDeque<Lot>>()
         val realizedByCurrency = mutableMapOf<String, RealizedAcc>()
         val pnlByTradeId = mutableMapOf<Long, RealizedPnl>()
+        val buyCountTodayByCurrency = mutableMapOf<String, Int>()
+        val sellCountTodayByCurrency = mutableMapOf<String, Int>()
 
         trades.forEach { trade ->
             val key = trade.market to trade.symbol
             val lots = lotsByKey.getOrPut(key) { ArrayDeque() }
             // 실제 체결가가 있으면 그걸 쓴다 — 지정가와 다를 수 있다 (2026-09-29: 국내는 지정가·체결가가 꽤 벌어진 적 있었음).
             val price = trade.filledPrice ?: trade.orderPrice
+            if (trade.executedAt.atZone(KST).toLocalDate() == today) {
+                val counts = if (trade.side == Side.BUY) buyCountTodayByCurrency else sellCountTodayByCurrency
+                counts.merge(trade.market.currency, 1, Int::plus)
+            }
             when (trade.side) {
                 Side.BUY -> lots.addLast(Lot(trade.quantity, price))
                 Side.SELL -> {
@@ -126,7 +135,9 @@ class PortfolioService(
         val holdingsByCurrency =
             (if (useAccountHoldings) holdingsFromAccount() else null) ?: holdingsFromTrades(lotsByKey)
 
-        val currencies = (holdingsByCurrency.keys + realizedByCurrency.keys).ifEmpty { setOf("USD") }
+        val currencies =
+            (holdingsByCurrency.keys + realizedByCurrency.keys + buyCountTodayByCurrency.keys + sellCountTodayByCurrency.keys)
+                .ifEmpty { setOf("USD") }
         val summaryByCurrency =
             currencies.associateWith { currency ->
                 val holdings = holdingsByCurrency[currency].orEmpty()
@@ -145,6 +156,8 @@ class PortfolioService(
                     realizedPnlTodayPercent = percentOf(realized.todayAmount, realized.todayCost),
                     realizedPnlTotal = realized.totalAmount,
                     realizedPnlTotalPercent = percentOf(realized.totalAmount, realized.totalCost),
+                    buyCountToday = buyCountTodayByCurrency[currency] ?: 0,
+                    sellCountToday = sellCountTodayByCurrency[currency] ?: 0,
                 )
             }
 
