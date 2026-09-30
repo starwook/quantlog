@@ -3,6 +3,7 @@ package com.quantlog.position
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
+import com.quantlog.watchlist.symbolStrategyServiceOf
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito
@@ -18,7 +19,7 @@ class HoldingSyncServiceTest {
     private val symbol = "005930"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
-    private val service = HoldingSyncService(repository, tradeRepository)
+    private val service = HoldingSyncService(repository, tradeRepository, symbolStrategyServiceOf())
     private val now = Instant.parse("2026-09-30T05:00:00Z")
 
     private fun kis(

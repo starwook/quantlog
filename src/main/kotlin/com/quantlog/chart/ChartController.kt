@@ -3,8 +3,7 @@ package com.quantlog.chart
 import com.quantlog.broker.Market
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.TradeRepository
-import com.quantlog.watchlist.WatchedSymbol
-import com.quantlog.watchlist.displayNameOf
+import com.quantlog.watchlist.SymbolStrategyService
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
@@ -48,6 +47,7 @@ data class ChartData(val candles: List<CandlePoint>, val trades: List<TradeMarke
 class ChartController(
     private val marketDataService: MarketDataService,
     private val tradeRepository: TradeRepository,
+    private val symbolStrategyService: SymbolStrategyService,
 ) {
     @GetMapping("/chart/{market}/{symbol}")
     fun page(
@@ -57,8 +57,8 @@ class ChartController(
     ): String {
         model.addAttribute("market", market.name)
         model.addAttribute("symbol", symbol)
-        model.addAttribute("symbolName", displayNameOf(market, symbol))
-        model.addAttribute("watchedSymbols", WatchedSymbol.entries)
+        model.addAttribute("symbolName", symbolStrategyService.displayName(market, symbol))
+        model.addAttribute("watchedSymbols", symbolStrategyService.all())
         return "chart"
     }
 

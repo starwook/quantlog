@@ -21,16 +21,17 @@ data class KisProperties(
     val logRaw: Boolean = false,
     /** 모의투자 실시간 시세 WebSocket. 경로(/tryitout/H0STCNT0)는 공식 예제 기준 — 첫 연결 실패하면 로그로 확인 후 고친다. */
     val wsUrl: String = "ws://ops.koreainvestment.com:31000/tryitout/H0STCNT0",
-    /** false 면 실시간 시세를 안 켠다 — REST 폴링만으로 동작(기존과 동일). */
-    val realtimeEnabled: Boolean = false,
-    val realtimeSymbols: List<String> = listOf("005930", "091160"),
+    /** 실시간 동시 구독 종목 수 상한(KIS 세션당 제한). 넘는 종목은 REST 폴링으로 남는다. */
+    val realtimeMaxSubscriptions: Int = 40,
 ) {
     val accountNumber: String get() = account.substringBefore("-").trim()
     val accountProductCode: String get() =
         if (account.contains("-")) account.substringAfter("-").trim() else accountProduct
 
+    val hasCredentials: Boolean get() = appKey.isNotBlank() && appSecret.isNotBlank() && accountNumber.isNotBlank()
+
     fun requireCredentials() {
-        check(appKey.isNotBlank() && appSecret.isNotBlank() && accountNumber.isNotBlank()) {
+        check(hasCredentials) {
             "KIS 모의투자 설정이 비어 있습니다. 환경변수 KIS_MOCK_APP_KEY / KIS_MOCK_APP_SECRET / KIS_MOCK_ACCOUNT 를 설정하세요."
         }
     }

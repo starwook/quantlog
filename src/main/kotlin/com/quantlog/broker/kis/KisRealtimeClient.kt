@@ -3,12 +3,17 @@ package com.quantlog.broker.kis
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
+import com.quantlog.broker.PriceTick
+import com.quantlog.broker.RealtimePriceFeed
+import com.quantlog.broker.RealtimeSymbolSource
 import com.quantlog.chart.ChartBroadcaster
 import com.quantlog.marketdata.MinuteCandleStore
 import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
 import org.springframework.boot.context.event.ApplicationReadyEvent
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.event.EventListener
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.net.URI
@@ -37,7 +42,8 @@ data class LivePrice(val price: BigDecimal, val at: Instant)
  *     조회는 여전히 REST — 실시간은 가격만).
  * (2) 1분 단위로 묶어서 분봉 저장 — REST 폴링(EntryScheduler)과 saveIfNew 로 dedup 되어 공존 가능.
  * (3) 구독 중인 브라우저에 그대로 중계(ChartBroadcaster).
- * quantlog.kis.mock.realtime-enabled=false 면 아무것도 안 하고 기존 REST 폴링 방식 그대로 동작한다.
+ * (4) [PriceTick] 이벤트 발행 — 청산 감시 등이 틱에 바로 반응한다(수신 스레드에서는 가볍게 넘기기만 해야 한다).
+ * KIS 키가 없으면 켜지 않고(연결 안 됨 → isLive=false) REST 폴링만으로 동작한다.
  */
 @Component
 class KisRealtimeClient(
@@ -46,23 +52,42 @@ class KisRealtimeClient(
     private val candleStore: MinuteCandleStore,
     private val broadcaster: ChartBroadcaster,
     private val objectMapper: ObjectMapper,
-) {
+    private val eventPublisher: ApplicationEventPublisher,
+    private val symbolSource: RealtimeSymbolSource,
+) : RealtimePriceFeed {
     private val httpClient = HttpClient.newHttpClient()
     private val liveQuotes = ConcurrentHashMap<String, LivePrice>()
     private val inProgress = ConcurrentHashMap<String, MutableCandle>()
     private var webSocket: WebSocket? = null
 
+    @Volatile
+    private var connected = false
+
+    /** 지금 KIS 에 구독 걸려 있는 종목. 연결이 끊기면 비운다(재연결 뒤 [refreshSubscriptions] 가 다시 건다). */
+    private val subscribed = ConcurrentHashMap.newKeySet<String>()
+
+    /** java.net.http.WebSocket 은 이전 sendText 가 끝나기 전에 또 보내면 예외라서, 전송을 한 줄로 이어 보낸다. */
+    private var sendChain: CompletableFuture<*> = CompletableFuture.completedFuture(null)
+
     fun latestPrice(symbol: String): LivePrice? = liveQuotes[symbol]
+
+    override fun isLive(
+        market: Market,
+        symbol: String,
+    ): Boolean = connected && market == Market.KR && symbol in subscribed
 
     @EventListener(ApplicationReadyEvent::class)
     fun start() {
-        if (!properties.realtimeEnabled) return
-        properties.requireCredentials()
+        if (!properties.hasCredentials) {
+            log.warn { "[실시간 시세] KIS 키가 없어 실시간을 켜지 않는다 — REST 폴링만 동작" }
+            return
+        }
         connect()
     }
 
     @PreDestroy
     fun stop() {
+        connected = false
         webSocket?.sendClose(WebSocket.NORMAL_CLOSURE, "shutdown")
     }
 
@@ -71,7 +96,7 @@ class KisRealtimeClient(
             .buildAsync(URI.create(properties.wsUrl), Listener())
             .thenAccept { ws ->
                 webSocket = ws
-                properties.realtimeSymbols.forEach { subscribe(ws, it) }
+                refreshSubscriptions()
             }
             .exceptionally { e ->
                 log.warn(e) { "[실시간 시세] 연결 실패 — ${RECONNECT_DELAY.seconds}초 후 재시도" }
@@ -86,8 +111,21 @@ class KisRealtimeClient(
             .execute { connect() }
     }
 
-    private fun subscribe(
+    /** DB 기준 구독 목록과 실제 구독을 맞춘다. 종목이 추가·삭제되면 이 주기 안에 따라온다. */
+    @Scheduled(fixedDelay = REFRESH_INTERVAL_MILLIS, initialDelay = REFRESH_INTERVAL_MILLIS)
+    @Synchronized
+    fun refreshSubscriptions() {
+        val ws = webSocket?.takeIf { connected } ?: return
+        val wanted = symbolSource.symbols(Market.KR).take(properties.realtimeMaxSubscriptions).toSet()
+        (wanted - subscribed).forEach { send(ws, SUBSCRIBE, it) }
+        (subscribed - wanted).forEach { send(ws, UNSUBSCRIBE, it) }
+        subscribed.retainAll(wanted)
+        subscribed.addAll(wanted)
+    }
+
+    private fun send(
         ws: WebSocket,
+        trType: String,
         symbol: String,
     ) {
         val message =
@@ -97,13 +135,16 @@ class KisRealtimeClient(
                         mapOf(
                             "approval_key" to tokenProvider.approvalKey(),
                             "custtype" to "P",
-                            "tr_type" to "1",
+                            "tr_type" to trType,
                             "content-type" to "utf-8",
                         ),
                     "body" to mapOf("input" to mapOf("tr_id" to TR_ID, "tr_key" to symbol)),
                 ),
             )
-        ws.sendText(message, true)
+        sendChain =
+            sendChain
+                .handle { _, _ -> null }
+                .thenCompose { ws.sendText(message, true) }
     }
 
     private fun handle(raw: String) {
@@ -131,6 +172,7 @@ class KisRealtimeClient(
 
         liveQuotes[symbol] = LivePrice(price, Instant.now())
         accumulate(symbol, time, price, volume)
+        eventPublisher.publishEvent(PriceTick(Market.KR, symbol, price))
     }
 
     private fun accumulate(
@@ -166,6 +208,7 @@ class KisRealtimeClient(
 
         override fun onOpen(webSocket: WebSocket) {
             log.info { "[실시간 시세] 연결됨" }
+            connected = true
             webSocket.request(1)
         }
 
@@ -188,6 +231,8 @@ class KisRealtimeClient(
             statusCode: Int,
             reason: String,
         ): CompletionStage<*>? {
+            connected = false
+            subscribed.clear()
             log.warn { "[실시간 시세] 연결 종료(code=$statusCode, $reason) — ${RECONNECT_DELAY.seconds}초 후 재연결" }
             scheduleReconnect()
             return null
@@ -197,6 +242,7 @@ class KisRealtimeClient(
             webSocket: WebSocket,
             error: Throwable,
         ) {
+            connected = false
             log.warn(error) { "[실시간 시세] 에러" }
         }
     }
@@ -211,6 +257,9 @@ class KisRealtimeClient(
 
     private companion object {
         const val TR_ID = "H0STCNT0"
+        const val SUBSCRIBE = "1"
+        const val UNSUBSCRIBE = "2"
+        const val REFRESH_INTERVAL_MILLIS = 10_000L
         const val SYMBOL_INDEX = 0
         const val TIME_INDEX = 1
         const val PRICE_INDEX = 2

@@ -32,10 +32,7 @@ kis:
     account: ${KIS_MOCK_ACCOUNT:}
     log-raw: ${KIS_MOCK_LOG_RAW:false}
     # 실시간 시세 WebSocket. 경로는 첫 연결 로그로 확인 필요(2026-09-29: 아직 실측 전).
-    realtime-enabled: ${KIS_REALTIME_ENABLED:false}
-    realtime-symbols:
-      - "005930"
-      - "091160"
+    # 구독 종목은 DB 의 보유 종목(account_holding)에서 자동으로 정한다 — realtime-max-subscriptions 는 동시 구독 상한.
 
 quantlog:
   notify:
@@ -71,14 +68,15 @@ quantlog:
     symbol: ${QUANTLOG_SMOKE_SYMBOL:AAPL}
     quantity: ${QUANTLOG_SMOKE_QUANTITY:1}
   exit:
-    # 청산 스케줄러: 정규장 동안 보유 현황(DB)을 보고 익절/손절 목표가에 닿으면 전량 매도한다.
+    # 청산 감시: 정규장 동안 보유 현황(DB)을 보고 익절/손절 목표가에 닿으면 전량 매도한다.
+    # 실시간(WebSocket)이 커버하는 종목은 틱마다 바로 판정하고, interval-millis 폴링은 나머지(해외 등)만 맡는다.
     # 2026-09-29: REST 잔고 조회 대신 DB 기반으로 바꿔서 초당 요청 한도 걱정 없이 1초로 좁힘.
     enabled: ${QUANTLOG_EXIT_ENABLED:true}
     interval-millis: 1000
   entry:
-    # 진입 스케줄러: 국내 정규장/미국 프리마켓~애프터마켓 동안 감시 종목(WatchedSymbol) 분봉을 보고
+    # 진입 스케줄러: 국내 정규장/미국 프리마켓~애프터마켓 동안 감시 종목(DB symbol_strategy) 분봉을 보고
     # 저점 근접+반등 신호가 뜨면 소량 매수한다. 감시 종목 목록·자동매매 대상 여부는
-    # 수집 대상은 com.quantlog.watchlist.WatchedSymbol, 실제 매수 대상·종목별 값은 DB symbol_strategy 에서 관리한다(여기 yaml이 아님).
+    # 감시 종목·실제 매수 대상·종목별 값은 모두 DB symbol_strategy 에서 관리한다(여기 yaml이 아님).
     # 검증 전 규칙(playbook/principles.md "아직 정하는 중") — 끄려면 false로.
     enabled: ${QUANTLOG_ENTRY_ENABLED:true}
     quantity-per-order: 1

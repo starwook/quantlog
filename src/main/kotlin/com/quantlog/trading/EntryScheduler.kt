@@ -14,7 +14,6 @@ import com.quantlog.strategy.MartingaleRule
 import com.quantlog.strategy.SupportBounceEntryRule
 import com.quantlog.watchlist.SymbolStrategy
 import com.quantlog.watchlist.SymbolStrategyService
-import com.quantlog.watchlist.WatchedSymbol
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.scheduling.annotation.Scheduled
@@ -45,7 +44,7 @@ data class EntryProperties(
 
 /**
  * 진입 스케줄러 (분봉 저점 근접+반등 신호, AI 없이 순수 규칙 — playbook/principles.md "아직 정하는 중").
- * 정규장(국내) 또는 프리마켓~애프터마켓(미국, Market.isTradable) 동안 [WatchedSymbol] 전체의 분봉을 받아
+ * 정규장(국내) 또는 프리마켓~애프터마켓(미국, Market.isTradable) 동안 DB 감시 종목(symbol_strategy) 전체의 분봉을 받아
  * DB에 쌓는다 — 차트·백테스트가 쓸 데이터라 매매 대상 여부와 무관하게 항상 수집한다
  * (2026-09-29: "SK하이닉스는 화면엔 있는데 분봉이 안 쌓인다"는 지적으로, 수집 대상과 매매 대상을 분리함).
  * 매매는 그중 DB 설정([SymbolStrategy.autoTrade])이 켜진 것만 — SupportBounceEntryRule 이 BUY 를 내면 소량
@@ -66,7 +65,6 @@ class EntryScheduler(
     private val tradeService: TradeService,
     private val portfolioService: PortfolioService,
     private val holdingSync: HoldingSyncService,
-    private val watchedSymbols: List<WatchedSymbol>,
     private val properties: EntryProperties,
 ) {
     private val lastSignalAt = ConcurrentHashMap<String, Instant>()
@@ -86,24 +84,26 @@ class EntryScheduler(
                 .onFailure { log.warn(it) { "[진입 감시] 보유 현황 조회 실패" } }
                 .getOrNull() ?: return
 
-        watchedSymbols.forEach { watched ->
+        // 감시 종목 목록도 DB 가 정본이다 — 매 주기 새로 읽어서 종목을 추가·삭제하면 바로 반영된다.
+        val watchlist =
+            runCatching { symbolStrategyService.all() }
+                .onFailure { log.warn(it) { "[진입 감시] 감시 종목 조회 실패" } }
+                .getOrNull() ?: return
+
+        watchlist.forEach { watched ->
             if (!watched.market.isTradable(now)) return@forEach
 
             // 분봉 수집은 매매 대상 여부와 무관하게 항상 한다.
             runCatching { marketDataService.fetchAndStoreRecentMinutes(watched.market, watched.symbol, LocalTime.now(KST)) }
                 .onFailure { log.warn(it) { "[분봉 수집] 실패: ${watched.market} ${watched.symbol}" } }
 
-            // 어떤 종목을 살지·마틴게일 여부는 DB(symbol_strategy)가 정한다. 행이 없거나 조회 실패면 사지 않는다.
-            val config =
-                runCatching { symbolStrategyService.find(watched.market, watched.symbol) }
-                    .onFailure { log.warn(it) { "[종목 설정] 조회 실패: ${watched.market} ${watched.symbol}" } }
-                    .getOrNull()
-            if (config == null || !config.autoTrade) return@forEach
+            // 어떤 종목을 살지·마틴게일 여부도 같은 행(symbol_strategy)이 정한다.
+            if (!watched.autoTrade) return@forEach
             // 이 종목에 잔고 동기화보다 늦은 주문이 있으면 보유 현황이 낡았다 — 중복 매수를 막으려고 다음 동기화까지 미룬다.
             if (holdingSync.hasUnsyncedTrade(watched.market, watched.symbol)) return@forEach
 
-            if (config.martingale) {
-                runCatching { checkMartingale(watched, config, snapshot, now.toInstant()) }
+            if (watched.martingale) {
+                runCatching { checkMartingale(watched, snapshot, now.toInstant()) }
                     .onFailure { log.warn(it) { "[진입 감시] 실패: ${watched.market} ${watched.symbol}" } }
                 return@forEach
             }
@@ -127,12 +127,11 @@ class EntryScheduler(
      * 평단은 체결가가 아직 안 채워졌으면 지정가(현재가+0.5%)라 최대 0.5% 어긋날 수 있다.
      */
     private fun checkMartingale(
-        watched: WatchedSymbol,
-        config: SymbolStrategy,
+        watched: SymbolStrategy,
         snapshot: PortfolioSnapshot,
         now: Instant,
     ) {
-        val martingaleRule = MartingaleRule(config.martingaleProperties())
+        val martingaleRule = MartingaleRule(watched.martingaleProperties())
         val key = "${watched.market}:${watched.symbol}"
         val lastFailure = lastMartingaleFailureAt[key]
         if (lastFailure != null && Duration.between(lastFailure, now) < properties.cooldown) return
@@ -167,7 +166,7 @@ class EntryScheduler(
     }
 
     private fun checkTarget(
-        watched: WatchedSymbol,
+        watched: SymbolStrategy,
         now: Instant,
     ) {
         val key = "${watched.market}:${watched.symbol}"
@@ -184,7 +183,7 @@ class EntryScheduler(
     }
 
     private fun buy(
-        watched: WatchedSymbol,
+        watched: SymbolStrategy,
         quantity: Int,
         reason: String,
     ) {

@@ -1,6 +1,6 @@
 package com.quantlog.position
 
-import com.quantlog.watchlist.displayNameOf
+import com.quantlog.watchlist.SymbolStrategyService
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
@@ -61,6 +61,7 @@ data class SummaryView(
 @Controller
 class TradeController(
     private val portfolioService: PortfolioService,
+    private val symbolStrategyService: SymbolStrategyService,
 ) {
     @GetMapping("/")
     fun trades(model: Model): String {
@@ -84,7 +85,7 @@ class TradeController(
             executedAtKst = TIME_FORMAT.format(executedAt.atZone(KST)),
             market = market.name,
             symbol = symbol,
-            symbolName = displayNameOf(market, symbol),
+            symbolName = symbolStrategyService.displayName(market, symbol),
             side = side.name,
             sideCss = side.name.lowercase(),
             quantity = quantity,
@@ -145,7 +146,7 @@ class TradeController(
         HoldingRow(
             market = market.name,
             symbol = symbol,
-            symbolName = displayNameOf(market, symbol),
+            symbolName = symbolStrategyService.displayName(market, symbol),
             quantity = quantity,
             avgCost = avgCost.money(market.currency),
             currentPrice = currentPrice.money(market.currency),

@@ -8,6 +8,7 @@ import java.math.BigDecimal
 fun symbolStrategy(
     market: Market,
     symbol: String,
+    displayName: String = symbol,
     autoTrade: Boolean = true,
     martingale: Boolean = false,
     takeProfit: String = "0.5",
@@ -15,6 +16,7 @@ fun symbolStrategy(
 ) = SymbolStrategy(
     market = market,
     symbol = symbol,
+    displayName = displayName,
     autoTrade = autoTrade,
     takeProfitPercent = BigDecimal(takeProfit),
     stopLossPercent = stopLoss?.let { BigDecimal(it) },
@@ -31,5 +33,6 @@ fun symbolStrategy(
 fun symbolStrategyServiceOf(vararg configs: SymbolStrategy): SymbolStrategyService {
     val service = Mockito.mock(SymbolStrategyService::class.java)
     configs.forEach { Mockito.`when`(service.find(it.market, it.symbol)).thenReturn(it) }
+    Mockito.`when`(service.all()).thenReturn(configs.toList())
     return service
 }
