@@ -41,6 +41,8 @@ data class HoldingRow(
 
 data class SummaryView(
     val currency: String,
+    /** 주문 가능 금액. 통화 표기까지 포함. 조회에 실패하면 그렇다고 적는다. */
+    val orderableCashText: String,
     val holdingsValueText: String,
     val costBasisText: String,
     val unrealizedText: String,
@@ -61,13 +63,14 @@ data class SummaryView(
 @Controller
 class TradeController(
     private val portfolioService: PortfolioService,
+    private val cashService: CashService,
     private val symbolStrategyService: SymbolStrategyService,
 ) {
     @GetMapping("/")
     fun trades(model: Model): String {
         val snapshot = portfolioService.snapshot()
 
-        val summaries = snapshot.summaryByCurrency.values.sortedBy { it.currency }.map { it.toView() }
+        val summaries = snapshot.summaryByCurrency.values.sortedBy { it.currency }.map { it.toView(cashService.orderableCash(it.currency)) }
         val rows =
             snapshot.trades
                 .sortedByDescending { it.executedAt }
@@ -104,9 +107,10 @@ class TradeController(
         return "${filled.money(currency)} (지정가 ${orderPrice.money(currency)})"
     }
 
-    private fun PortfolioSummary.toView() =
+    private fun PortfolioSummary.toView(cash: OrderableCash?) =
         SummaryView(
             currency = currency,
+            orderableCashText = cash.text(currency),
             holdingsValueText = holdingsValue.money(currency),
             costBasisText = costBasis.money(currency),
             unrealizedText = "${unrealizedPnl.signedMoney(currency)} (${unrealizedPnlPercent.percentText()})",
@@ -123,6 +127,13 @@ class TradeController(
             holdingCount = holdings.size,
             holdings = holdings.map { it.toRow() },
         )
+
+    private fun OrderableCash?.text(currency: String): String =
+        when {
+            this == null -> "조회 실패"
+            stale -> "${amount.money(currency)} $currency (갱신 실패, 마지막 값)"
+            else -> "${amount.money(currency)} $currency"
+        }
 
     /** 성공 비율(%). 소수점 첫째 자리 HALF_UP. 오늘 실현된 매도가 없으면 null. */
     private fun PortfolioSummary.winRatePercent(): BigDecimal? {
