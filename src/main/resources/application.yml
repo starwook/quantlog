@@ -34,9 +34,9 @@ kis:
 
 quantlog:
   broker:
-    # paper: 시세·분봉만 KIS 에서 받고 주문은 로컬에서 모킹 체결한다 (broker/paper/PaperBroker, 2026-10-02 기본값으로 전환).
-    # kis-mock: 주문도 KIS 모의투자로 낸다. 초기 자금·제세금은 PaperProperties 기본값 — 여기서 덮어쓴다.
-    type: ${QUANTLOG_BROKER_TYPE:paper}
+    # kis-mock: 주문도 KIS 모의투자로 낸다 (기본값. 2026-10-02 모킹 체결이 실제 체결가와 달라 다시 되돌림).
+    # paper: 시세·분봉만 KIS 에서 받고 주문은 로컬에서 모킹 체결한다 (broker/paper/PaperBroker). 초기 자금·제세금은 PaperProperties 기본값 — 여기서 덮어쓴다.
+    type: ${QUANTLOG_BROKER_TYPE:kis-mock}
   notify:
     # Discord/Slack Incoming Webhook URL (시크릿 — application-local.yml 에만 적는다). 비우면 알림 꺼짐.
     webhook-url: ${QUANTLOG_NOTIFY_WEBHOOK_URL:}
