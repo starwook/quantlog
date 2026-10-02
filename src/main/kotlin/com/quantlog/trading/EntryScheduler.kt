@@ -40,17 +40,18 @@ data class EntryProperties(
     val cooldown: Duration = Duration.ofMinutes(10),
     /** 주문 1건 수량. 검증 전 규칙이라 작게 시작한다. */
     val quantityPerOrder: Int = 1,
+    /** "5분 재매수" 옵션: 이 주기마다 보유가 0주인지 보고 1주를 산다. */
+    val rebuyInterval: Duration = Duration.ofMinutes(5),
 )
 
 /**
- * 진입 스케줄러 (분봉 저점 근접+반등 신호, AI 없이 순수 규칙 — playbook/principles.md "아직 정하는 중").
+ * 진입 스케줄러 (마틴게일 / 저점 판단 진입(분봉 저점 근접+반등 신호) / 5분 재매수 — 종목별 완전 별개 옵션, AI 없이 순수 규칙 — playbook/principles.md "아직 정하는 중").
  * 정규장(국내) 또는 프리마켓~애프터마켓(미국, Market.isTradable) 동안 DB 감시 종목(symbol_strategy) 전체의 분봉을 받아
  * DB에 쌓는다 — 차트·백테스트가 쓸 데이터라 매매 대상 여부와 무관하게 항상 수집한다
  * (2026-09-29: "SK하이닉스는 화면엔 있는데 분봉이 안 쌓인다"는 지적으로, 수집 대상과 매매 대상을 분리함).
- * 매매는 그중 DB 설정([SymbolStrategy.autoTrade])이 켜진 것만 — SupportBounceEntryRule 이 BUY 를 내면 소량
- * 매수 1건을 건다. 이미 보유 중인 종목은 다시 사지 않는다 — 단 DB 설정에서 martingale 을 켠 종목(기본값: 삼성전자)은
- * 예외로, 평단 대비 0.5% 떨어질 때마다 보유 수량이 2배가 되게 추가 매수하고 매도 뒤엔 가격이 내려오면 재진입한다
- * (2026-09-30, 물타기 금지 원칙 폐기 — [checkMartingale]). 주문은
+ * 매매는 그중 DB 설정([SymbolStrategy.autoTrade])이 켜진 것만, 그 안에서 마틴게일(보유 중 추가 매수) / 5분 재매수(보유 0주일 때 5분마다 1주) /
+ * 저점 판단 진입(보유 수량 무관, 신호 시 1주)을 각자 켜진 대로 독립 실행한다([checkMartingale]·[checkPeriodicRebuy]·[checkTarget]).
+ * 주문은
  * SmokeTestRunner/ExitScheduler 와 같은 RiskGuard.checkBuy(자본 배분·하루 손실 킬스위치 포함) →
  * 주문 → 매매 기록 순서를 거친다. "이미 보유 중인지"는 REST 잔고 조회 대신 PortfolioService(우리
  * 매매 기록 DB)로 본다 — ExitScheduler 와 같은 이유(초당 요청 한도 없이 스케줄 주기를 1초로 줄이기 위함).
@@ -69,6 +70,7 @@ class EntryScheduler(
 ) {
     private val lastSignalAt = ConcurrentHashMap<String, Instant>()
     private val lastMartingaleFailureAt = ConcurrentHashMap<String, Instant>()
+    private val lastRebuyCheckAt = ConcurrentHashMap<String, Instant>()
 
     @Scheduled(
         fixedDelayString = "\${quantlog.entry.interval-millis:30000}",
@@ -102,26 +104,29 @@ class EntryScheduler(
             // 이 종목에 잔고 동기화보다 늦은 주문이 있으면 보유 현황이 낡았다 — 중복 매수를 막으려고 다음 동기화까지 미룬다.
             if (holdingSync.hasUnsyncedTrade(watched.market, watched.symbol)) return@forEach
 
-            if (watched.martingale) {
+            // 세 진입 옵션은 완전히 별개다 — 서로의 조건·결과를 보지 않고 각자 판단한다(같은 주기에 둘 이상 주문이 나갈 수도 있다).
+            val held =
+                snapshot.summaryByCurrency[watched.market.currency]?.holdings?.any {
+                    it.market == watched.market && it.symbol == watched.symbol
+                } == true
+            if (watched.martingale && held) {
                 runCatching { checkMartingale(watched, snapshot, now.toInstant()) }
-                    .onFailure { log.warn(it) { "[진입 감시] 실패: ${watched.market} ${watched.symbol}" } }
-                return@forEach
+                    .onFailure { log.warn(it) { "[마틴게일] 실패: ${watched.market} ${watched.symbol}" } }
             }
-
-            // KRW 보유가 하나도 없으면(또는 USD) 요약 맵에 해당 통화 키 자체가 없다 — 조회 실패와 구분해야 한다.
-            val holdingSymbols = snapshot.summaryByCurrency[watched.market.currency]?.holdings?.map { it.symbol }?.toSet() ?: emptySet()
-            if (watched.symbol in holdingSymbols) return@forEach
-
-            runCatching { checkTarget(watched, now.toInstant()) }
-                .onFailure { log.warn(it) { "[진입 감시] 실패: ${watched.market} ${watched.symbol}" } }
+            if (watched.periodicRebuy) {
+                runCatching { checkPeriodicRebuy(watched, held, now.toInstant()) }
+                    .onFailure { log.warn(it) { "[5분 재매수] 실패: ${watched.market} ${watched.symbol}" } }
+            }
+            if (watched.supportBounceEntry) {
+                runCatching { checkTarget(watched, now.toInstant()) }
+                    .onFailure { log.warn(it) { "[저점 판단 진입] 실패: ${watched.market} ${watched.symbol}" } }
+            }
         }
     }
 
     /**
-     * martingale 종목의 단계·직전 매도는 매매 기록에서, 보유 수량·평단은 KIS 잔고 테이블에서 온다([MartingaleCycle]).
-     * - 보유 중: 평단 -0.5% 에 닿으면 보유 수량이 2배가 되게 추가 매수, 최대 단계면 더 사지 않는다(손절은 ExitScheduler).
-     * - 매도로 끝난 직후: 익절이면 매도가 -0.5%, 손절이면 -1% 에 닿을 때 첫 1주부터 재진입. SupportBounce 신호는 보지 않는다.
-     * - 매도 기록이 아직 없을 때(처음): SupportBounce 신호로만 시작한다.
+     * 마틴게일: 보유 중일 때만, 평단 -0.5% 에 닿으면 보유 수량이 2배가 되게 추가 매수하고 최대 단계면 더 사지 않는다(손절은 ExitScheduler).
+     * 단계는 매매 기록에서, 보유 수량·평단은 KIS 잔고 테이블에서 온다([MartingaleCycle]). 첫 진입·매도 뒤 재진입은 하지 않는다(2026-10-02 폐기).
      * 가격 조건이라 성공한 매수 뒤엔 쿨다운이 필요 없다(다음 트리거는 또 -0.5%가 필요해서 자연히 걸러짐).
      * 실패(리스크 가드 거부 등)했을 땐 매초 재시도·로그 스팸을 막으려고 쿨다운을 건다.
      * 평단은 체결가가 아직 안 채워졌으면 지정가(현재가+0.5%)라 최대 0.5% 어긋날 수 있다.
@@ -141,23 +146,12 @@ class EntryScheduler(
                 ?.firstOrNull { it.market == watched.market && it.symbol == watched.symbol }
         val cycle = MartingaleCycle.from(tradeService.trades(watched.market, watched.symbol)).withAccount(held?.quantity, held?.avgCost)
         val quote = broker.quote(watched.market, watched.symbol)
-        val (quantity, reason) =
-            when {
-                cycle.holding -> {
-                    val quantity = martingaleRule.nextQuantity(cycle, quote) ?: return
-                    val average = cycle.averagePrice!!
-                    quantity to
-                        "진입 스케줄러: ${cycle.stage + 1}단계 — 평단 $average 대비 " +
-                        "${martingaleRule.addOnTriggerPrice(average, quote)} 이하로 하락 → 보유 ${cycle.quantity}주 기준 ${quantity}주 " +
-                        "추가 매수 (MartingaleRule)"
-                }
-                martingaleRule.shouldReenter(cycle, quote) ->
-                    properties.quantityPerOrder to
-                        "진입 스케줄러: 직전 매도가 ${cycle.lastSell?.price} 대비 ${martingaleRule.reentryTriggerPrice(cycle, quote)} " +
-                        "이하로 하락 → 1단계 재진입 (MartingaleRule, 직전 사이클 ${if (cycle.lastSell?.takeProfit == true) "익절" else "손절"})"
-                cycle.lastSell != null -> return
-                else -> return checkTarget(watched, now)
-            }
+        val quantity = martingaleRule.nextQuantity(cycle, quote) ?: return
+        val average = cycle.averagePrice!!
+        val reason =
+            "진입 스케줄러: ${cycle.stage + 1}단계 — 평단 $average 대비 " +
+                "${martingaleRule.addOnTriggerPrice(average, quote)} 이하로 하락 → 보유 ${cycle.quantity}주 기준 ${quantity}주 " +
+                "추가 매수 (MartingaleRule)"
         runCatching { buy(watched, quantity, reason) }
             .onFailure {
                 lastMartingaleFailureAt[key] = now
@@ -165,6 +159,24 @@ class EntryScheduler(
             }
     }
 
+    /**
+     * 5분 재매수: 주문 기록과 무관하게 [EntryProperties.rebuyInterval] 마다 계속 돌면서, 그 순간 보유가 0주이면 1주를 산다.
+     * 보유 중이어도 주기 시각은 흘러간다(보유 중엔 건너뛰고 다음 5분에 다시 본다). 실패해도 다음 주기까지 쉰다.
+     */
+    private fun checkPeriodicRebuy(
+        watched: SymbolStrategy,
+        held: Boolean,
+        now: Instant,
+    ) {
+        val key = "${watched.market}:${watched.symbol}"
+        val last = lastRebuyCheckAt[key]
+        if (last != null && Duration.between(last, now) < properties.rebuyInterval) return
+        lastRebuyCheckAt[key] = now
+        if (held) return
+        buy(watched, properties.quantityPerOrder, "진입 스케줄러: 보유 없음 — ${properties.rebuyInterval.toMinutes()}분 재매수")
+    }
+
+    /** 저점 판단 진입: 보유 수량과 상관없이 신호가 뜨면 산다. 쿨다운은 [EntryProperties.cooldown]. */
     private fun checkTarget(
         watched: SymbolStrategy,
         now: Instant,

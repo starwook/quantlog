@@ -58,8 +58,6 @@ class SymbolStrategyServiceTest {
             martingaleMultiplier = 3
             martingaleMaxStages = 4
             martingaleFinalStageStopLossPercent = BigDecimal("5")
-            martingaleReentryDropPercent = BigDecimal("1")
-            martingaleStopReentryDropPercent = BigDecimal("1.5")
         }
 
     @Test

@@ -12,7 +12,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 | KIS 모의투자 구현 (시세·매수가능·잔고·지정가 주문) | `broker/kis/` |
 | 모킹 체결 (선택, `QUANTLOG_BROKER_TYPE=paper`로 켬 — 기본값은 KIS 모의 주문: 시세는 KIS, 주문은 로컬에서 호가 ±1틱에 즉시 체결, 증권사 수수료 0·제세금(국내 주식 거래세, 미국 SEC fee, 국내 ETF 면제)만 반영, `paper_order` 테이블) | `broker/paper/` |
 | 청산 판정 (익절 +0.5%, 전역 손절은 보류, 목표가는 가장 가까운 호가로 맞춤, 설정으로 조정) | `strategy/ExitRule.kt` |
-| 삼성전자 마틴게일 (평단 -0.5%마다 보유 2배로 추가 매수·최대 5단계·평단 -3% 손절·매도 후 재진입, 사이클은 매매 기록에서 계산) | `strategy/MartingaleRule.kt` |
+| 삼성전자 마틴게일 (평단 -0.5%마다 보유 2배로 추가 매수·최대 5단계·평단 -3% 손절, 사이클은 매매 기록에서 계산) | `strategy/MartingaleRule.kt` |
 | 주문 전 리스크 가드 (주문금액·수량 상한) | `trading/RiskGuard.kt` |
 | 연동 점검 실행기 (READ / BUY / SELL / CANDLES) | `trading/SmokeTestRunner.kt` |
 | 청산 감시 (국내: 실시간 WebSocket 틱마다(구독 종목은 DB의 보유 종목에서 자동, 상한 `realtime-max-subscriptions`) 그 종목만 판정 / 해외·실시간 끊김: 1초 폴링 → 잔고 사본 DB 기준 익절/손절 목표가에 닿으면 한 호가 낮게 전량 매도, `quantlog.exit.enabled`). 해외 실시간은 `RealtimePriceFeed` 구현체 + `PriceTick` 발행만 추가하면 됨 | `trading/ExitService.kt`(판정·매도), `ExitScheduler.kt`(폴링), `ExitTickListener.kt`(틱) |
@@ -88,4 +88,6 @@ UPDATE symbol_strategy SET auto_trade = 0 WHERE symbol = '005930';
 UPDATE symbol_strategy SET take_profit_percent = 1, martingale_drop_percent = 1 WHERE symbol = '005930';
 ```
 
-컬럼: `auto_trade`, `take_profit_percent`, `stop_loss_percent`(NULL=전역 손절 보류), `martingale`, `martingale_drop_percent`, `martingale_multiplier`, `martingale_max_stages`, `martingale_final_stage_stop_loss_percent`, `martingale_reentry_drop_percent`, `martingale_stop_reentry_drop_percent`. 비율은 % 단위(0.5 = 0.5%). 엔티티: `watchlist/SymbolStrategy.kt`.
+진입 옵션은 종목별로 완전히 별개다: `martingale`(보유 중 추가매수만), `periodic_rebuy`(5분마다 보유 0주면 1주), `support_bounce_entry`(저점 판단 진입, 보유 수량 무관). 이미 있는 행은 두 신규 컬럼이 0(꺼짐)으로 시작하므로 화면에서 켠다. 재진입 컬럼(`martingale_reentry_drop_percent`, `martingale_stop_reentry_drop_percent`)은 폐기됐으니 기존 DB에서는 `ALTER TABLE symbol_strategy DROP COLUMN martingale_reentry_drop_percent, DROP COLUMN martingale_stop_reentry_drop_percent;` 로 지운다(안 지우면 새 행 INSERT 가 실패한다).
+
+컬럼: `auto_trade`, `periodic_rebuy`, `support_bounce_entry`, `take_profit_percent`, `stop_loss_percent`(NULL=전역 손절 보류), `martingale`, `martingale_drop_percent`, `martingale_multiplier`, `martingale_max_stages`, `martingale_final_stage_stop_loss_percent`. 비율은 % 단위(0.5 = 0.5%). 엔티티: `watchlist/SymbolStrategy.kt`.

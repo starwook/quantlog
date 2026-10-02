@@ -109,10 +109,10 @@ class EntrySchedulerTest {
         return service
     }
 
-    /** 삼성전자만 마틴게일, KODEX 는 일반 자동매수, SK하이닉스는 매수 끔 (운영 기본 시드와는 다르게 일반 경로도 검증하려고 KODEX 를 켬). */
+    /** 삼성전자는 마틴게일만(저점 판단 진입 끔), KODEX 는 저점 판단 진입, SK하이닉스는 매수 끔. */
     private val defaultConfigs =
         listOf(
-            symbolStrategy(Market.KR, "005930", martingale = true),
+            symbolStrategy(Market.KR, "005930", martingale = true, supportBounceEntry = false),
             symbolStrategy(Market.KR, "091160"),
             symbolStrategy(Market.KR, "000660", autoTrade = false),
         )
@@ -143,23 +143,23 @@ class EntrySchedulerTest {
     @Test
     fun `매수 신호가 뜨면 소량 매수한다`() {
         val broker = FakeBroker()
-        scheduler(broker, EntrySignal.BUY).checkEntries(krOpen)
+        scheduler(broker, EntrySignal.BUY, watched = listOf(SeedSymbol.KODEX_SEMICONDUCTOR)).checkEntries(krOpen)
 
         val order = broker.orders.single()
         assertEquals(Side.BUY, order.side)
-        assertEquals("005930", order.symbol)
+        assertEquals("091160", order.symbol)
         assertEquals(1, order.quantity)
     }
 
     @Test
     fun `신호가 없으면 사지 않는다`() {
         val broker = FakeBroker()
-        scheduler(broker, EntrySignal.NO_TRADE).checkEntries(krOpen)
+        scheduler(broker, EntrySignal.NO_TRADE, watched = listOf(SeedSymbol.KODEX_SEMICONDUCTOR)).checkEntries(krOpen)
         assertTrue(broker.orders.isEmpty())
     }
 
     @Test
-    fun `martingale 아닌 종목은 이미 보유 중이면 신호가 있어도 사지 않는다`() {
+    fun `저점 판단 진입은 보유 수량과 상관없이 신호가 뜨면 산다`() {
         val broker = FakeBroker()
         scheduler(
             broker,
@@ -167,7 +167,7 @@ class EntrySchedulerTest {
             watched = listOf(SeedSymbol.KODEX_SEMICONDUCTOR),
             portfolioService = portfolioServiceHolding("091160"),
         ).checkEntries(krOpen)
-        assertTrue(broker.orders.isEmpty())
+        assertEquals(1, broker.orders.size)
     }
 
     private fun buy(
@@ -239,26 +239,54 @@ class EntrySchedulerTest {
     }
 
     @Test
-    fun `익절 뒤 매도가 -0,5퍼센트에 닿으면 첫 1주부터 재진입 - 신호 불필요`() {
-        // 평단 9,900 → 10,000 에 익절. 트리거 = 10,000 × 0.995 = 9,950 → 현재가 10,000 은 위라 대기
-        assertTrue(martingale(buy(1, "9900"), sell(1, "10000"), signal = EntrySignal.BUY).orders.isEmpty())
-        // 10,050 에 익절 → 트리거 10,000(9,999.75 반올림) ≥ 현재가 → 재진입
-        val order = martingale(buy(1, "9900"), sell(1, "10050")).orders.single()
-        assertEquals(1, order.quantity)
+    fun `마틴게일만 켜면 첫 진입은 하지 않는다 - 저점 판단 진입·5분 재매수는 별개 옵션`() {
+        assertTrue(martingale(signal = EntrySignal.BUY).orders.isEmpty())
+    }
+
+    private fun rebuyScheduler(
+        broker: FakeBroker,
+        held: Boolean,
+        bounce: Boolean = false,
+        signal: EntrySignal = EntrySignal.NO_TRADE,
+    ) = scheduler(
+        broker,
+        signal,
+        portfolioService = if (held) portfolioServiceHeldBy(buy(1, "10000")) else noopPortfolioService(),
+        tradeService = tradeServiceWith(),
+        configs = listOf(symbolStrategy(Market.KR, "005930", supportBounceEntry = bounce, periodicRebuy = true)),
+    )
+
+    @Test
+    fun `5분 재매수 - 보유가 없으면 바로 1주 산다`() {
+        val broker = FakeBroker()
+        rebuyScheduler(broker, held = false).checkEntries(krOpen)
+        assertEquals(1, broker.orders.single().quantity)
     }
 
     @Test
-    fun `손절 뒤엔 매도가 -1퍼센트에 닿으면 재진입한다`() {
-        // 평단 10,500 → 10,100 손절. 트리거 = 10,100 × 0.99 = 9,999 → 10,000 ≥ 현재가
-        assertEquals(1, martingale(buy(1, "10500"), sell(1, "10100")).orders.single().quantity)
-        // 10,000 손절 → 트리거 9,900 < 현재가 → 대기 (SupportBounce 신호도 안 봄)
-        assertTrue(martingale(buy(1, "10500"), sell(1, "10000"), signal = EntrySignal.BUY).orders.isEmpty())
+    fun `5분 재매수 - 주문 기록과 무관하게 5분마다 계속 돈다`() {
+        val broker = FakeBroker()
+        val s = rebuyScheduler(broker, held = false)
+        s.checkEntries(krOpen)
+        s.checkEntries(krOpen.plusMinutes(4))
+        assertEquals(1, broker.orders.size)
+        s.checkEntries(krOpen.plusMinutes(5))
+        s.checkEntries(krOpen.plusMinutes(10))
+        assertEquals(3, broker.orders.size)
     }
 
     @Test
-    fun `삼성전자 첫 사이클은 매도 기록이 없으면 SupportBounce 신호로 시작한다`() {
-        assertEquals(1, martingale(signal = EntrySignal.BUY).orders.single().quantity)
-        assertTrue(martingale(signal = EntrySignal.NO_TRADE).orders.isEmpty())
+    fun `5분 재매수 - 보유 중이면 사지 않는다`() {
+        val broker = FakeBroker()
+        rebuyScheduler(broker, held = true).checkEntries(krOpen)
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `5분 재매수와 저점 판단 진입은 서로 별개라 각자 주문한다`() {
+        val broker = FakeBroker()
+        rebuyScheduler(broker, held = false, bounce = true, signal = EntrySignal.BUY).checkEntries(krOpen)
+        assertEquals(2, broker.orders.size)
     }
 
     @Test
@@ -283,7 +311,7 @@ class EntrySchedulerTest {
             symbolStrategy(Market.KR, "005930", martingale = true).let {
                 SymbolStrategy(
                     it.market, it.symbol, it.displayName, true, it.takeProfitPercent, null, true, java.math.BigDecimal("1"), 3, 5,
-                    java.math.BigDecimal("3"), java.math.BigDecimal("0.5"), java.math.BigDecimal("1"),
+                    java.math.BigDecimal("3"),
                 )
             }
         val broker = FakeBroker()
@@ -323,7 +351,7 @@ class EntrySchedulerTest {
     @Test
     fun `한 번 신호가 뜨면 쿨다운 동안 다시 사지 않는다`() {
         val broker = FakeBroker()
-        val s = scheduler(broker, EntrySignal.BUY)
+        val s = scheduler(broker, EntrySignal.BUY, watched = listOf(SeedSymbol.KODEX_SEMICONDUCTOR))
         s.checkEntries(krOpen)
         s.checkEntries(krOpen.plusMinutes(1))
         assertEquals(1, broker.orders.size)

@@ -9,7 +9,7 @@ import java.math.MathContext
 
 /**
  * 2026-09-30 사용자 지정: 첫 1주 매수 후 평단 대비 0.5% 떨어질 때마다 보유 수량이 2배가 되도록 추가 매수(최대 5단계),
- * 최대 단계까지 산 뒤 평단 대비 3% 더 떨어지면 손절. 익절 뒤엔 매도가 -0.5%, 손절 뒤엔 매도가 -1%에서 재진입.
+ * 최대 단계까지 산 뒤 평단 대비 3% 더 떨어지면 손절. (매도 뒤 재진입은 2026-10-02 폐기 — 첫 진입은 5분 재매수·저점 판단 진입 옵션이 맡는다.)
  * (처음 -1%로 시작했다가 "오늘은 수익률보다 최대한 많이 거래"가 목표라 0.5%로 줄임.)
  *
  * 종목별 실제 값은 DB(watchlist.SymbolStrategy)가 갖고, 여기(application.yml)는 새 종목 행을 만들 때 쓰는 기본값이다.
@@ -17,8 +17,6 @@ import java.math.MathContext
 @ConfigurationProperties(prefix = "quantlog.strategy.martingale")
 data class MartingaleProperties(
     val dropPercent: BigDecimal = BigDecimal("0.5"),
-    val reentryDropPercent: BigDecimal = BigDecimal("0.5"),
-    val stopReentryDropPercent: BigDecimal = BigDecimal("1"),
     val multiplier: Int = 2,
     val maxStages: Int = 5,
     val finalStageStopLossPercent: BigDecimal = BigDecimal("3"),
@@ -26,19 +24,11 @@ data class MartingaleProperties(
 
 data class CycleBuy(val quantity: Int, val price: BigDecimal)
 
-/** [takeProfit] 이 false 면 손절로 끝난 사이클이다. */
-data class CycleSell(val price: BigDecimal, val takeProfit: Boolean)
-
 /**
  * 매매 기록에서 계산한 현재 사이클: 마지막 SELL 이후의 BUY 들. 별도 상태는 저장하지 않는다.
- * [lastSell] 은 그 직전에 끝난 사이클의 매도다.
- *
- * 익절/손절 구분은 "매도가 > 그 사이클 평단"으로 한다. 매도 사유 컬럼을 새로 두면 스키마·기록 경로가 늘어나는데,
- * 이 전략에선 손절 매도가가 항상 평단보다 한참 아래(평단 -3%)이고 익절은 평단 +1% 근처라 가격만으로 갈린다.
  */
 data class MartingaleCycle(
     val buys: List<CycleBuy>,
-    val lastSell: CycleSell?,
     /** KIS 잔고 테이블의 실제 보유 수량·평단. 있으면 매매 기록 대신 이 값이 기준이다([withAccount]). */
     private val accountQuantity: Int? = null,
     private val accountAverage: BigDecimal? = null,
@@ -76,22 +66,13 @@ data class MartingaleCycle(
         /** [trades] 는 체결 시각 오름차순. 체결가가 없으면 지정가로 대신한다. */
         fun from(trades: List<Trade>): MartingaleCycle {
             val buys = mutableListOf<CycleBuy>()
-            var lastSell: CycleSell? = null
             trades.forEach { trade ->
-                val price = trade.filledPrice ?: trade.orderPrice
                 when (trade.side) {
-                    Side.BUY -> buys += CycleBuy(trade.quantity, price)
-                    Side.SELL ->
-                        if (buys.isNotEmpty()) {
-                            val quantity = buys.sumOf { it.quantity }
-                            val cost = buys.sumOf { it.price.multiply(BigDecimal(it.quantity)) }
-                            val average = cost.divide(BigDecimal(quantity), MathContext.DECIMAL64)
-                            lastSell = CycleSell(price, takeProfit = price > average)
-                            buys.clear()
-                        }
+                    Side.BUY -> buys += CycleBuy(trade.quantity, trade.filledPrice ?: trade.orderPrice)
+                    Side.SELL -> buys.clear()
                 }
             }
-            return MartingaleCycle(buys.toList(), lastSell)
+            return MartingaleCycle(buys.toList())
         }
     }
 }
@@ -142,18 +123,4 @@ class MartingaleRule(
         cycle: MartingaleCycle,
         quote: Quote,
     ): Boolean = stopLossPrice(cycle, quote)?.let { quote.price <= it } == true
-
-    /** 재진입 트리거 가격: 익절 뒤엔 그 매도가 -0.5%, 손절 뒤엔 -1%. 보유 중이거나 매도 기록이 없으면 null. */
-    fun reentryTriggerPrice(
-        cycle: MartingaleCycle,
-        quote: Quote,
-    ): BigDecimal? {
-        val sell = cycle.lastSell?.takeUnless { cycle.holding } ?: return null
-        return below(sell.price, if (sell.takeProfit) properties.reentryDropPercent else properties.stopReentryDropPercent, quote)
-    }
-
-    fun shouldReenter(
-        cycle: MartingaleCycle,
-        quote: Quote,
-    ): Boolean = reentryTriggerPrice(cycle, quote)?.let { quote.price <= it } == true
 }
