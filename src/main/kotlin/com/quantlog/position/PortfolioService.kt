@@ -75,7 +75,9 @@ class PortfolioService(
     fun snapshot(): PortfolioSnapshot = buildSnapshot()
 
     private fun buildSnapshot(): PortfolioSnapshot {
-        val trades = tradeRepository.findAll().sortedBy { it.executedAt }
+        val trades = tradeRepository.findAll().filterNot { it.canceled }.sortedBy { it.executedAt }
+        // 체결가를 못 구한 주문(미체결이거나 확인 전)은 손익·횟수 계산에서 뺀다. 기록 화면에는 그대로 보인다.
+        val filledTrades = trades.filter { it.filledPrice != null }
         val today = Instant.now().atZone(KST).toLocalDate()
 
         val lotsByKey = mutableMapOf<Pair<Market, String>, ArrayDeque<Lot>>()
@@ -84,11 +86,11 @@ class PortfolioService(
         val buyCountTodayByCurrency = mutableMapOf<String, Int>()
         val sellCountTodayByCurrency = mutableMapOf<String, Int>()
 
-        trades.forEach { trade ->
+        filledTrades.forEach { trade ->
             val key = trade.market to trade.symbol
             val lots = lotsByKey.getOrPut(key) { ArrayDeque() }
             // 실제 체결가가 있으면 그걸 쓴다 — 지정가와 다를 수 있다 (2026-09-29: 국내는 지정가·체결가가 꽤 벌어진 적 있었음).
-            val price = trade.filledPrice ?: trade.orderPrice
+            val price = trade.filledPrice!!
             if (trade.executedAt.atZone(KST).toLocalDate() == today) {
                 val counts = if (trade.side == Side.BUY) buyCountTodayByCurrency else sellCountTodayByCurrency
                 counts.merge(trade.market.currency, 1, Int::plus)

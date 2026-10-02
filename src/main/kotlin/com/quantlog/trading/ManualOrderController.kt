@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.servlet.mvc.support.RedirectAttributes
+import java.math.BigDecimal
 
 /** 관심종목 화면(/chart/{market}/{symbol})의 "매수"·"매도" 버튼이 부르는 곳. */
 @Controller
@@ -21,15 +22,38 @@ class ManualOrderController(
         @PathVariable symbol: String,
         @RequestParam side: Side,
         @RequestParam quantity: Int,
+        @RequestParam(required = false) price: BigDecimal?,
         redirect: RedirectAttributes,
     ): String {
         val name = symbolStrategyService.displayName(market, symbol)
         val label = if (side == Side.BUY) "매수" else "매도"
         runCatching {
-            if (side == Side.BUY) service.buy(market, symbol, quantity) else service.sell(market, symbol, quantity)
+            if (side == Side.BUY) {
+                service.buy(
+                    market,
+                    symbol,
+                    quantity,
+                    limitPrice = price,
+                )
+            } else {
+                service.sell(market, symbol, quantity, limitPrice = price)
+            }
         }
             .onSuccess { redirect.addFlashAttribute("message", "$name ${quantity}주 $label 주문을 냈어요.") }
             .onFailure { redirect.addFlashAttribute("error", "$name $label 실패: ${it.message}") }
+        return "redirect:/chart/$market/$symbol"
+    }
+
+    @PostMapping("/chart/{market}/{symbol}/cancel")
+    fun cancel(
+        @PathVariable market: Market,
+        @PathVariable symbol: String,
+        @RequestParam tradeId: Long,
+        redirect: RedirectAttributes,
+    ): String {
+        runCatching { service.cancel(tradeId) }
+            .onSuccess { redirect.addFlashAttribute("message", "주문을 취소했어요.") }
+            .onFailure { redirect.addFlashAttribute("error", "취소 실패: ${it.message}") }
         return "redirect:/chart/$market/$symbol"
     }
 }

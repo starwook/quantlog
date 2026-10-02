@@ -116,6 +116,7 @@
         .order input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; }
         .order .muted { color: var(--muted); font-size: 14px; }
         .order button { padding: 10px 20px; border: 0; border-radius: 10px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+        .order .cancel-btn { padding: 2px 10px; background: var(--muted); font-size: 13px; }
         .buy-btn { background: var(--pos); }
         .sell-btn { background: var(--neg); }
         footer {
@@ -166,16 +167,18 @@
     </div>
 
     <form class="card order" method="post" th:action="@{'/chart/' + ${market} + '/' + ${symbol} + '/order'}"
-          onsubmit="return confirm(event.submitter.dataset.label + ' ' + this.quantity.value + '주 주문할까요?')">
+          onsubmit="return event.submitter.dataset.cancel ? confirm('이 주문을 취소할까요?') : confirm(event.submitter.dataset.label + ' ' + this.quantity.value + '주 ' + (this.price.value ? '@ ' + this.price.value + ' 지정가로 ' : '즉시 체결가로 ') + '주문할까요?')">
         <div class="info" id="holding"></div>
         <div class="info muted" id="orderTotal"></div>
+        <div class="info" id="pending"></div>
+        <input type="number" name="price" min="0" step="any" placeholder="가격 (비우면 즉시 체결)" aria-label="지정가">
         <input type="number" name="quantity" min="1" value="1" required aria-label="수량">
         <span class="muted">주</span>
         <button type="submit" name="side" value="BUY" data-label="매수" class="buy-btn">매수</button>
         <button type="submit" name="side" value="SELL" data-label="매도" class="sell-btn">매도</button>
     </form>
 
-    <footer>모의투자 실험 기록입니다. 매수·매도는 현재가보다 한 호가 불리한 지정가로 즉시 체결됩니다. 투자 권유가 아닙니다. 국내 종목은 실시간, 그 외에는 20초마다 갱신됩니다.</footer>
+    <footer>모의투자 실험 기록입니다. 가격을 비우면 현재가보다 한 호가 불리한 지정가로 즉시 체결되고, 가격을 입력하면 그 지정가로 주문해 체결되지 않을 수 있습니다(호가 단위에 맞아야 함). 투자 권유가 아닙니다. 국내 종목은 실시간, 그 외에는 20초마다 갱신됩니다.</footer>
 </main>
 <script th:inline="javascript">
     const market = /*[[${market}]]*/ 'KR';
@@ -231,7 +234,7 @@
             position: isBuy ? 'belowBar' : 'aboveBar',
             color: isBuy ? '#00c853' : '#f04452',
             shape: isBuy ? 'arrowUp' : 'arrowDown',
-            text: (isBuy ? '매수 ' : '매도 ') + trade.quantity + '주 @ ' + formatPrice(trade.price),
+            text: (isBuy ? '매수 ' : '매도 ') + trade.quantity + '주 @ ' + formatPrice(trade.price) + (trade.status === 'OPEN' ? ' (미체결)' : trade.status === 'UNCONFIRMED' ? ' (체결 확인중)' : ''),
         };
     }
 
@@ -259,12 +262,27 @@
 
     // 주문 총액 = 입력 수량 × 현재가. 수량을 바꾸거나 가격이 움직일 때마다 다시 계산한다.
     const quantityEl = document.querySelector('form.order input[name=quantity]');
+    const priceInputEl = document.querySelector('form.order input[name=price]');
     const orderTotalEl = document.getElementById('orderTotal');
     function showOrderTotal() {
         const quantity = parseInt(quantityEl.value, 10);
-        orderTotalEl.textContent = lastPrice !== null && quantity > 0 ? '주문 총액 ' + formatPrice(lastPrice * quantity) : '';
+        const price = parseFloat(priceInputEl.value) || lastPrice;
+        orderTotalEl.textContent = price !== null && quantity > 0 ? '주문 총액 ' + formatPrice(price * quantity) : '';
     }
     quantityEl.addEventListener('input', showOrderTotal);
+    priceInputEl.addEventListener('input', showOrderTotal);
+
+    // 증권사가 미체결로 확인한 주문(취소 가능)과, 체결조회에 아직 안 잡혀 상태를 모르는 주문(체결 확인중)을 주문 폼 위에 보여준다.
+    const pendingEl = document.getElementById('pending');
+    function showPending(trades) {
+        const orderText = (t) => '<span class="' + (t.side === 'BUY' ? 'down' : 'up') + '">' + (t.side === 'BUY' ? '매수 ' : '매도 ')
+            + t.quantity + '주 @ ' + formatPrice(t.price) + '</span>';
+        const open = trades.filter(t => t.status === 'OPEN').map(t => '미체결 ' + orderText(t)
+            + ' <button type="submit" formaction="/chart/' + market + '/' + symbol + '/cancel" formnovalidate name="tradeId" value="'
+            + t.id + '" data-cancel="true" class="cancel-btn">취소</button>');
+        const unconfirmed = trades.filter(t => t.status === 'UNCONFIRMED').map(t => '체결 확인중 ' + orderText(t));
+        pendingEl.innerHTML = open.concat(unconfirmed).join('<br>');
+    }
 
     function showPrice(price) {
         lastPrice = price;
@@ -306,6 +324,7 @@
                 color: c.close >= c.open ? 'rgba(240,68,82,0.5)' : 'rgba(49,130,246,0.5)',
             })));
             candleSeries.setMarkers(body.trades.map(markerFor));
+            showPending(body.trades);
             chart.timeScale().fitContent();
 
             statusEl.textContent = '마지막 갱신 ' + new Date().toLocaleTimeString('ko-KR');

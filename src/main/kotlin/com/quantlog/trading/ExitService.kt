@@ -142,7 +142,7 @@ class ExitService(
                 symbol = holding.symbol,
                 side = Side.SELL,
                 quantity = holding.quantity,
-                limitPrice = quote.price.subtract(quote.tickSize),
+                limitPrice = quote.oneTickBelow(),
             )
         riskGuard.check(request)
         val receipt = broker.placeOrder(request)

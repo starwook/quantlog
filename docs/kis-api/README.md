@@ -59,6 +59,7 @@
 - 모의투자 미국 주문은 **지정가(`ORD_DVSN=00`)만 가능**. 모의는 **일부 종목만 매매 가능** — 종목이 거절되면 다른 종목으로 바꿔 본다.
 - **주문 가능 시간(서머타임, 한국시간)**: 프리마켓 17:00~22:30 / 정규장 22:30~05:00 / 애프터마켓 05:00~07:00 — 모두 같은 주문 API로 가능(포털 명시). 그 외 시간은 에러. 서머타임은 2026-11-01 종료(이후 1시간씩 늦어짐).
 - **미국 주간거래(10:00~18:00)는 별도 API이며 모의투자 미지원** → 모의 테스트 불가, 구현하지 않음.
+- **주문 취소(정정취소 API)**: 예제 `examples/{domestic,overseas}_stock/order_rvsecncl.py` 에 있다. 모의 TR 은 국내 `VTTC0013U`(`/uapi/domestic-stock/v1/trading/order-rvsecncl`, 원주문번호 `ORGN_ODNO` + 주문 응답의 `KRX_FWDG_ORD_ORGNO`(주문조직번호) 필요), 해외 `VTTT1004U`(`/uapi/overseas-stock/v1/trading/order-rvsecncl`). 취소는 `RVSE_CNCL_DVSN_CD=02`. `KisMockBroker.cancelOrder()` 로 구현했지만 **모의 실측 전**이다(국내는 `QTY_ALL_ORD_YN=Y`·원주문 수량·단가 0 으로 보냄 — 첫 취소 때 원문을 확인할 것). 정정(01)은 새 주문번호가 생겨 기록 갱신이 필요해서 아직 안 만들었다 — 취소 뒤 새 가격으로 다시 주문한다.
 - 미국 미체결 조회(`inquire-nccs`)는 예제에 실전 TR(`TTTS3018R`)만 있어 모의 지원 여부 불명 → 미구현.
 - 응답 필드명(`last`, `ord_psbl_frcr_amt`, `ovrs_cblc_qty`, `ODNO` 등)은 예제 코드에 명시되지 않아 공식 응답 규격 기억을 바탕으로 매핑했다. 첫 실행은 `application-local.yml`의 `kis.mock.log-raw: true`로 원문을 보고 맞춘다. **실전 확인됨**(2026-09-28, SOXL/AMEX): `last`, `ord_psbl_frcr_amt`, `max_ord_psbl_qty` 필드명이 실제 응답과 일치했다.
 - 모의투자 서버 호출 빈도 제한을 **실측 확인**(2026-09-28): 600ms 간격으로 현재가→매수가능→잔고를 연달아 호출하니 잔고 조회에서 `EGW00201 초당 거래건수를 초과하였습니다`가 실제로 발생했다. `ACCOUNT` 그룹(문서상 초당 최대 1회)이 원인으로 보여 기본 호출 간격을 **1100ms**로 올렸다 (`KisProperties.minIntervalMillis`).

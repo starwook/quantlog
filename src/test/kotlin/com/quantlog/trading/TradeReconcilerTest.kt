@@ -7,6 +7,7 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.OrderStatus
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import com.quantlog.position.Trade
@@ -19,6 +20,7 @@ import java.math.BigDecimal
 import java.time.LocalTime
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class TradeReconcilerTest {
     private val noEvents = Mockito.mock(ApplicationEventPublisher::class.java)
@@ -66,7 +68,7 @@ class TradeReconcilerTest {
     fun `체결가를 확인하면 채워서 저장한다`() {
         val trade = pendingTrade()
         val repository = Mockito.mock(TradeRepository::class.java)
-        Mockito.`when`(repository.findAllByFilledPriceIsNull()).thenReturn(listOf(trade))
+        Mockito.`when`(repository.findAllByFilledPriceIsNullAndCanceledFalse()).thenReturn(listOf(trade))
 
         val events = Mockito.mock(ApplicationEventPublisher::class.java)
 
@@ -82,7 +84,7 @@ class TradeReconcilerTest {
     fun `아직 체결 확인 안 되면 그대로 두고 저장하지 않는다`() {
         val trade = pendingTrade()
         val repository = Mockito.mock(TradeRepository::class.java)
-        Mockito.`when`(repository.findAllByFilledPriceIsNull()).thenReturn(listOf(trade))
+        Mockito.`when`(repository.findAllByFilledPriceIsNullAndCanceledFalse()).thenReturn(listOf(trade))
 
         TradeReconciler(
             FakeBroker(null),
@@ -99,13 +101,14 @@ class TradeReconcilerTest {
     fun `실패해도 다른 건 처리를 멈추지 않는다`() {
         val trade = pendingTrade()
         val repository = Mockito.mock(TradeRepository::class.java)
-        Mockito.`when`(repository.findAllByFilledPriceIsNull()).thenReturn(listOf(trade))
+        Mockito.`when`(repository.findAllByFilledPriceIsNullAndCanceledFalse()).thenReturn(listOf(trade))
         val broker =
             object : BrokerClient by FakeBroker(null) {
-                override fun filledPrice(
+                override fun orderStatus(
                     market: Market,
                     orderNo: String,
-                ): BigDecimal = throw RuntimeException("KIS 오류")
+                    quantity: Int,
+                ): OrderStatus = throw RuntimeException("KIS 오류")
             }
 
         // 예외를 던져도 reconcile() 자체는 끝까지 실행된다 (다른 종목 처리를 막지 않음).
@@ -116,5 +119,31 @@ class TradeReconcilerTest {
             Mockito.mock(ApplicationEventPublisher::class.java),
         ).reconcile()
         assertNull(trade.filledPrice)
+    }
+
+    @Test
+    fun `증권사가 미체결로 확인해 주면 미체결 확인 상태로 저장한다`() {
+        val trade = pendingTrade()
+        val repository = Mockito.mock(TradeRepository::class.java)
+        Mockito.`when`(repository.findAllByFilledPriceIsNullAndCanceledFalse()).thenReturn(listOf(trade))
+        val broker =
+            object : BrokerClient by FakeBroker(null) {
+                override fun orderStatus(
+                    market: Market,
+                    orderNo: String,
+                    quantity: Int,
+                ): OrderStatus = OrderStatus.Open
+            }
+
+        TradeReconciler(
+            broker,
+            repository,
+            ReconcileProperties(enabled = true),
+            Mockito.mock(ApplicationEventPublisher::class.java),
+        ).reconcile()
+
+        assertTrue(trade.openConfirmed)
+        assertNull(trade.filledPrice)
+        Mockito.verify(repository).save(trade)
     }
 }

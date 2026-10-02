@@ -3,11 +3,13 @@ package com.quantlog.broker.kis
 import com.fasterxml.jackson.databind.JsonNode
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.BuyingPower
+import com.quantlog.broker.CancelRequest
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.OrderStatus
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import mu.KotlinLogging
@@ -239,7 +241,48 @@ class KisMockBroker(
                 )
             }
         val out = res.path("output")
-        return OrderReceipt(orderNo = out.path("ODNO").asText(), message = res.path("msg1").asText())
+        return OrderReceipt(
+            orderNo = out.path("ODNO").asText(),
+            message = res.path("msg1").asText(),
+            branchNo = out.path("KRX_FWDG_ORD_ORGNO").asText(),
+        )
+    }
+
+    /** 정정취소 API(docs/kis-api 의 order_rvsecncl 예제)의 취소(02). 모의 TR: 국내 VTTC0013U, 해외 VTTT1004U. */
+    override fun cancelOrder(request: CancelRequest) {
+        if (request.market.isOverseas) {
+            api.post(
+                "/uapi/overseas-stock/v1/trading/order-rvsecncl",
+                "VTTT1004U",
+                accountParams() +
+                    mapOf(
+                        "OVRS_EXCG_CD" to request.market.orderExchangeCode(),
+                        "PDNO" to request.symbol,
+                        "ORGN_ODNO" to request.orderNo,
+                        "RVSE_CNCL_DVSN_CD" to "02",
+                        "ORD_QTY" to request.quantity.toString(),
+                        "OVRS_ORD_UNPR" to "0",
+                        "MGCO_APTM_ODNO" to "",
+                        "ORD_SVR_DVSN_CD" to "0",
+                    ),
+            )
+        } else {
+            api.post(
+                "/uapi/domestic-stock/v1/trading/order-rvsecncl",
+                "VTTC0013U",
+                accountParams() +
+                    mapOf(
+                        "KRX_FWDG_ORD_ORGNO" to request.branchNo,
+                        "ORGN_ODNO" to request.orderNo,
+                        "ORD_DVSN" to "00",
+                        "RVSE_CNCL_DVSN_CD" to "02",
+                        "ORD_QTY" to request.quantity.toString(),
+                        "ORD_UNPR" to "0",
+                        "QTY_ALL_ORD_YN" to "Y",
+                        "EXCG_ID_DVSN_CD" to "KRX",
+                    ),
+            )
+        }
     }
 
     /** 실측 확인(2026-09-29, 삼성전자): output2 필드명이 아래와 정확히 일치. docs/kis-api/README.md 참고. */
@@ -324,12 +367,22 @@ class KisMockBroker(
         }
     }
 
-    /** 실측 확인(2026-09-29): output1 필드명이 아래와 정확히 일치. docs/kis-api/README.md 참고. */
     override fun filledPrice(
         market: Market,
         orderNo: String,
-    ): BigDecimal? {
-        if (market.isOverseas) return overseasFilledPrice(market, orderNo)
+    ): BigDecimal? = (orderStatus(market, orderNo, 1) as? OrderStatus.Filled)?.price
+
+    /**
+     * 국내: 주식일별주문체결조회를 **전체(00)**로 주문번호만 걸어 부른다 — 체결분(01)만 부르면 "미체결"과 "아직 조회에 안 잡힘"이
+     * 똑같이 빈 응답이라 구분이 안 된다. 행이 있고 체결 수량이 주문 수량 미만이면 [OrderStatus.Open], 행이 없으면 [OrderStatus.Unknown].
+     * 실측 확인(2026-09-29): output1 필드명(odno, tot_ccld_qty, avg_prvs)이 일치. docs/kis-api/README.md 참고.
+     */
+    override fun orderStatus(
+        market: Market,
+        orderNo: String,
+        quantity: Int,
+    ): OrderStatus {
+        if (market.isOverseas) return overseasOrderStatus(market, orderNo, quantity)
         val today = LocalDate.now(KST).format(DATE_FORMAT)
         val res =
             api.get(
@@ -341,8 +394,7 @@ class KisMockBroker(
                         "INQR_END_DT" to today,
                         "SLL_BUY_DVSN_CD" to "00",
                         "PDNO" to "",
-                        // 체결분만 (01) — 미체결/취소는 목표가가 아니므로 제외
-                        "CCLD_DVSN" to "01",
+                        "CCLD_DVSN" to "00",
                         "INQR_DVSN" to "00",
                         "INQR_DVSN_3" to "00",
                         "ORD_GNO_BRNO" to "",
@@ -353,10 +405,9 @@ class KisMockBroker(
                         "EXCG_ID_DVSN_CD" to "KRX",
                     ),
             )
-        val row = res.path("output1").firstOrNull { it.path("odno").asText() == orderNo } ?: return null
+        val row = res.path("output1").firstOrNull { it.path("odno").asText() == orderNo } ?: return OrderStatus.Unknown
         val filledQty = row.path("tot_ccld_qty").asText("0").toIntOrNull() ?: 0
-        if (filledQty <= 0) return null
-        return row.decimal("avg_prvs")
+        return if (filledQty >= quantity) OrderStatus.Filled(row.decimal("avg_prvs")) else OrderStatus.Open
     }
 
     /**
@@ -365,10 +416,11 @@ class KisMockBroker(
      * 어제~오늘(현지 날짜) 전체를 받아 주문번호를 직접 골라낸다. 첫 페이지만 본다(연속조회 헤더 미지원).
      * 필드명(odno/ft_ccld_qty/ft_ccld_unpr3)은 2026-09-30 실측으로 확인했다.
      */
-    private fun overseasFilledPrice(
+    private fun overseasOrderStatus(
         market: Market,
         orderNo: String,
-    ): BigDecimal? {
+        quantity: Int,
+    ): OrderStatus {
         val today = LocalDate.now(market.zone)
         val res =
             api.get(
@@ -392,10 +444,9 @@ class KisMockBroker(
             )
         // 실측(2026-09-30): 접수 응답은 "0000037508", 체결내역 odno 는 "37508"로 앞자리 0 이 빠져 있다.
         val target = orderNo.trimStart('0')
-        val row = res.path("output").firstOrNull { it.path("odno").asText().trimStart('0') == target } ?: return null
+        val row = res.path("output").firstOrNull { it.path("odno").asText().trimStart('0') == target } ?: return OrderStatus.Unknown
         val filledQty = row.path("ft_ccld_qty").asText("0").toBigDecimalOrNull() ?: BigDecimal.ZERO
-        if (filledQty <= BigDecimal.ZERO) return null
-        return row.decimal("ft_ccld_unpr3")
+        return if (filledQty >= BigDecimal(quantity)) OrderStatus.Filled(row.decimal("ft_ccld_unpr3")) else OrderStatus.Open
     }
 
     private fun accountParams() = mapOf("CANO" to properties.accountNumber, "ACNT_PRDT_CD" to properties.accountProductCode)

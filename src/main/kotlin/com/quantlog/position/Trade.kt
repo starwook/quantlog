@@ -1,6 +1,7 @@
 package com.quantlog.position
 
 import com.quantlog.broker.Market
+import com.quantlog.broker.OrderStatus
 import com.quantlog.broker.Side
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -45,6 +46,10 @@ class Trade(
     initialFilledPrice: BigDecimal? = null,
     @Column(name = "executed_at", nullable = false)
     val executedAt: Instant = Instant.now(),
+    /** 국내 정정·취소에 쓰는 주문조직번호(주문 응답의 KRX_FWDG_ORD_ORGNO). 해외·옛 기록은 null. */
+    @Column(name = "branch_no", length = 20)
+    val branchNo: String? = null,
+    initialOpenConfirmed: Boolean = false,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -62,8 +67,32 @@ class Trade(
     var filledPrice: BigDecimal? = initialFilledPrice
         private set
 
-    /** [TradeReconciler] 전용: 나중에 확인된 실제 체결가로 채운다. 한번 채워지면 되돌리지 않는다. */
-    fun applyFilledPrice(price: BigDecimal) {
-        if (filledPrice == null) filledPrice = price
+    /** 취소된 주문. 체결되지 않았으므로 손익·사이클 계산과 체결가 재확인에서 빠진다. */
+    @Column(nullable = false)
+    var canceled: Boolean = false
+        private set
+
+    fun cancel() {
+        canceled = true
     }
+
+    /**
+     * 증권사가 이 주문을 확인했고 아직 체결 전이라고 알려 준 상태(진짜 미체결). [filledPrice] 가 null 이어도 이게 false 면
+     * 미체결인지 체결인지 아직 모르는 것(조회 반영 전)이다 — 화면에서 "체결 확인중"으로 따로 보여준다.
+     */
+    @Column(name = "open_confirmed", nullable = false)
+    var openConfirmed: Boolean = initialOpenConfirmed
+        private set
+
+    /** 증권사 체결조회 결과를 반영한다. 체결이 확인되면 되돌리지 않는다. 바뀐 게 있으면 true. */
+    fun apply(status: OrderStatus): Boolean =
+        when (status) {
+            is OrderStatus.Filled ->
+                (filledPrice == null).also {
+                    if (it) filledPrice = status.price
+                    openConfirmed = false
+                }
+            OrderStatus.Open -> (filledPrice == null && !openConfirmed).also { if (it) openConfirmed = true }
+            OrderStatus.Unknown -> false
+        }
 }

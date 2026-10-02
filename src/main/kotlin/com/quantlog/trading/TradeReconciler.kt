@@ -1,6 +1,7 @@
 package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
+import com.quantlog.broker.OrderStatus
 import com.quantlog.position.TradeFilledEvent
 import com.quantlog.position.TradeRepository
 import mu.KotlinLogging
@@ -39,16 +40,19 @@ class TradeReconciler(
     }
 
     fun reconcile() {
-        val pending = tradeRepository.findAllByFilledPriceIsNull()
+        val pending = tradeRepository.findAllByFilledPriceIsNullAndCanceledFalse()
         if (pending.isEmpty()) return
         pending.forEach { trade ->
-            runCatching { broker.filledPrice(trade.market, trade.orderNo) }
-                .onSuccess { price ->
-                    if (price != null) {
-                        trade.applyFilledPrice(price)
+            runCatching { broker.orderStatus(trade.market, trade.orderNo, trade.quantity) }
+                .onSuccess { status ->
+                    if (trade.apply(status)) {
                         tradeRepository.save(trade)
-                        events.publishEvent(TradeFilledEvent(trade.market, trade.symbol))
-                        log.info { "[체결가 확정] ${trade.market} ${trade.symbol} 주문번호=${trade.orderNo} → $price" }
+                        if (status is OrderStatus.Filled) {
+                            events.publishEvent(TradeFilledEvent(trade.market, trade.symbol))
+                            log.info { "[체결가 확정] ${trade.market} ${trade.symbol} 주문번호=${trade.orderNo} → ${status.price}" }
+                        } else {
+                            log.info { "[미체결 확인] ${trade.market} ${trade.symbol} 주문번호=${trade.orderNo}" }
+                        }
                     }
                 }
                 .onFailure { log.warn(it) { "[체결가 재확인 실패] ${trade.market} ${trade.symbol} 주문번호=${trade.orderNo}" } }
