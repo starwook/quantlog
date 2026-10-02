@@ -3,8 +3,10 @@ package com.quantlog.chart
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.Market
 import com.quantlog.marketdata.MarketDataService
+import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.TradeRepository
 import com.quantlog.watchlist.SymbolStrategyService
+import mu.KotlinLogging
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
@@ -15,6 +17,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 
+private val log = KotlinLogging.logger {}
 private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 
 /** 차트 라이브러리(lightweight-charts)가 요구하는 초 단위 timestamp. KST 벽시계 값을 그대로 UTC로 찍어서,
@@ -38,7 +41,14 @@ data class TradeMarker(
     val quantity: Int,
 )
 
-data class ChartData(val candles: List<CandlePoint>, val trades: List<TradeMarker>, val previousClose: BigDecimal?)
+data class HoldingPoint(val quantity: Int, val avgCost: BigDecimal)
+
+data class ChartData(
+    val candles: List<CandlePoint>,
+    val trades: List<TradeMarker>,
+    val previousClose: BigDecimal?,
+    val holding: HoldingPoint?,
+)
 
 /**
  * 분봉 차트 화면. marketdata(분봉)와 position(매매 기록) 두 도메인을 조합해서 보여주는 화면이라
@@ -50,6 +60,7 @@ class ChartController(
     private val tradeRepository: TradeRepository,
     private val symbolStrategyService: SymbolStrategyService,
     private val broker: BrokerClient,
+    private val accountHoldingRepository: AccountHoldingRepository,
 ) {
     @GetMapping("/chart/{market}/{symbol}")
     fun page(
@@ -97,7 +108,11 @@ class ChartController(
                         quantity = it.quantity,
                     )
                 }
-        val previousClose = runCatching { broker.previousClose(market, symbol) }.getOrNull()
-        return ChartData(candles, trades, previousClose)
+        val previousClose =
+            runCatching { broker.previousClose(market, symbol) }
+                .onFailure { log.warn(it) { "[전일 종가] $market $symbol 조회 실패" } }
+                .getOrNull()
+        val holding = accountHoldingRepository.findByMarketAndSymbol(market, symbol)?.let { HoldingPoint(it.quantity, it.avgCost) }
+        return ChartData(candles, trades, previousClose, holding)
     }
 }

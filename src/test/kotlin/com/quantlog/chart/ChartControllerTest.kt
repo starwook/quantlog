@@ -5,6 +5,7 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
+import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeRepository
 import com.quantlog.watchlist.symbolStrategyServiceOf
@@ -44,7 +45,13 @@ class ChartControllerTest {
         Mockito.`when`(tradeRepository.findAllByMarketAndSymbolOrderByExecutedAtAsc(Market.KR, "005930")).thenReturn(trades)
         val broker = Mockito.mock(BrokerClient::class.java)
         Mockito.`when`(broker.previousClose(Market.KR, "005930")).thenReturn(previousClose)
-        return ChartController(marketDataService, tradeRepository, symbolStrategyServiceOf(), broker)
+        return ChartController(
+            marketDataService,
+            tradeRepository,
+            symbolStrategyServiceOf(),
+            broker,
+            Mockito.mock(AccountHoldingRepository::class.java),
+        )
     }
 
     @Test

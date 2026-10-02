@@ -69,6 +69,9 @@
         .price small { font-size: 14px; font-weight: 500; margin-left: 8px; }
         .price.up { color: var(--pos); }
         .price.down { color: var(--neg); }
+        .holding { font-size: 14px; margin-bottom: 2px; }
+        .holding .up { color: var(--pos); }
+        .holding .down { color: var(--neg); }
         .status {
             font-size: 13px;
             color: var(--muted);
@@ -151,6 +154,7 @@
 
     <h1 th:text="${symbolName} + ' · ' + ${market} + ' 당일 분봉'"></h1>
     <div class="price" id="price">-</div>
+    <div class="holding" id="holding"></div>
     <div class="status" id="status">불러오는 중…</div>
 
     <div class="card">
@@ -234,7 +238,27 @@
     const priceEl = document.getElementById('price');
     let baseline = null;
     let baselineLabel = '';
+    // 보유 정보는 REST 응답으로 받고, 평가손익은 최신 가격으로 다시 계산한다.
+    const holdingEl = document.getElementById('holding');
+    let holding = null;
+    let lastPrice = null;
+    function showHolding() {
+        if (!holding || holding.quantity <= 0) {
+            holdingEl.textContent = '보유 없음';
+            return;
+        }
+        const profit = (lastPrice - holding.avgCost) * holding.quantity;
+        const pct = ((lastPrice - holding.avgCost) / holding.avgCost * 100).toFixed(2);
+        const sign = profit > 0 ? '+' : '';
+        holdingEl.innerHTML = '보유 ' + holding.quantity + '주 · 평단 ' + formatPrice(holding.avgCost)
+            + ' · 평가금액 ' + formatPrice(lastPrice * holding.quantity)
+            + ' · <span class="' + (profit > 0 ? 'up' : profit < 0 ? 'down' : '') + '">평가손익 '
+            + sign + formatPrice(profit) + ' (' + sign + pct + '%)</span>';
+    }
+
     function showPrice(price) {
+        lastPrice = price;
+        showHolding();
         if (baseline === null) return;
         const diff = price - baseline;
         const pct = (diff / baseline * 100).toFixed(2);
@@ -260,6 +284,7 @@
             chartEl.style.display = 'block';
             emptyEl.style.display = 'none';
 
+            holding = body.holding;
             baseline = body.previousClose || body.candles[0].open;
             baselineLabel = body.previousClose ? '전일 대비' : '시가 대비';
             showPrice(body.candles[body.candles.length - 1].close);
