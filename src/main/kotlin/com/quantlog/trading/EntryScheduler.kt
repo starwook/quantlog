@@ -38,8 +38,6 @@ data class EntryProperties(
     val enabled: Boolean = false,
     /** 한 번 산 종목은 이 시간 동안 다시 신호를 봐도 사지 않는다. */
     val cooldown: Duration = Duration.ofMinutes(10),
-    /** 주문 1건 수량. 검증 전 규칙이라 작게 시작한다. */
-    val quantityPerOrder: Int = 1,
     /** "5분 재매수" 옵션: 이 주기마다 보유가 0주인지 보고 1주를 산다. */
     val rebuyInterval: Duration = Duration.ofMinutes(5),
 )
@@ -173,7 +171,7 @@ class EntryScheduler(
         if (last != null && Duration.between(last, now) < properties.rebuyInterval) return
         lastRebuyCheckAt[key] = now
         if (held) return
-        buy(watched, properties.quantityPerOrder, "진입 스케줄러: 보유 없음 — ${properties.rebuyInterval.toMinutes()}분 재매수")
+        buy(watched, watched.buyQuantity, "진입 스케줄러: 보유 없음 — ${properties.rebuyInterval.toMinutes()}분 재매수")
     }
 
     /** 저점 판단 진입: 보유 수량과 상관없이 신호가 뜨면 산다. 쿨다운은 [EntryProperties.cooldown]. */
@@ -191,7 +189,7 @@ class EntryScheduler(
 
         // 실패해도(리스크 가드 등) 다음 사이클마다 재시도해 로그를 스팸하지 않도록, 신호 시점에 바로 쿨다운을 건다.
         lastSignalAt[key] = now
-        buy(watched, properties.quantityPerOrder, "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)")
+        buy(watched, watched.buyQuantity, "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)")
     }
 
     private fun buy(

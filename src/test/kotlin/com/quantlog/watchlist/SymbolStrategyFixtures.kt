@@ -12,6 +12,7 @@ fun symbolStrategy(
     martingale: Boolean = false,
     supportBounceEntry: Boolean = true,
     periodicRebuy: Boolean = false,
+    buyQuantity: Int = 1,
     takeProfit: String = "0.5",
     stopLoss: String? = null,
 ) = SymbolStrategy(
@@ -27,6 +28,7 @@ fun symbolStrategy(
     martingaleFinalStageStopLossPercent = BigDecimal("3"),
     supportBounceEntry = supportBounceEntry,
     periodicRebuy = periodicRebuy,
+    buyQuantity = buyQuantity,
 )
 
 /** 주어진 설정만 조회되는 SymbolStrategyService. 목록에 없는 종목은 null(행 없음). */

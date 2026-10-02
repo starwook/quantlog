@@ -67,6 +67,9 @@ class SymbolStrategy(
     /** true 면 [EntryProperties.rebuyInterval](5분)마다 계속 돌면서, 그 순간 보유가 0주이면 1주를 산다. 다른 옵션과 별개다. */
     @Column(name = "periodic_rebuy", nullable = false, columnDefinition = "bit default 0")
     var periodicRebuy: Boolean = false,
+    /** 5분 재매수·저점 판단 진입이 한 번에 사는 수량. 마틴게일은 보유 수량의 배수로 사므로 이 값을 쓰지 않는다. */
+    @Column(name = "buy_quantity", nullable = false, columnDefinition = "int default 1")
+    var buyQuantity: Int = 1,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -94,6 +97,7 @@ class SymbolStrategyForm {
     var etf: Boolean = false
     var supportBounceEntry: Boolean = false
     var periodicRebuy: Boolean = false
+    var buyQuantity: Int? = null
 }
 
 interface SymbolStrategyRepository : JpaRepository<SymbolStrategy, Long> {
@@ -145,6 +149,7 @@ class SymbolStrategyService(
         target.martingale = form.martingale
         target.supportBounceEntry = form.supportBounceEntry
         target.periodicRebuy = form.periodicRebuy
+        target.buyQuantity = atLeast(form.buyQuantity, 1, "매수 수량")
         target.martingaleDropPercent = positive(form.martingaleDropPercent, "마틴게일 추가매수 하락 %")
         target.martingaleMultiplier = atLeast(form.martingaleMultiplier, 2, "마틴게일 배수")
         target.martingaleMaxStages = atLeast(form.martingaleMaxStages, 1, "마틴게일 최대 단계")
