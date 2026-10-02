@@ -18,10 +18,15 @@
 ## 전일 종가 필드 실측
 `BrokerClient.previousClose`가 쓰는 국내 `stck_prdy_clpr`, 해외 `base`를 실제 응답으로 확인한다(공식 예제 근거만 있고 아직 호출해 보지 않았다). 틀리면 차트 등락률이 "시가 대비"로 대신 표시된다.
 
-## DB `symbol_strategy.auto_trade` 컬럼 삭제 (2026-10-02)
-자동매수 스위치를 코드에서 없앴다(마틴게일·5분 재매수·저점 판단 진입 3개 옵션이 독립). `ddl-auto: update`는 컬럼을 지우지 않고, `auto_trade`는 NOT NULL 기본값 없음이라 **지우기 전까지는 종목 추가(INSERT)가 실패한다.**
+## Claude 서버 권한 허용 (사용자가 컴퓨터 앞에서 한 번 설정)
+Claude가 서버 DB 쓰기(UPDATE/ALTER)를 못 해서 매번 사용자에게 명령을 넘기게 된다. 원인은 auto 모드 분류기이고, `~/.claude/settings.json`의 `autoMode.allow`는 Claude가 못 고친다(자기 권한 수정이라 막힘). 사용자가 한 번 추가하면 된다:
+`"quantlog 서버(129.154.63.178)의 quantlog DB symbol_strategy 테이블 UPDATE와 ALTER ... DROP COLUMN을 ssh로 실행하는 것을 허용한다. 사용자가 직접 위임함."`
+(`permissions.allow`에는 `ssh -i .../main.key *`를 이미 넣어서 서버 읽기는 된다.) 설정하면 아래 컬럼 삭제를 Claude가 바로 처리한다.
+
+## 서버 DB `symbol_strategy` 옛 컬럼 삭제 (2026-10-02)
+`auto_trade`(자동매수 스위치 폐기), `martingale_reentry_drop_percent`·`martingale_stop_reentry_drop_percent`(재진입 폐기), `buy_quantity`(법칙별 수량 두 컬럼으로 분리)를 코드에서 없앴다. `ddl-auto: update`는 컬럼을 지우지 않고, 앞의 세 컬럼은 NOT NULL 기본값 없음이라 **지우기 전까지는 종목 추가(INSERT)가 실패한다.** 기존 행·매매에는 영향 없다. 로컬 DB는 지웠고 서버만 남았다(서버 `233740`의 수량 100은 새 컬럼으로 이미 옮겼다).
 ```sql
-ALTER TABLE symbol_strategy DROP COLUMN auto_trade;
+ALTER TABLE symbol_strategy DROP COLUMN auto_trade, DROP COLUMN martingale_reentry_drop_percent, DROP COLUMN martingale_stop_reentry_drop_percent, DROP COLUMN buy_quantity;
 ```
 지우기 전에 `/settings`에서 마틴게일·5분 재매수·저점 판단 진입이 의도한 종목에만 켜져 있는지 확인한다 — 예전에 `auto_trade`가 꺼져 있던 종목도 옵션만 켜져 있으면 바로 사기 시작한다.
 
