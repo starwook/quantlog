@@ -2,11 +2,13 @@ package com.quantlog.broker.kis
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.quantlog.broker.CallPriority
 import mu.KotlinLogging
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientResponseException
+import java.util.concurrent.atomic.AtomicInteger
 
 private val log = KotlinLogging.logger {}
 
@@ -20,6 +22,7 @@ class KisApiClient(
 ) {
     private val restClient = restClientBuilder.clone().baseUrl(properties.baseUrl).build()
     private var lastCallAt = 0L
+    private val urgentWaiting = AtomicInteger(0)
 
     fun get(
         path: String,
@@ -109,16 +112,39 @@ class KisApiClient(
 
     private fun isRateLimited(body: String): Boolean = body.contains("EGW00201") || body.contains("EGW00215")
 
-    @Synchronized
+    /**
+     * 호출 간격을 지킨다. 즉발 호출([CallPriority])이 기다리는 동안엔 일반 호출(스케줄러)이 양보한다 — 우선순위 매뉴얼은 [CallPriority] 참고.
+     * 잠은 잠금 밖에서 잔다(잠금 안에서 자면 즉발 호출도 같이 막힌다).
+     */
     private fun throttle() {
-        val wait = lastCallAt + properties.minIntervalMillis - System.currentTimeMillis()
-        if (wait > 0) Thread.sleep(wait)
-        lastCallAt = System.currentTimeMillis()
+        val urgent = CallPriority.isUrgent()
+        if (urgent) urgentWaiting.incrementAndGet()
+        try {
+            while (true) {
+                val sleepMillis =
+                    synchronized(this) {
+                        val now = System.currentTimeMillis()
+                        val wait = lastCallAt + properties.minIntervalMillis - now
+                        when {
+                            !urgent && urgentWaiting.get() > 0 -> YIELD_MILLIS
+                            wait > 0 -> wait
+                            else -> {
+                                lastCallAt = now
+                                return
+                            }
+                        }
+                    }
+                Thread.sleep(sleepMillis)
+            }
+        } finally {
+            if (urgent) urgentWaiting.decrementAndGet()
+        }
     }
 
     private companion object {
         const val MAX_ATTEMPTS = 2
         const val RATE_LIMIT_RETRY_DELAY_MILLIS = 1500L
+        const val YIELD_MILLIS = 50L
         const val SLOW_WAIT_MILLIS = 2000L
         const val SLOW_HTTP_MILLIS = 1500L
     }

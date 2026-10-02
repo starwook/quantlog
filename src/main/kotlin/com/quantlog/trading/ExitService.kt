@@ -1,6 +1,7 @@
 package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
+import com.quantlog.broker.CallPriority
 import com.quantlog.broker.Market
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
@@ -141,29 +142,32 @@ class ExitService(
         rule: FixedPercentExitRule,
         percentRule: String,
     ) {
-        val targets = rule.targets(holding.avgCost, quote)
-        val request =
-            OrderRequest(
-                market = holding.market,
-                symbol = holding.symbol,
-                side = Side.SELL,
-                quantity = holding.quantity,
-                limitPrice = quote.oneTickBelow(),
-            )
-        riskGuard.check(request)
-        val receipt = broker.placeOrder(request)
-        Thread.sleep(FILL_CHECK_WAIT_MILLIS)
-        val filledPrice =
-            runCatching { broker.filledPrice(request.market, receipt.orderNo) }
-                .onFailure { log.warn(it) { "[체결가 조회 실패] ${request.market} ${receipt.orderNo} — 지정가로 표시됨" } }
-                .getOrNull()
-        val reason =
-            "청산 스케줄러: $percentRule — $signal (평단 ${holding.avgCost} → 현재 ${quote.price}, " +
-                "익절 ${targets.takeProfitPrice} / 손절 ${targets.stopLossPrice ?: "없음(마틴게일은 최대 단계 뒤에만)"})"
-        tradeService.record(request, receipt, reason, filledPrice)
-        log.info {
-            "[청산] ${request.market} ${request.symbol} x${request.quantity} @ ${request.limitPrice} " +
-                "주문번호=${receipt.orderNo} — $reason"
+        // 청산 주문 흐름은 스케줄러의 일반 호출보다 먼저 나간다(broker/CallPriority.kt).
+        CallPriority.urgent {
+            val targets = rule.targets(holding.avgCost, quote)
+            val request =
+                OrderRequest(
+                    market = holding.market,
+                    symbol = holding.symbol,
+                    side = Side.SELL,
+                    quantity = holding.quantity,
+                    limitPrice = quote.oneTickBelow(),
+                )
+            riskGuard.check(request)
+            val receipt = broker.placeOrder(request)
+            Thread.sleep(FILL_CHECK_WAIT_MILLIS)
+            val filledPrice =
+                runCatching { broker.filledPrice(request.market, receipt.orderNo) }
+                    .onFailure { log.warn(it) { "[체결가 조회 실패] ${request.market} ${receipt.orderNo} — 지정가로 표시됨" } }
+                    .getOrNull()
+            val reason =
+                "청산 스케줄러: $percentRule — $signal (평단 ${holding.avgCost} → 현재 ${quote.price}, " +
+                    "익절 ${targets.takeProfitPrice} / 손절 ${targets.stopLossPrice ?: "없음(마틴게일은 최대 단계 뒤에만)"})"
+            tradeService.record(request, receipt, reason, filledPrice)
+            log.info {
+                "[청산] ${request.market} ${request.symbol} x${request.quantity} @ ${request.limitPrice} " +
+                    "주문번호=${receipt.orderNo} — $reason"
+            }
         }
     }
 

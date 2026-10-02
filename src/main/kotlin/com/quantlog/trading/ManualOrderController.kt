@@ -1,5 +1,6 @@
 package com.quantlog.trading
 
+import com.quantlog.broker.CallPriority
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
 import com.quantlog.watchlist.SymbolStrategyService
@@ -27,16 +28,19 @@ class ManualOrderController(
     ): String {
         val name = symbolStrategyService.displayName(market, symbol)
         val label = if (side == Side.BUY) "매수" else "매도"
+        // 사용자가 누른 주문은 스케줄러 호출보다 먼저 나간다(broker/CallPriority.kt).
         runCatching {
-            if (side == Side.BUY) {
-                service.buy(
-                    market,
-                    symbol,
-                    quantity,
-                    limitPrice = price,
-                )
-            } else {
-                service.sell(market, symbol, quantity, limitPrice = price)
+            CallPriority.urgent {
+                if (side == Side.BUY) {
+                    service.buy(
+                        market,
+                        symbol,
+                        quantity,
+                        limitPrice = price,
+                    )
+                } else {
+                    service.sell(market, symbol, quantity, limitPrice = price)
+                }
             }
         }
             .onSuccess { redirect.addFlashAttribute("message", "$name ${quantity}주 $label 주문을 냈어요.") }
@@ -51,7 +55,7 @@ class ManualOrderController(
         @RequestParam tradeId: Long,
         redirect: RedirectAttributes,
     ): String {
-        runCatching { service.cancel(tradeId) }
+        runCatching { CallPriority.urgent { service.cancel(tradeId) } }
             .onSuccess { redirect.addFlashAttribute("message", "주문을 취소했어요.") }
             .onFailure { redirect.addFlashAttribute("error", "취소 실패: ${it.message}") }
         return "redirect:/chart/$market/$symbol"

@@ -1,6 +1,7 @@
 package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
+import com.quantlog.broker.CallPriority
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
@@ -197,20 +198,23 @@ class EntryScheduler(
         quantity: Int,
         reason: String,
     ) {
-        val quote = broker.quote(watched.market, watched.symbol)
-        val limitPrice = quote.roundToTick(quote.price.multiply(BigDecimal.ONE.add(BUY_OFFSET)), RoundingMode.CEILING)
-        val request = OrderRequest(watched.market, watched.symbol, Side.BUY, quantity, limitPrice)
-        riskGuard.checkBuy(request)
-        val receipt = broker.placeOrder(request)
-        Thread.sleep(FILL_CHECK_WAIT_MILLIS)
-        val filledPrice =
-            runCatching { broker.filledPrice(request.market, receipt.orderNo) }
-                .onFailure { log.warn(it) { "[체결가 조회 실패] ${request.market} ${receipt.orderNo} — 지정가로 표시됨" } }
-                .getOrNull()
-        tradeService.record(request, receipt, reason, filledPrice)
-        log.info {
-            "[진입] ${request.market} ${request.symbol} x${request.quantity} @ ${request.limitPrice} " +
-                "주문번호=${receipt.orderNo} — $reason"
+        // 주문 흐름 전체(시세→주문→체결가 조회)는 스케줄러의 일반 호출보다 먼저 나간다(broker/CallPriority.kt).
+        CallPriority.urgent {
+            val quote = broker.quote(watched.market, watched.symbol)
+            val limitPrice = quote.roundToTick(quote.price.multiply(BigDecimal.ONE.add(BUY_OFFSET)), RoundingMode.CEILING)
+            val request = OrderRequest(watched.market, watched.symbol, Side.BUY, quantity, limitPrice)
+            riskGuard.checkBuy(request)
+            val receipt = broker.placeOrder(request)
+            Thread.sleep(FILL_CHECK_WAIT_MILLIS)
+            val filledPrice =
+                runCatching { broker.filledPrice(request.market, receipt.orderNo) }
+                    .onFailure { log.warn(it) { "[체결가 조회 실패] ${request.market} ${receipt.orderNo} — 지정가로 표시됨" } }
+                    .getOrNull()
+            tradeService.record(request, receipt, reason, filledPrice)
+            log.info {
+                "[진입] ${request.market} ${request.symbol} x${request.quantity} @ ${request.limitPrice} " +
+                    "주문번호=${receipt.orderNo} — $reason"
+            }
         }
     }
 
