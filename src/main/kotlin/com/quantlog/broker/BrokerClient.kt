@@ -10,6 +10,12 @@ interface BrokerClient {
         symbol: String,
     ): Quote
 
+    /** 전일 종가. 실시간 시세에는 안 실려 와서 REST 로만 구한다. 구현체가 모르거나 값이 없으면 null. */
+    fun previousClose(
+        market: Market,
+        symbol: String,
+    ): BigDecimal? = null
+
     /**
      * 당일 분봉 조회. 국내·해외 모두 지원(해외는 HHDFS76950200, 날짜·시각은 거래소 현지 기준).
      * KIS 쪽 제약(docs/kis-api/README.md, 2026-09-29 실측): 한 번에 최대 30건, **당일 데이터만** 제공.

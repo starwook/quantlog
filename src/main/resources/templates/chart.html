@@ -65,6 +65,10 @@
             margin: 0 0 4px;
             font-weight: 700;
         }
+        .price { font-size: 28px; font-weight: 700; margin: 0 0 2px; }
+        .price small { font-size: 14px; font-weight: 500; margin-left: 8px; }
+        .price.up { color: var(--pos); }
+        .price.down { color: var(--neg); }
         .status {
             font-size: 13px;
             color: var(--muted);
@@ -146,6 +150,7 @@
     <div class="banner error" th:if="${error}" th:text="${error}"></div>
 
     <h1 th:text="${symbolName} + ' · ' + ${market} + ' 당일 분봉'"></h1>
+    <div class="price" id="price">-</div>
     <div class="status" id="status">불러오는 중…</div>
 
     <div class="card">
@@ -165,7 +170,7 @@
         <button type="submit" name="side" value="SELL" data-label="매도" class="sell-btn">매도</button>
     </form>
 
-    <footer>모의투자 실험 기록입니다. 매수·매도는 현재가보다 한 호가 불리한 지정가로 즉시 체결됩니다. 투자 권유가 아닙니다. 15초마다 자동으로 갱신됩니다.</footer>
+    <footer>모의투자 실험 기록입니다. 매수·매도는 현재가보다 한 호가 불리한 지정가로 즉시 체결됩니다. 투자 권유가 아닙니다. 국내 종목은 실시간, 그 외에는 20초마다 갱신됩니다.</footer>
 </main>
 <script th:inline="javascript">
     const market = /*[[${market}]]*/ 'KR';
@@ -225,6 +230,19 @@
         };
     }
 
+    // 현재가 = 최신 분봉 종가, 등락 = 전일 종가 대비(전일 종가를 못 받으면 당일 첫 분봉 시가 대비로 대신한다).
+    const priceEl = document.getElementById('price');
+    let baseline = null;
+    let baselineLabel = '';
+    function showPrice(price) {
+        if (baseline === null) return;
+        const diff = price - baseline;
+        const pct = (diff / baseline * 100).toFixed(2);
+        const sign = diff > 0 ? '+' : '';
+        priceEl.className = 'price ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : '');
+        priceEl.innerHTML = formatPrice(price) + '<small>' + baselineLabel + ' ' + sign + pct + '%</small>';
+    }
+
     async function refresh() {
         try {
             const res = await fetch(dataUrl);
@@ -242,6 +260,9 @@
             chartEl.style.display = 'block';
             emptyEl.style.display = 'none';
 
+            baseline = body.previousClose || body.candles[0].open;
+            baselineLabel = body.previousClose ? '전일 대비' : '시가 대비';
+            showPrice(body.candles[body.candles.length - 1].close);
             candleSeries.setData(body.candles);
             volumeSeries.setData(body.candles.map(c => ({
                 time: c.time,
@@ -275,6 +296,7 @@
                 chartEl.style.display = 'block';
                 emptyEl.style.display = 'none';
             }
+            showPrice(candle.close);
             candleSeries.update(candle);
             volumeSeries.update({
                 time: candle.time,
