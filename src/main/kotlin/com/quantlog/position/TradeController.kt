@@ -1,5 +1,6 @@
 package com.quantlog.position
 
+import com.quantlog.broker.Side
 import com.quantlog.watchlist.SymbolStrategyService
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
@@ -92,9 +93,17 @@ class TradeController(
             priceText = priceText(),
             orderNo = orderNo,
             reason = reason ?: "—",
-            pnlText = pnl?.let { "${it.amount.signedMoney(market.currency)} (${it.percent.percentText()})" } ?: "—",
+            pnlText = pnlText(pnl),
             pnlCss = pnl?.amount?.pnlCss() ?: "muted",
         )
+
+    /** 매도 행에만 실현손익을 보여준다. 계산이 안 되면(체결가 미확인·매칭되는 매수 기록 없음) 이유를 적는다. 매수 행은 비운다. */
+    private fun Trade.pnlText(pnl: RealizedPnl?): String =
+        when {
+            side != Side.SELL -> ""
+            pnl == null -> "실현손익 계산 불가 (체결가 미확인 또는 매수 기록 없음)"
+            else -> "실현손익 ${pnl.amount.signedMoney(market.currency)} (${pnl.percent.percentText()})"
+        }
 
     /** 체결가를 우선 보여준다. 지정가와 다르면 같이 적고, 체결가를 못 구했으면 그렇다고 밝힌다. */
     private fun Trade.priceText(): String {

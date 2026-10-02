@@ -114,7 +114,7 @@ class EntrySchedulerTest {
         listOf(
             symbolStrategy(Market.KR, "005930", martingale = true, supportBounceEntry = false),
             symbolStrategy(Market.KR, "091160"),
-            symbolStrategy(Market.KR, "000660", autoTrade = false),
+            symbolStrategy(Market.KR, "000660", supportBounceEntry = false),
         )
 
     private fun scheduler(
@@ -290,9 +290,13 @@ class EntrySchedulerTest {
     }
 
     @Test
-    fun `DB 설정에서 매수를 끄면 신호가 있어도 사지 않는다`() {
+    fun `매수 옵션이 모두 꺼져 있으면 신호가 있어도 사지 않는다`() {
         val broker = FakeBroker()
-        scheduler(broker, EntrySignal.BUY, configs = listOf(symbolStrategy(Market.KR, "005930", autoTrade = false, martingale = true)))
+        scheduler(
+            broker,
+            EntrySignal.BUY,
+            configs = listOf(symbolStrategy(Market.KR, "005930", supportBounceEntry = false, martingale = false)),
+        )
             .checkEntries(krOpen)
         assertTrue(broker.orders.isEmpty())
     }
@@ -310,7 +314,7 @@ class EntrySchedulerTest {
         val onePercent =
             symbolStrategy(Market.KR, "005930", martingale = true).let {
                 SymbolStrategy(
-                    it.market, it.symbol, it.displayName, true, it.takeProfitPercent, null, true, java.math.BigDecimal("1"), 3, 5,
+                    it.market, it.symbol, it.displayName, it.takeProfitPercent, null, true, java.math.BigDecimal("1"), 3, 5,
                     java.math.BigDecimal("3"),
                 )
             }

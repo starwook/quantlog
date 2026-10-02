@@ -78,16 +78,15 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 
 ## 종목별 매매 설정 (DB)
 
-오늘 살 종목, 익절·손절 %, 마틴게일 값은 코드가 아니라 DB의 `symbol_strategy` 테이블에 있다. 웹 화면 `/settings`(상단 메뉴 "설정")에서 바꾸고 종목도 추가하거나(감시 종목 목록의 정본이 이 테이블이다) SQL 로 UPDATE 하면 **재시작 없이** 다음 주기(1초 이내)부터 반영된다. 앱이 처음 뜰 때 없는 종목 행만 `application.yml` 기본값으로 채우고(KODEX 코스닥150레버리지만 `auto_trade`·`martingale` 켬), 이미 있는 행은 덮어쓰지 않는다. 행이 없는 종목은 사지 않는다.
+오늘 살 종목, 익절·손절 %, 마틴게일 값은 코드가 아니라 DB의 `symbol_strategy` 테이블에 있다. 웹 화면 `/settings`(상단 메뉴 "설정")에서 바꾸고 종목도 추가하거나(감시 종목 목록의 정본이 이 테이블이다) SQL 로 UPDATE 하면 **재시작 없이** 다음 주기(1초 이내)부터 반영된다. 앱이 처음 뜰 때 없는 종목 행만 `application.yml` 기본값으로 채우고(KODEX 코스닥150레버리지만 `martingale`·`support_bounce_entry` 켬), 이미 있는 행은 덮어쓰지 않는다. 행이 없는 종목은 사지 않는다.
 
 ```sql
--- 오늘 살 종목 선택 (코스닥150레버리지만 켜고 삼성전자는 끄기)
-UPDATE symbol_strategy SET auto_trade = 1 WHERE symbol = '233740';
-UPDATE symbol_strategy SET auto_trade = 0 WHERE symbol = '005930';
+-- 삼성전자 마틴게일 켜기 (매수 옵션이 하나도 안 켜진 종목은 사지 않는다)
+UPDATE symbol_strategy SET martingale = 1 WHERE symbol = '005930';
 -- 삼성전자 익절 +0.5% → +1%, 마틴게일 하락 트리거 0.5% → 1%
 UPDATE symbol_strategy SET take_profit_percent = 1, martingale_drop_percent = 1 WHERE symbol = '005930';
 ```
 
-진입 옵션은 종목별로 완전히 별개다: `martingale`(보유 중 추가매수만), `periodic_rebuy`(5분마다 보유 0주면 1주), `support_bounce_entry`(저점 판단 진입, 보유 수량 무관). 이미 있는 행은 두 신규 컬럼이 0(꺼짐)으로 시작하므로 화면에서 켠다. 재진입 컬럼(`martingale_reentry_drop_percent`, `martingale_stop_reentry_drop_percent`)은 폐기됐으니 기존 DB에서는 `ALTER TABLE symbol_strategy DROP COLUMN martingale_reentry_drop_percent, DROP COLUMN martingale_stop_reentry_drop_percent;` 로 지운다(안 지우면 새 행 INSERT 가 실패한다).
+진입 옵션은 종목별로 완전히 별개다: `martingale`(보유 중 추가매수만), `periodic_rebuy`(5분마다 보유 0주면 1주), `support_bounce_entry`(저점 판단 진입, 보유 수량 무관). 이미 있는 행은 두 신규 컬럼이 0(꺼짐)으로 시작하므로 화면에서 켠다. 재진입 컬럼(`martingale_reentry_drop_percent`, `martingale_stop_reentry_drop_percent`)은 폐기됐으니 기존 DB에서는 `ALTER TABLE symbol_strategy DROP COLUMN martingale_reentry_drop_percent, DROP COLUMN martingale_stop_reentry_drop_percent;` 로 지운다(안 지우면 새 행 INSERT 가 실패한다). 자동매수(`auto_trade`) 스위치도 폐기됐다(2026-10-02) — 마찬가지로 `ALTER TABLE symbol_strategy DROP COLUMN auto_trade;` 로 지운다. 지우기 전엔 이 컬럼이 꺼져 있던 행도 매수 옵션만 켜져 있으면 바로 사기 시작한다.
 
-컬럼: `auto_trade`, `periodic_rebuy`, `support_bounce_entry`, `take_profit_percent`, `stop_loss_percent`(NULL=전역 손절 보류), `martingale`, `martingale_drop_percent`, `martingale_multiplier`, `martingale_max_stages`, `martingale_final_stage_stop_loss_percent`. 비율은 % 단위(0.5 = 0.5%). 엔티티: `watchlist/SymbolStrategy.kt`.
+컬럼: `periodic_rebuy`, `support_bounce_entry`, `take_profit_percent`, `stop_loss_percent`(NULL=전역 손절 보류), `martingale`, `martingale_drop_percent`, `martingale_multiplier`, `martingale_max_stages`, `martingale_final_stage_stop_loss_percent`. 비율은 % 단위(0.5 = 0.5%). 엔티티: `watchlist/SymbolStrategy.kt`.
