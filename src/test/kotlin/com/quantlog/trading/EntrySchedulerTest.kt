@@ -248,13 +248,24 @@ class EntrySchedulerTest {
         held: Boolean,
         bounce: Boolean = false,
         signal: EntrySignal = EntrySignal.NO_TRADE,
-        buyQuantity: Int = 1,
+        rebuyQuantity: Int = 1,
+        bounceQuantity: Int = 1,
     ) = scheduler(
         broker,
         signal,
         portfolioService = if (held) portfolioServiceHeldBy(buy(1, "10000")) else noopPortfolioService(),
         tradeService = tradeServiceWith(),
-        configs = listOf(symbolStrategy(Market.KR, "005930", supportBounceEntry = bounce, periodicRebuy = true, buyQuantity = buyQuantity)),
+        configs =
+            listOf(
+                symbolStrategy(
+                    Market.KR,
+                    "005930",
+                    supportBounceEntry = bounce,
+                    periodicRebuy = true,
+                    periodicRebuyQuantity = rebuyQuantity,
+                    supportBounceQuantity = bounceQuantity,
+                ),
+            ),
     )
 
     @Test
@@ -265,10 +276,17 @@ class EntrySchedulerTest {
     }
 
     @Test
-    fun `종목 설정의 매수 수량만큼 5분 재매수와 저점 판단 진입이 각각 산다`() {
+    fun `5분 재매수와 저점 판단 진입은 각자 설정한 수량만큼 산다`() {
         val broker = FakeBroker()
-        rebuyScheduler(broker, held = false, bounce = true, signal = EntrySignal.BUY, buyQuantity = 3).checkEntries(krOpen)
-        assertEquals(listOf(3, 3), broker.orders.map { it.quantity })
+        rebuyScheduler(
+            broker,
+            held = false,
+            bounce = true,
+            signal = EntrySignal.BUY,
+            rebuyQuantity = 3,
+            bounceQuantity = 5,
+        ).checkEntries(krOpen)
+        assertEquals(listOf(3, 5), broker.orders.map { it.quantity })
     }
 
     @Test

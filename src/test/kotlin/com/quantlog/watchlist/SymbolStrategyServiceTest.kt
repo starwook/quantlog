@@ -57,7 +57,8 @@ class SymbolStrategyServiceTest {
             martingaleMultiplier = 3
             martingaleMaxStages = 4
             martingaleFinalStageStopLossPercent = BigDecimal("5")
-            buyQuantity = 3
+            periodicRebuyQuantity = 3
+            supportBounceQuantity = 4
         }
 
     @Test
@@ -71,7 +72,8 @@ class SymbolStrategyServiceTest {
         assertEquals(null, existing.stopLossPercent)
         assertEquals(3, existing.martingaleMultiplier)
         assertEquals(4, existing.martingaleMaxStages)
-        assertEquals(3, existing.buyQuantity)
+        assertEquals(3, existing.periodicRebuyQuantity)
+        assertEquals(4, existing.supportBounceQuantity)
     }
 
     @Test
@@ -86,7 +88,10 @@ class SymbolStrategyServiceTest {
             service.update(existing.market, existing.symbol, validForm().apply { martingaleMultiplier = 1 })
         }
         assertFailsWith<IllegalArgumentException> {
-            service.update(existing.market, existing.symbol, validForm().apply { buyQuantity = 0 })
+            service.update(existing.market, existing.symbol, validForm().apply { periodicRebuyQuantity = 0 })
+        }
+        assertFailsWith<IllegalArgumentException> {
+            service.update(existing.market, existing.symbol, validForm().apply { supportBounceQuantity = 0 })
         }
     }
 
