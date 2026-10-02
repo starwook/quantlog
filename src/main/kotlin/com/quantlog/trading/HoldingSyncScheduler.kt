@@ -3,8 +3,10 @@ package com.quantlog.trading
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.Market
 import com.quantlog.position.HoldingSyncService
+import com.quantlog.position.TradeFilledEvent
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Instant
@@ -36,6 +38,13 @@ class HoldingSyncScheduler(
         if (properties.enabled) syncNow()
     }
 
+    /** 체결이 확인되면 10초 주기를 기다리지 않고 바로 잔고를 다시 받는다. */
+    @EventListener
+    fun onTradeFilled(event: TradeFilledEvent) {
+        if (properties.enabled) syncNow()
+    }
+
+    @Synchronized
     fun syncNow() {
         val fetchedAt = Instant.now()
         val kis =
