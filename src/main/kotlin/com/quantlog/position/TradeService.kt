@@ -3,6 +3,7 @@ package com.quantlog.position
 import com.quantlog.broker.Market
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.OrderStatus
 import com.quantlog.broker.Side
 import com.quantlog.notification.Notifier
 import org.springframework.context.ApplicationEventPublisher
@@ -16,11 +17,32 @@ class TradeService(
     private val notifier: Notifier,
     private val events: ApplicationEventPublisher,
 ) {
-    /** 이 종목의 매매 기록(체결 시각 오름차순). 마틴게일 사이클 계산에 쓴다. */
+    /** 이 종목의 체결된 매매 기록(체결 시각 오름차순). 취소·미체결 주문은 뺀다. 마틴게일 사이클 계산에 쓴다. */
     fun trades(
         market: Market,
         symbol: String,
-    ): List<Trade> = repository.findAllByMarketAndSymbolOrderByExecutedAtAsc(market, symbol)
+    ): List<Trade> =
+        repository.findAllByMarketAndSymbolOrderByExecutedAtAsc(
+            market,
+            symbol,
+        ).filter { !it.canceled && it.filledPrice != null }
+
+    fun find(id: Long): Trade = repository.findById(id).orElseThrow { IllegalStateException("주문 기록이 없습니다: $id") }
+
+    /** 증권사 조회 결과를 이 주문에 반영해 저장한다. 체결로 바뀌면 잔고 동기화가 돌도록 알린다. */
+    fun applyStatus(
+        trade: Trade,
+        status: OrderStatus,
+    ) {
+        if (!trade.apply(status)) return
+        repository.save(trade)
+        if (status is OrderStatus.Filled) events.publishEvent(TradeFilledEvent(trade.market, trade.symbol))
+    }
+
+    fun markCanceled(trade: Trade) {
+        trade.cancel()
+        repository.save(trade)
+    }
 
     /** filledPrice: 실제 체결가(호출부가 조회해서 넘긴다). 못 구했으면 null로 둔다 — 지어내지 않는다. */
     fun record(
@@ -28,6 +50,7 @@ class TradeService(
         receipt: OrderReceipt,
         reason: String,
         filledPrice: BigDecimal? = null,
+        openConfirmed: Boolean = false,
     ): Trade {
         val trade =
             repository.save(
@@ -39,8 +62,10 @@ class TradeService(
                     orderPrice = order.limitPrice,
                     orderNo = receipt.orderNo,
                     message = receipt.message,
+                    branchNo = receipt.branchNo.ifBlank { null },
                     reason = reason,
                     initialFilledPrice = filledPrice,
+                    initialOpenConfirmed = openConfirmed,
                 ),
             )
         notifier.send(

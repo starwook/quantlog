@@ -38,6 +38,16 @@ interface BrokerClient {
         orderNo: String,
     ): BigDecimal?
 
+    /**
+     * 주문 상태. [quantity] 는 주문 수량 — 그만큼 전부 체결돼야 [OrderStatus.Filled] 다.
+     * 기본 구현은 [filledPrice] 만 보고 체결/모름으로 가른다(미체결을 구분 못 하는 구현체용).
+     */
+    fun orderStatus(
+        market: Market,
+        orderNo: String,
+        quantity: Int,
+    ): OrderStatus = filledPrice(market, orderNo)?.let { OrderStatus.Filled(it) } ?: OrderStatus.Unknown
+
     fun buyingPower(
         market: Market,
         symbol: String,
@@ -48,4 +58,7 @@ interface BrokerClient {
     fun holdings(market: Market): List<Holding>
 
     fun placeOrder(order: OrderRequest): OrderReceipt
+
+    /** 미체결 주문을 취소한다. 이미 체결됐으면 증권사가 거부한다. 취소를 지원하지 않는 구현체는 예외. */
+    fun cancelOrder(request: CancelRequest): Unit = throw UnsupportedOperationException("이 브로커는 주문 취소를 지원하지 않습니다")
 }

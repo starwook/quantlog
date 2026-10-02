@@ -35,10 +35,13 @@ data class CandlePoint(
 )
 
 data class TradeMarker(
+    val id: Long?,
     val time: Long,
     val side: String,
     val price: BigDecimal,
     val quantity: Int,
+    /** FILLED 체결됨 / OPEN 증권사가 확인한 미체결 / UNCONFIRMED 체결조회에 아직 안 잡혀 모름([com.quantlog.trading.TradeReconciler] 가 곧 확인). */
+    val status: String,
 )
 
 data class HoldingPoint(val quantity: Int, val avgCost: BigDecimal)
@@ -99,13 +102,20 @@ class ChartController(
         val trades =
             tradeRepository
                 .findAllByMarketAndSymbolOrderByExecutedAtAsc(market, symbol)
-                .filter { it.executedAt.atZone(zone).toLocalDate() == today }
+                .filter { !it.canceled && it.executedAt.atZone(zone).toLocalDate() == today }
                 .map {
                     TradeMarker(
+                        id = it.id,
                         time = epochSecondsAsIfUtc(it.executedAt.atZone(KST).toLocalDateTime()),
                         side = it.side.name,
                         price = it.filledPrice ?: it.orderPrice,
                         quantity = it.quantity,
+                        status =
+                            when {
+                                it.filledPrice != null -> "FILLED"
+                                it.openConfirmed -> "OPEN"
+                                else -> "UNCONFIRMED"
+                            },
                     )
                 }
         val previousClose =

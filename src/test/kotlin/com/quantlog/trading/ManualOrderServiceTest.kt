@@ -120,4 +120,25 @@ class ManualOrderServiceTest {
         assertFailsWith<IllegalStateException> { service.buy(Market.KR, "005930", 1, krOpen.withHour(18)) }
         assertTrue(broker.orders.isEmpty())
     }
+
+    @Test
+    fun `매수 가격을 지정하면 그 지정가로 낸다`() {
+        Mockito.`when`(portfolioService.snapshot()).thenReturn(PortfolioSnapshot(emptyList(), emptyMap(), emptyMap()))
+        service.buy(Market.KR, "005930", 1, krOpen, BigDecimal("271000"))
+        assertEquals(0, BigDecimal("271000").compareTo(broker.orders.single().limitPrice))
+    }
+
+    @Test
+    fun `호가 단위에 안 맞는 지정가는 주문을 내지 않는다`() {
+        holding(1)
+        val error = assertFailsWith<IllegalStateException> { service.sell(Market.KR, "005930", 1, krOpen, BigDecimal("274250")) }
+        assertTrue(error.message!!.contains("호가 단위"))
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `현재가가 호가 단위에 안 맞아도 즉시 체결가는 호가 단위로 맞춘다`() {
+        assertEquals(0, BigDecimal("277000").compareTo(Quote(BigDecimal("276250"), BigDecimal("500")).oneTickAbove()))
+        assertEquals(0, BigDecimal("275500").compareTo(Quote(BigDecimal("276250"), BigDecimal("500")).oneTickBelow()))
+    }
 }

@@ -57,6 +57,7 @@ class PortfolioServiceTest {
         orderPrice = BigDecimal(price),
         orderNo = "1",
         message = "ok",
+        initialFilledPrice = BigDecimal(price),
         executedAt = executedAt,
     )
 
@@ -96,6 +97,7 @@ class PortfolioServiceTest {
         orderPrice = BigDecimal(price),
         orderNo = "1",
         message = "ok",
+        initialFilledPrice = BigDecimal(price),
         executedAt = executedAt,
     )
 
@@ -175,5 +177,28 @@ class PortfolioServiceTest {
         assertEquals(0, summaries.getValue("KRW").sellLossToday)
         assertEquals(0, summaries.getValue("USD").sellWinToday)
         assertEquals(1, summaries.getValue("USD").sellLossToday)
+    }
+
+    @Test
+    fun `체결가가 없는 미체결 주문은 손익과 횟수 계산에서 뺀다`() {
+        val now = Instant.now()
+        val pending =
+            Trade(
+                market = Market.KR,
+                symbol = "005930",
+                side = Side.BUY,
+                quantity = 1,
+                orderPrice = BigDecimal("100"),
+                orderNo = "2",
+                message = "ok",
+                executedAt = now,
+            )
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(listOf(trade(Market.KR, Side.BUY, now), pending))
+        Mockito.`when`(accountHoldingRepository.findAll()).thenReturn(emptyList())
+
+        val snapshot = service.snapshot()
+
+        assertEquals(1, snapshot.summaryByCurrency.getValue("KRW").buyCountToday)
+        assertEquals(2, snapshot.trades.size)
     }
 }
