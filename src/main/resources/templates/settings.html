@@ -126,7 +126,7 @@
                     <span class="badge" th:text="${row.market.name() == 'KR'} ? '국장' : '미장'"></span>
                     <span class="name"><span th:text="${row.displayName}"></span><span class="code" th:text="${row.symbol}"></span></span>
                     <span class="badge on" th:if="${row.martingale}">마틴게일</span>
-                    <span class="badge on" th:if="${row.periodicRebuy}">5분 재매수</span>
+                    <span class="badge on" th:if="${row.periodicRebuy}"th:text="${row.periodicRebuyIntervalMinutes} + '분 재매수'"></span>
                     <span class="badge on" th:if="${row.supportBounceEntry}">저점 판단</span>
                     <span class="vals" th:text="'익절 ' + ${row.takeProfitPercent.stripTrailingZeros().toPlainString()} + '% · 손절 ' + (${row.stopLossPercent != null} ? ${row.stopLossPercent.stripTrailingZeros().toPlainString()} + '%' : '없음')"></span>
                 </div>
@@ -135,7 +135,7 @@
                 <div class="head">
                     <div class="toggles">
                         <label class="toggle"><input type="checkbox" name="martingale" value="true" th:checked="${row.martingale}">마틴게일</label>
-                        <label class="toggle"><input type="checkbox" name="periodicRebuy" value="true" th:checked="${row.periodicRebuy}">5분 재매수</label>
+                        <label class="toggle"><input type="checkbox" name="periodicRebuy" value="true" th:checked="${row.periodicRebuy}">n분 재매수</label>
                         <label class="toggle"><input type="checkbox" name="supportBounceEntry" value="true" th:checked="${row.supportBounceEntry}">저점 판단 진입</label>
                     </div>
                     <a th:href="@{'/chart/' + ${row.market} + '/' + ${row.symbol}}" class="vals">차트 →</a>
@@ -152,8 +152,11 @@
                 </div>
                 <p class="hint">위 세 가지가 매수 옵션이에요. 서로 독립이고, 하나도 안 켜면 이 종목은 분봉만 모으고 사지 않아요.</p>
                 <div class="grid">
-                    <label>5분 재매수 수량 <small>1회당(주)</small>
+                    <label>재매수 수량 <small>1회당(주)</small>
                         <input type="number" step="1" min="1" name="periodicRebuyQuantity" th:value="${row.periodicRebuyQuantity}" required>
+                    </label>
+                    <label>재매수 간격 <small>n분마다</small>
+                        <input type="number" step="1" min="1" name="periodicRebuyIntervalMinutes" th:value="${row.periodicRebuyIntervalMinutes}" required>
                     </label>
                     <label>저점 판단 진입 수량 <small>1회당(주)</small>
                         <input type="number" step="1" min="1" name="supportBounceQuantity" th:value="${row.supportBounceQuantity}" required>

@@ -39,16 +39,14 @@ data class EntryProperties(
     val enabled: Boolean = false,
     /** 한 번 산 종목은 이 시간 동안 다시 신호를 봐도 사지 않는다. */
     val cooldown: Duration = Duration.ofMinutes(10),
-    /** "5분 재매수" 옵션: 이 주기마다 보유가 0주인지 보고 1주를 산다. */
-    val rebuyInterval: Duration = Duration.ofMinutes(5),
 )
 
 /**
- * 진입 스케줄러 (마틴게일 / 저점 판단 진입(분봉 저점 근접+반등 신호) / 5분 재매수 — 종목별 완전 별개 옵션, AI 없이 순수 규칙 — playbook/principles.md "아직 정하는 중").
+ * 진입 스케줄러 (마틴게일 / 저점 판단 진입(분봉 저점 근접+반등 신호) / 주기(n분) 재매수 — 종목별 완전 별개 옵션, AI 없이 순수 규칙 — playbook/principles.md "아직 정하는 중").
  * 정규장(국내) 또는 프리마켓~애프터마켓(미국, Market.isTradable) 동안 DB 감시 종목(symbol_strategy) 전체의 분봉을 받아
  * DB에 쌓는다 — 차트·백테스트가 쓸 데이터라 매매 대상 여부와 무관하게 항상 수집한다
  * (2026-09-29: "SK하이닉스는 화면엔 있는데 분봉이 안 쌓인다"는 지적으로, 수집 대상과 매매 대상을 분리함).
- * 매매는 그중 DB 설정의 매수 옵션이 켜진 종목만 마틴게일(보유 중 추가 매수) / 5분 재매수(보유 0주일 때 5분마다 1주) /
+ * 매매는 그중 DB 설정의 매수 옵션이 켜진 종목만 마틴게일(보유 중 추가 매수) / 주기 재매수(보유 0주일 때 종목별 n분마다 설정 수량) /
  * 저점 판단 진입(보유 수량 무관, 신호 시 1주)을 각자 켜진 대로 독립 실행한다([checkMartingale]·[checkPeriodicRebuy]·[checkTarget]).
  * 주문은
  * SmokeTestRunner/ExitScheduler 와 같은 RiskGuard.checkBuy(자본 배분·하루 손실 킬스위치 포함) →
@@ -113,7 +111,7 @@ class EntryScheduler(
             }
             if (watched.periodicRebuy) {
                 runCatching { checkPeriodicRebuy(watched, held, now.toInstant()) }
-                    .onFailure { log.warn(it) { "[5분 재매수] 실패: ${watched.market} ${watched.symbol}" } }
+                    .onFailure { log.warn(it) { "[주기 재매수] 실패: ${watched.market} ${watched.symbol}" } }
             }
             if (watched.supportBounceEntry) {
                 runCatching { checkTarget(watched, now.toInstant()) }
@@ -159,8 +157,8 @@ class EntryScheduler(
     }
 
     /**
-     * 5분 재매수: 주문 기록과 무관하게 [EntryProperties.rebuyInterval] 마다 계속 돌면서, 그 순간 보유가 0주이면 종목 설정의 수량만큼 산다.
-     * 보유 중이어도 주기 시각은 흘러간다(보유 중엔 건너뛰고 다음 5분에 다시 본다). 실패해도 다음 주기까지 쉰다.
+     * 주기 재매수: 주문 기록과 무관하게 종목 설정의 간격([SymbolStrategy.periodicRebuyIntervalMinutes], 분)마다 계속 돌면서, 그 순간 보유가 0주이면 종목 설정의 수량만큼 산다.
+     * 보유 중이어도 주기 시각은 흘러간다(보유 중엔 건너뛰고 다음 주기에 다시 본다). 실패해도 다음 주기까지 쉰다.
      */
     private fun checkPeriodicRebuy(
         watched: SymbolStrategy,
@@ -169,10 +167,11 @@ class EntryScheduler(
     ) {
         val key = "${watched.market}:${watched.symbol}"
         val last = lastRebuyCheckAt[key]
-        if (last != null && Duration.between(last, now) < properties.rebuyInterval) return
+        val interval = Duration.ofMinutes(watched.periodicRebuyIntervalMinutes.toLong())
+        if (last != null && Duration.between(last, now) < interval) return
         lastRebuyCheckAt[key] = now
         if (held) return
-        buy(watched, watched.periodicRebuyQuantity, "진입 스케줄러: 보유 없음 — ${properties.rebuyInterval.toMinutes()}분 재매수")
+        buy(watched, watched.periodicRebuyQuantity, "진입 스케줄러: 보유 없음 — ${watched.periodicRebuyIntervalMinutes}분 재매수")
     }
 
     /** 저점 판단 진입: 보유 수량과 상관없이 신호가 뜨면 산다. 쿨다운은 [EntryProperties.cooldown]. */

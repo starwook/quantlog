@@ -13,6 +13,7 @@ fun symbolStrategy(
     supportBounceEntry: Boolean = true,
     periodicRebuy: Boolean = false,
     periodicRebuyQuantity: Int = 1,
+    periodicRebuyIntervalMinutes: Int = 5,
     supportBounceQuantity: Int = 1,
     takeProfit: String = "0.5",
     stopLoss: String? = null,
@@ -30,6 +31,7 @@ fun symbolStrategy(
     supportBounceEntry = supportBounceEntry,
     periodicRebuy = periodicRebuy,
     periodicRebuyQuantity = periodicRebuyQuantity,
+    periodicRebuyIntervalMinutes = periodicRebuyIntervalMinutes,
     supportBounceQuantity = supportBounceQuantity,
 )
 
