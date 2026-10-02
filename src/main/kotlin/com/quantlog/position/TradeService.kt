@@ -5,6 +5,7 @@ import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Side
 import com.quantlog.notification.Notifier
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 
@@ -13,6 +14,7 @@ import java.math.BigDecimal
 class TradeService(
     private val repository: TradeRepository,
     private val notifier: Notifier,
+    private val events: ApplicationEventPublisher,
 ) {
     /** 이 종목의 매매 기록(체결 시각 오름차순). 마틴게일 사이클 계산에 쓴다. */
     fun trades(
@@ -46,6 +48,7 @@ class TradeService(
                 "@ ${filledPrice ?: order.limitPrice}${if (filledPrice == null) " (지정가)" else ""} " +
                 "주문번호=${receipt.orderNo}\n사유: $reason",
         )
+        if (filledPrice != null) events.publishEvent(TradeFilledEvent(order.market, order.symbol))
         return trade
     }
 }

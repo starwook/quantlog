@@ -1,9 +1,11 @@
 package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
+import com.quantlog.position.TradeFilledEvent
 import com.quantlog.position.TradeRepository
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 
@@ -25,6 +27,7 @@ class TradeReconciler(
     private val broker: BrokerClient,
     private val tradeRepository: TradeRepository,
     private val properties: ReconcileProperties,
+    private val events: ApplicationEventPublisher,
 ) {
     @Scheduled(
         fixedDelayString = "\${quantlog.reconcile.interval-millis:60000}",
@@ -44,6 +47,7 @@ class TradeReconciler(
                     if (price != null) {
                         trade.applyFilledPrice(price)
                         tradeRepository.save(trade)
+                        events.publishEvent(TradeFilledEvent(trade.market, trade.symbol))
                         log.info { "[체결가 확정] ${trade.market} ${trade.symbol} 주문번호=${trade.orderNo} → $price" }
                     }
                 }

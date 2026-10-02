@@ -10,15 +10,19 @@ import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import com.quantlog.position.Trade
+import com.quantlog.position.TradeFilledEvent
 import com.quantlog.position.TradeRepository
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
+import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.LocalTime
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class TradeReconcilerTest {
+    private val noEvents = Mockito.mock(ApplicationEventPublisher::class.java)
+
     private class FakeBroker(private val price: BigDecimal?) : BrokerClient {
         override fun quote(
             market: Market,
@@ -64,7 +68,11 @@ class TradeReconcilerTest {
         val repository = Mockito.mock(TradeRepository::class.java)
         Mockito.`when`(repository.findAllByFilledPriceIsNull()).thenReturn(listOf(trade))
 
-        TradeReconciler(FakeBroker(BigDecimal("272000")), repository, ReconcileProperties(enabled = true)).reconcile()
+        val events = Mockito.mock(ApplicationEventPublisher::class.java)
+
+        TradeReconciler(FakeBroker(BigDecimal("272000")), repository, ReconcileProperties(enabled = true), events).reconcile()
+
+        Mockito.verify(events).publishEvent(TradeFilledEvent(trade.market, trade.symbol))
 
         assertEquals(0, BigDecimal("272000").compareTo(trade.filledPrice))
         Mockito.verify(repository).save(trade)
@@ -76,7 +84,12 @@ class TradeReconcilerTest {
         val repository = Mockito.mock(TradeRepository::class.java)
         Mockito.`when`(repository.findAllByFilledPriceIsNull()).thenReturn(listOf(trade))
 
-        TradeReconciler(FakeBroker(null), repository, ReconcileProperties(enabled = true)).reconcile()
+        TradeReconciler(
+            FakeBroker(null),
+            repository,
+            ReconcileProperties(enabled = true),
+            Mockito.mock(ApplicationEventPublisher::class.java),
+        ).reconcile()
 
         assertNull(trade.filledPrice)
         Mockito.verify(repository, Mockito.never()).save(Mockito.any())
@@ -96,7 +109,12 @@ class TradeReconcilerTest {
             }
 
         // 예외를 던져도 reconcile() 자체는 끝까지 실행된다 (다른 종목 처리를 막지 않음).
-        TradeReconciler(broker, repository, ReconcileProperties(enabled = true)).reconcile()
+        TradeReconciler(
+            broker,
+            repository,
+            ReconcileProperties(enabled = true),
+            Mockito.mock(ApplicationEventPublisher::class.java),
+        ).reconcile()
         assertNull(trade.filledPrice)
     }
 }

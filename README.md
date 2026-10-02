@@ -4,7 +4,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 
 ## 지금 되는 것
 
-한투(KIS) **모의투자** 연동 + 매매 기록 DB/웹. 국내(KR) + 미국(NASDAQ/NYSE/AMEX) 지원. 실행하면 `http://localhost:8080`에서 계좌 요약·실현손익·매매 기록을 볼 수 있다 (Thymeleaf, 서버는 계속 떠 있음). 보유 종목은 KIS 잔고를 10초마다 DB(`account_holding`)에 그대로 동기화(`HoldingSyncScheduler`)해 두고 화면은 그 테이블을 읽는다(화면 조회에 KIS 호출 없음, 증권사 앱에서 직접 거래한 물량 포함).
+한투(KIS) **모의투자** 연동 + 매매 기록 DB/웹. 국내(KR) + 미국(NASDAQ/NYSE/AMEX) 지원. 실행하면 `http://localhost:8080`에서 계좌 요약·실현손익·매매 기록을 볼 수 있다 (Thymeleaf, 서버는 계속 떠 있음). 보유 종목은 KIS 잔고를 10초마다(체결이 확인되면 즉시 한 번 더) DB(`account_holding`)에 그대로 동기화(`HoldingSyncScheduler`)해 두고 화면은 그 테이블을 읽는다(화면 조회에 KIS 호출 없음, 증권사 앱에서 직접 거래한 물량 포함).
 
 | 기능 | 위치 |
 |---|---|
