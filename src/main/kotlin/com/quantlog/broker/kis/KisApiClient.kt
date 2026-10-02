@@ -59,7 +59,9 @@ class KisApiClient(
         build: (RestClient) -> RestClient.RequestHeadersSpec<*>,
     ): JsonNode {
         repeat(MAX_ATTEMPTS) { attempt ->
+            val waitStart = System.currentTimeMillis()
             throttle()
+            val httpStart = System.currentTimeMillis()
             try {
                 val response =
                     build(restClient)
@@ -77,6 +79,7 @@ class KisApiClient(
                         "KIS 오류 $path ($trId): [${response.path("msg_cd").asText()}] ${response.path("msg1").asText()}",
                     )
                 }
+                logIfSlow(path, trId, waitMillis = httpStart - waitStart, httpMillis = System.currentTimeMillis() - httpStart)
                 if (properties.logRaw) log.info { "KIS raw $path ($trId): $response" }
                 return response
             } catch (e: RestClientResponseException) {
@@ -92,6 +95,18 @@ class KisApiClient(
         throw KisApiException("KIS 호출 실패(재시도 초과) $path ($trId)")
     }
 
+    /** 느린 원인을 가르려고 남긴다: 공용 호출 간격 대기(throttle)가 길면 다른 호출에 밀린 것이고, 응답이 길면 KIS 서버가 느린 것이다. */
+    private fun logIfSlow(
+        path: String,
+        trId: String,
+        waitMillis: Long,
+        httpMillis: Long,
+    ) {
+        if (waitMillis > SLOW_WAIT_MILLIS || httpMillis > SLOW_HTTP_MILLIS) {
+            log.warn { "[KIS 느린 호출] $path ($trId) 대기 ${waitMillis}ms + 응답 ${httpMillis}ms" }
+        }
+    }
+
     private fun isRateLimited(body: String): Boolean = body.contains("EGW00201") || body.contains("EGW00215")
 
     @Synchronized
@@ -104,5 +119,7 @@ class KisApiClient(
     private companion object {
         const val MAX_ATTEMPTS = 2
         const val RATE_LIMIT_RETRY_DELAY_MILLIS = 1500L
+        const val SLOW_WAIT_MILLIS = 2000L
+        const val SLOW_HTTP_MILLIS = 1500L
     }
 }
