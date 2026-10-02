@@ -17,9 +17,7 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate.format_sql: true
+    show-sql: false   # 켜면 매초 도는 스케줄러 쿼리로 서버 로그가 가득 찬다. SQL 이 필요할 때만 잠깐 켠다
 
 server:
   port: 8080
