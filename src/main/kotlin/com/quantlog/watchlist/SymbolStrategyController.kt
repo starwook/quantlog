@@ -31,7 +31,7 @@ class SymbolStrategyController(
         redirect: RedirectAttributes,
     ): String {
         runCatching { service.add(market, symbol, displayName, etf) }
-            .onSuccess { redirect.addFlashAttribute("message", "$displayName 종목을 추가했어요. 매수 옵션은 꺼진 상태예요.") }
+            .onSuccess { redirect.addFlashAttribute("message", "$displayName 종목을 추가했어요. 자동매수는 꺼진 상태예요.") }
             .onFailure { redirect.addFlashAttribute("error", "종목 추가 실패: ${it.message}") }
         return "redirect:/settings"
     }

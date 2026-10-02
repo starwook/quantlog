@@ -49,7 +49,7 @@ data class EntryProperties(
  * 정규장(국내) 또는 프리마켓~애프터마켓(미국, Market.isTradable) 동안 DB 감시 종목(symbol_strategy) 전체의 분봉을 받아
  * DB에 쌓는다 — 차트·백테스트가 쓸 데이터라 매매 대상 여부와 무관하게 항상 수집한다
  * (2026-09-29: "SK하이닉스는 화면엔 있는데 분봉이 안 쌓인다"는 지적으로, 수집 대상과 매매 대상을 분리함).
- * 매매는 그중 DB 설정의 매수 옵션이 켜진 종목만 마틴게일(보유 중 추가 매수) / 5분 재매수(보유 0주일 때 5분마다 1주) /
+ * 매매는 그중 DB 설정([SymbolStrategy.autoTrade])이 켜진 것만, 그 안에서 마틴게일(보유 중 추가 매수) / 5분 재매수(보유 0주일 때 5분마다 1주) /
  * 저점 판단 진입(보유 수량 무관, 신호 시 1주)을 각자 켜진 대로 독립 실행한다([checkMartingale]·[checkPeriodicRebuy]·[checkTarget]).
  * 주문은
  * SmokeTestRunner/ExitScheduler 와 같은 RiskGuard.checkBuy(자본 배분·하루 손실 킬스위치 포함) →
@@ -99,7 +99,8 @@ class EntryScheduler(
             runCatching { marketDataService.fetchAndStoreRecentMinutes(watched.market, watched.symbol, LocalTime.now(KST)) }
                 .onFailure { log.warn(it) { "[분봉 수집] 실패: ${watched.market} ${watched.symbol}" } }
 
-            // 무엇을 살지는 같은 행(symbol_strategy)의 매수 옵션이 정한다 — 하나도 안 켜져 있으면 아래 세 분기가 모두 건너뛰어진다.
+            // 어떤 종목을 살지·마틴게일 여부도 같은 행(symbol_strategy)이 정한다.
+            if (!watched.autoTrade) return@forEach
             // 이 종목에 잔고 동기화보다 늦은 주문이 있으면 보유 현황이 낡았다 — 중복 매수를 막으려고 다음 동기화까지 미룬다.
             if (holdingSync.hasUnsyncedTrade(watched.market, watched.symbol)) return@forEach
 

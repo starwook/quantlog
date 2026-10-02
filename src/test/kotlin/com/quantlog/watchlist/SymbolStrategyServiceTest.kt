@@ -30,7 +30,7 @@ class SymbolStrategyServiceTest {
         assertTrue(saved.none { it.symbol == SeedSymbol.SAMSUNG.symbol })
         assertEquals(
             listOf(SeedSymbol.KODEX_KOSDAQ150_LEVERAGE.symbol),
-            saved.filter { it.martingale }.map { it.symbol },
+            saved.filter { it.autoTrade && it.martingale }.map { it.symbol },
         )
     }
 
@@ -43,14 +43,15 @@ class SymbolStrategyServiceTest {
         val captor = ArgumentCaptor.forClass(SymbolStrategy::class.java)
         Mockito.verify(repository, Mockito.times(SeedSymbol.entries.size)).save(captor.capture())
         val target = captor.allValues.single { it.symbol == SeedSymbol.KODEX_KOSDAQ150_LEVERAGE.symbol }
-        assertTrue(target.martingale && target.supportBounceEntry)
-        assertEquals(1, captor.allValues.count { it.martingale })
+        assertTrue(target.autoTrade && target.martingale)
+        assertEquals(1, captor.allValues.count { it.autoTrade })
         assertEquals(0, BigDecimal("0.5").compareTo(MartingaleProperties().dropPercent))
         assertEquals(0, MartingaleProperties().dropPercent.compareTo(target.martingaleDropPercent))
     }
 
     private fun validForm() =
         SymbolStrategyForm().apply {
+            autoTrade = true
             takeProfitPercent = BigDecimal("1")
             martingale = true
             martingaleDropPercent = BigDecimal("2")
@@ -86,7 +87,7 @@ class SymbolStrategyServiceTest {
     }
 
     @Test
-    fun `종목을 추가하면 코드는 대문자로, 매수 옵션은 모두 꺼진 기본값으로 저장한다`() {
+    fun `종목을 추가하면 코드는 대문자로, 자동매수와 마틴게일은 꺼진 기본값으로 저장한다`() {
         Mockito.`when`(repository.save(Mockito.any(SymbolStrategy::class.java))).thenAnswer { it.arguments[0] }
 
         service.add(Market.NASDAQ, " tsla ", " 테슬라 ")
@@ -96,7 +97,7 @@ class SymbolStrategyServiceTest {
         val saved = captor.value
         assertEquals("TSLA", saved.symbol)
         assertEquals("테슬라", saved.displayName)
-        assertTrue(!saved.martingale && !saved.supportBounceEntry && !saved.periodicRebuy)
+        assertTrue(!saved.autoTrade && !saved.martingale)
     }
 
     @Test
