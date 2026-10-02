@@ -10,7 +10,9 @@ docker compose up -d --build
 
 wait_started() {
   for _ in $(seq 1 40); do
-    docker logs quantlog 2>&1 | grep -q "Started QuantlogApplicationKt" && return 0
+    # grep -q 는 첫 매치에서 바로 끝나 docker logs 가 SIGPIPE 로 죽고, pipefail 때문에 매치돼도 실패로 판정된다
+    # (로그가 클 때). 끝까지 읽도록 출력만 버린다.
+    docker logs quantlog 2>&1 | grep "Started QuantlogApplicationKt" >/dev/null && return 0
     sleep 3
   done
   return 1
