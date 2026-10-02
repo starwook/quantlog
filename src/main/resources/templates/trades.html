@@ -246,7 +246,7 @@
                 </div>
                 <div class="right">
                     <div class="value" th:text="${t.quantity} + '주 @ ' + ${t.priceText}"></div>
-                    <div class="pnl" th:classappend="${t.pnlCss}" th:text="${t.pnlText}"></div>
+                    <div class="pnl" th:if="${!#strings.isEmpty(t.pnlText)}" th:classappend="${t.pnlCss}" th:text="${t.pnlText}"></div>
                 </div>
             </div>
             <div class="meta">

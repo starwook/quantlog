@@ -100,9 +100,10 @@
                 </label>
                 <label class="toggle"><input type="checkbox" name="etf" value="true">ETF</label>
             </div>
+            <p class="hint">ETF 는 국내 ETF 매도 시 증권거래세가 없는 점만 모의(paper) 체결 계산에 반영해요.</p>
             <button type="submit">추가</button>
         </form>
-        <p class="hint" style="margin: 12px 0 0;">추가하면 분봉 수집·차트 대상이 됩니다. 자동매수·마틴게일은 꺼진 채로 시작해요.</p>
+        <p class="hint" style="margin: 12px 0 0;">추가하면 분봉 수집·차트 대상이 됩니다. 매수 옵션은 모두 꺼진 채로 시작해요.</p>
     </details>
 
     <p class="hint" th:if="${#lists.isEmpty(rows)}">감시 중인 종목이 없어요. 위에서 추가해 주세요.</p>
@@ -110,21 +111,20 @@
     <div class="tools" th:unless="${#lists.isEmpty(rows)}">
         <input type="search" id="q" placeholder="종목 이름·코드 검색" autocomplete="off">
         <button type="button" class="chip on" data-f="all" style="margin:0;width:auto;">전체</button>
-        <button type="button" class="chip" data-f="auto" style="margin:0;width:auto;">자동매수 켜짐</button>
+        <button type="button" class="chip" data-f="buy" style="margin:0;width:auto;">매수 옵션 켜짐</button>
         <button type="button" class="chip" data-f="marti" style="margin:0;width:auto;">마틴게일 켜짐</button>
         <span class="count" id="count"></span>
     </div>
 
     <form class="item" th:each="row : ${rows}" method="post"
           th:action="@{'/settings/' + ${row.market} + '/' + ${row.symbol}}"
-          th:attr="data-name=${row.displayName + ' ' + row.symbol}, data-auto=${row.autoTrade}, data-marti=${row.martingale}"
+          th:attr="data-name=${row.displayName + ' ' + row.symbol}, data-buy=${row.martingale or row.periodicRebuy or row.supportBounceEntry}, data-marti=${row.martingale}"
           onsubmit="return confirm('이 설정은 바로 매매에 반영됩니다. 저장할까요?')">
         <details>
             <summary>
                 <div class="sum">
                     <span class="badge" th:text="${row.market.name() == 'KR'} ? '국장' : '미장'"></span>
                     <span class="name"><span th:text="${row.displayName}"></span><span class="code" th:text="${row.symbol}"></span></span>
-                    <span class="badge" th:classappend="${row.autoTrade} ? 'on'" th:text="${row.autoTrade} ? '자동매수' : '수동'"></span>
                     <span class="badge on" th:if="${row.martingale}">마틴게일</span>
                     <span class="badge on" th:if="${row.periodicRebuy}">5분 재매수</span>
                     <span class="badge on" th:if="${row.supportBounceEntry}">저점 판단</span>
@@ -134,11 +134,9 @@
             <div class="body">
                 <div class="head">
                     <div class="toggles">
-                        <label class="toggle"><input type="checkbox" name="autoTrade" value="true" th:checked="${row.autoTrade}">자동매수</label>
                         <label class="toggle"><input type="checkbox" name="martingale" value="true" th:checked="${row.martingale}">마틴게일</label>
                         <label class="toggle"><input type="checkbox" name="periodicRebuy" value="true" th:checked="${row.periodicRebuy}">5분 재매수</label>
                         <label class="toggle"><input type="checkbox" name="supportBounceEntry" value="true" th:checked="${row.supportBounceEntry}">저점 판단 진입</label>
-                        <label class="toggle"><input type="checkbox" name="etf" value="true" th:checked="${row.etf}">ETF</label>
                     </div>
                     <a th:href="@{'/chart/' + ${row.market} + '/' + ${row.symbol}}" class="vals">차트 →</a>
                 </div>
@@ -152,6 +150,9 @@
                         <small>마틴게일은 아래 마지막 단계 손절이 따로 있음</small>
                     </label>
                 </div>
+                <p class="hint">위 세 가지가 매수 옵션이에요. 서로 독립이고, 하나도 안 켜면 이 종목은 분봉만 모으고 사지 않아요.</p>
+                <label class="toggle"><input type="checkbox" name="etf" value="true" th:checked="${row.etf}">ETF 종목</label>
+                <p class="hint">매수와는 무관해요. 모의(paper) 브로커의 체결 계산에서 국내 ETF 는 매도 증권거래세(0.20%)를 빼지 않을 뿐이고, 한투 모의·실계좌에서는 증권사가 계산하므로 영향이 없어요.</p>
                 <details th:open="${row.martingale}">
                     <summary>마틴게일 세부값</summary>
                     <div class="grid">
@@ -185,7 +186,7 @@
         let n = 0;
         items.forEach(f => {
             const ok = (!t || f.dataset.name.toLowerCase().includes(t))
-                && (filter === 'all' || (filter === 'auto' && f.dataset.auto === 'true') || (filter === 'marti' && f.dataset.marti === 'true'));
+                && (filter === 'all' || (filter === 'buy' && f.dataset.buy === 'true') || (filter === 'marti' && f.dataset.marti === 'true'));
             f.hidden = !ok;
             if (ok) n++;
         });
