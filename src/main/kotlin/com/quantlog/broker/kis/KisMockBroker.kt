@@ -10,6 +10,7 @@ import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
+import mu.KotlinLogging
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -19,6 +20,8 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
+
+private val log = KotlinLogging.logger {}
 
 /**
  * 한국투자증권 모의투자 구현체. 스펙 출처: docs/kis-api/examples (TR ID 는 모의투자용 V 접두).
@@ -42,25 +45,25 @@ class KisMockBroker(
     ): BigDecimal? {
         val key = "$market:$symbol:${LocalDate.now(market.zone)}"
         previousCloseCache[key]?.let { return it }
-        val (output, field) =
+        val output =
             if (market.isOverseas) {
-                val res =
-                    api.get(
-                        "/uapi/overseas-price/v1/quotations/price",
-                        "HHDFS00000300",
-                        mapOf("AUTH" to "", "EXCD" to market.quoteExchangeCode(), "SYMB" to symbol),
-                    )
-                res.path("output") to "base" // 전일종가 (공식 예제 chk_price.py)
+                api.get(
+                    "/uapi/overseas-price/v1/quotations/price",
+                    "HHDFS00000300",
+                    mapOf("AUTH" to "", "EXCD" to market.quoteExchangeCode(), "SYMB" to symbol),
+                ).path("output")
             } else {
-                val res =
-                    api.get(
-                        "/uapi/domestic-stock/v1/quotations/inquire-price",
-                        "FHKST01010100",
-                        mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
-                    )
-                res.path("output") to "stck_prdy_clpr" // 주식 전일 종가 (공식 예제 chk_inquire_price.py)
+                api.get(
+                    "/uapi/domestic-stock/v1/quotations/inquire-price",
+                    "FHKST01010100",
+                    mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
+                ).path("output")
             }
-        return output.decimal(field).takeIf { it > BigDecimal.ZERO }?.also { previousCloseCache[key] = it }
+        // 국내: 전일 종가(stck_prdy_clpr), 없으면 기준가(stck_sdpr). 해외: 전일종가(base). 필드명은 공식 예제 근거(실측 전).
+        val fields = if (market.isOverseas) listOf("base") else listOf("stck_prdy_clpr", "stck_sdpr")
+        val value = fields.map { output.decimal(it) }.firstOrNull { it > BigDecimal.ZERO }
+        if (value == null) log.warn { "[전일 종가] $market $symbol 응답에서 $fields 를 못 찾음. 응답 필드: ${output.fieldNames().asSequence().toList()}" }
+        return value?.also { previousCloseCache[key] = it }
     }
 
     override fun quote(
