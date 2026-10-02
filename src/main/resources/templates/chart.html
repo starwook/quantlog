@@ -69,9 +69,9 @@
         .price small { font-size: 14px; font-weight: 500; margin-left: 8px; }
         .price.up { color: var(--pos); }
         .price.down { color: var(--neg); }
-        .holding { font-size: 14px; margin-bottom: 2px; }
-        .holding .up { color: var(--pos); }
-        .holding .down { color: var(--neg); }
+        .order .info { flex-basis: 100%; font-size: 14px; }
+        .order .info .up { color: var(--pos); }
+        .order .info .down { color: var(--neg); }
         .status {
             font-size: 13px;
             color: var(--muted);
@@ -112,7 +112,7 @@
         .banner { padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-size: 14px; background: var(--card); }
         .banner.ok { border-left: 4px solid var(--neg); }
         .banner.error { border-left: 4px solid var(--pos); color: var(--pos); }
-        .order { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+        .order { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
         .order input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; }
         .order .muted { color: var(--muted); font-size: 14px; }
         .order button { padding: 10px 20px; border: 0; border-radius: 10px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
@@ -154,7 +154,6 @@
 
     <h1 th:text="${symbolName} + ' · ' + ${market} + ' 당일 분봉'"></h1>
     <div class="price" id="price">-</div>
-    <div class="holding" id="holding"></div>
     <div class="status" id="status">불러오는 중…</div>
 
     <div class="card">
@@ -168,6 +167,8 @@
 
     <form class="card order" method="post" th:action="@{'/chart/' + ${market} + '/' + ${symbol} + '/order'}"
           onsubmit="return confirm(event.submitter.dataset.label + ' ' + this.quantity.value + '주 주문할까요?')">
+        <div class="info" id="holding"></div>
+        <div class="info muted" id="orderTotal"></div>
         <input type="number" name="quantity" min="1" value="1" required aria-label="수량">
         <span class="muted">주</span>
         <button type="submit" name="side" value="BUY" data-label="매수" class="buy-btn">매수</button>
@@ -256,9 +257,19 @@
             + sign + formatPrice(profit) + ' (' + sign + pct + '%)</span>';
     }
 
+    // 주문 총액 = 입력 수량 × 현재가. 수량을 바꾸거나 가격이 움직일 때마다 다시 계산한다.
+    const quantityEl = document.querySelector('form.order input[name=quantity]');
+    const orderTotalEl = document.getElementById('orderTotal');
+    function showOrderTotal() {
+        const quantity = parseInt(quantityEl.value, 10);
+        orderTotalEl.textContent = lastPrice !== null && quantity > 0 ? '주문 총액 ' + formatPrice(lastPrice * quantity) : '';
+    }
+    quantityEl.addEventListener('input', showOrderTotal);
+
     function showPrice(price) {
         lastPrice = price;
         showHolding();
+        showOrderTotal();
         if (baseline === null) return;
         const diff = price - baseline;
         const pct = (diff / baseline * 100).toFixed(2);
