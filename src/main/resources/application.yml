@@ -78,7 +78,6 @@ quantlog:
     # 감시 종목·실제 매수 대상·종목별 값은 모두 DB symbol_strategy 에서 관리한다(여기 yaml이 아님).
     # 검증 전 규칙(playbook/principles.md "아직 정하는 중") — 끄려면 false로.
     enabled: ${QUANTLOG_ENTRY_ENABLED:true}
-    quantity-per-order: 1
     interval-millis: 1000
     cooldown: 10m
   reconcile:
