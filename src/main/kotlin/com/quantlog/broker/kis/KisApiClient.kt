@@ -2,11 +2,13 @@ package com.quantlog.broker.kis
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.quantlog.broker.CallPriority
 import mu.KotlinLogging
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientResponseException
+import java.util.concurrent.atomic.AtomicInteger
 
 private val log = KotlinLogging.logger {}
 
@@ -20,6 +22,7 @@ class KisApiClient(
 ) {
     private val restClient = restClientBuilder.clone().baseUrl(properties.baseUrl).build()
     private var lastCallAt = 0L
+    private val urgentWaiting = AtomicInteger(0)
 
     fun get(
         path: String,
@@ -59,7 +62,9 @@ class KisApiClient(
         build: (RestClient) -> RestClient.RequestHeadersSpec<*>,
     ): JsonNode {
         repeat(MAX_ATTEMPTS) { attempt ->
+            val waitStart = System.currentTimeMillis()
             throttle()
+            val httpStart = System.currentTimeMillis()
             try {
                 val response =
                     build(restClient)
@@ -77,6 +82,7 @@ class KisApiClient(
                         "KIS 오류 $path ($trId): [${response.path("msg_cd").asText()}] ${response.path("msg1").asText()}",
                     )
                 }
+                logIfSlow(path, trId, waitMillis = httpStart - waitStart, httpMillis = System.currentTimeMillis() - httpStart)
                 if (properties.logRaw) log.info { "KIS raw $path ($trId): $response" }
                 return response
             } catch (e: RestClientResponseException) {
@@ -92,17 +98,54 @@ class KisApiClient(
         throw KisApiException("KIS 호출 실패(재시도 초과) $path ($trId)")
     }
 
+    /** 느린 원인을 가르려고 남긴다: 공용 호출 간격 대기(throttle)가 길면 다른 호출에 밀린 것이고, 응답이 길면 KIS 서버가 느린 것이다. */
+    private fun logIfSlow(
+        path: String,
+        trId: String,
+        waitMillis: Long,
+        httpMillis: Long,
+    ) {
+        if (waitMillis > SLOW_WAIT_MILLIS || httpMillis > SLOW_HTTP_MILLIS) {
+            log.warn { "[KIS 느린 호출] $path ($trId) 대기 ${waitMillis}ms + 응답 ${httpMillis}ms" }
+        }
+    }
+
     private fun isRateLimited(body: String): Boolean = body.contains("EGW00201") || body.contains("EGW00215")
 
-    @Synchronized
+    /**
+     * 호출 간격을 지킨다. 즉발 호출([CallPriority])이 기다리는 동안엔 일반 호출(스케줄러)이 양보한다 — 우선순위 매뉴얼은 [CallPriority] 참고.
+     * 잠은 잠금 밖에서 잔다(잠금 안에서 자면 즉발 호출도 같이 막힌다).
+     */
     private fun throttle() {
-        val wait = lastCallAt + properties.minIntervalMillis - System.currentTimeMillis()
-        if (wait > 0) Thread.sleep(wait)
-        lastCallAt = System.currentTimeMillis()
+        val urgent = CallPriority.isUrgent()
+        if (urgent) urgentWaiting.incrementAndGet()
+        try {
+            while (true) {
+                val sleepMillis =
+                    synchronized(this) {
+                        val now = System.currentTimeMillis()
+                        val wait = lastCallAt + properties.minIntervalMillis - now
+                        when {
+                            !urgent && urgentWaiting.get() > 0 -> YIELD_MILLIS
+                            wait > 0 -> wait
+                            else -> {
+                                lastCallAt = now
+                                return
+                            }
+                        }
+                    }
+                Thread.sleep(sleepMillis)
+            }
+        } finally {
+            if (urgent) urgentWaiting.decrementAndGet()
+        }
     }
 
     private companion object {
         const val MAX_ATTEMPTS = 2
         const val RATE_LIMIT_RETRY_DELAY_MILLIS = 1500L
+        const val YIELD_MILLIS = 50L
+        const val SLOW_WAIT_MILLIS = 2000L
+        const val SLOW_HTTP_MILLIS = 1500L
     }
 }

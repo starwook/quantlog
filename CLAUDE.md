@@ -15,6 +15,7 @@ AI 매매 판단 과정·수익률을 공개하는 데이트레이딩 봇 + 웹�
 - 스택: Kotlin + Spring Boot + JPA + MySQL + Thymeleaf + ktlint + Gradle. 패키지는 도메인 기준.
 - 증권사 API는 `BrokerClient` 인터페이스 뒤에 둔다 (한투 모의 → 토스 실계좌 전환이 구현체 교체로 끝나게).
 - 모든 주문은 리스크 가드를 거친다. 우회 경로를 만들지 않는다.
+- 증권사 호출 우선순위: 사용자가 누른 즉발 요청(수동 주문·취소)과 주문 흐름은 `CallPriority.urgent {}` 로 감싸 스케줄러 호출보다 먼저 나가게 한다. 스케줄러의 주기 호출은 최후순위(기본값)다. 상세 매뉴얼은 `broker/CallPriority.kt` 주석.
 - 시크릿(KIS 앱키/시크릿/계좌, 토스 client id/secret, Anthropic API 키 등)은 코드·로그·문서·커밋에 평문 금지 — `application-local.yml`(gitignore 대상)에만 적는다.
 - **`application-local.yml`은 실제 시크릿이 든 파일이다. 테스트·스크립트가 이 정확한 경로를 쓰거나 지우게 만들지 않는다** (2026-09-29: 이 경로를 건드리는 테스트가 실제 키 파일을 삭제한 사고가 있었다). 파일 로딩 자체를 테스트하려면 임시 디렉터리를 쓰고, 그 외 테스트는 `spring.profiles.active`를 명시해 이 파일이 적용되지 않게 한다.
 - 앱/봇은 사용자가 요청하지 않는 한 실행하지 않는다. 주문 API 호출은 반드시 사용자 확인 후.
