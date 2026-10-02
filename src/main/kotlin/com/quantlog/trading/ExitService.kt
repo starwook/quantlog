@@ -12,6 +12,7 @@ import com.quantlog.strategy.ExitSignal
 import com.quantlog.strategy.FixedPercentExitRule
 import com.quantlog.strategy.MartingaleCycle
 import com.quantlog.strategy.MartingaleRule
+import com.quantlog.watchlist.SymbolStrategy
 import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -115,17 +116,21 @@ class ExitService(
         val config = symbolStrategyService.find(holding.market, holding.symbol)
         val rule = config?.let { FixedPercentExitRule(it.takeProfitPercent, it.stopLossPercent) } ?: exitRule
         var signal = rule.evaluate(holding.avgCost, quote)
+        var percentRule = percentRuleText(signal, config)
         // 마틴게일 종목의 손절은 전역 손절(보류)이 아니라 최대 단계 매수 뒤에만 있는 별도 손절이다.
         if (signal == ExitSignal.HOLD && config?.martingale == true) {
             val cycle =
                 MartingaleCycle.from(
                     tradeService.trades(holding.market, holding.symbol),
                 ).withAccount(holding.quantity, holding.avgCost)
-            if (MartingaleRule(config.martingaleProperties()).shouldStopLoss(cycle, quote)) signal = ExitSignal.STOP_LOSS
+            if (MartingaleRule(config.martingaleProperties()).shouldStopLoss(cycle, quote)) {
+                signal = ExitSignal.STOP_LOSS
+                percentRule = "마틴게일 최대 단계 손절 -${config.martingaleFinalStageStopLossPercent.stripTrailingZeros().toPlainString()}% 법칙"
+            }
         }
         if (signal == ExitSignal.HOLD) return
 
-        sell(holding, quote, signal, rule)
+        sell(holding, quote, signal, rule, percentRule)
         lastSellAt[key] = now
     }
 
@@ -134,6 +139,7 @@ class ExitService(
         quote: Quote,
         signal: ExitSignal,
         rule: FixedPercentExitRule,
+        percentRule: String,
     ) {
         val targets = rule.targets(holding.avgCost, quote)
         val request =
@@ -152,7 +158,7 @@ class ExitService(
                 .onFailure { log.warn(it) { "[체결가 조회 실패] ${request.market} ${receipt.orderNo} — 지정가로 표시됨" } }
                 .getOrNull()
         val reason =
-            "청산 스케줄러: $signal (평단 ${holding.avgCost} → 현재 ${quote.price}, " +
+            "청산 스케줄러: $percentRule — $signal (평단 ${holding.avgCost} → 현재 ${quote.price}, " +
                 "익절 ${targets.takeProfitPrice} / 손절 ${targets.stopLossPrice ?: "없음(마틴게일은 최대 단계 뒤에만)"})"
         tradeService.record(request, receipt, reason, filledPrice)
         log.info {
@@ -160,6 +166,17 @@ class ExitService(
                 "주문번호=${receipt.orderNo} — $reason"
         }
     }
+
+    /** 매도 사유에 남길 "몇 % 법칙으로 팔았는지". 종목 설정 행이 없으면 전역 설정이라 % 를 알 수 없다. */
+    private fun percentRuleText(
+        signal: ExitSignal,
+        config: SymbolStrategy?,
+    ): String =
+        when (signal) {
+            ExitSignal.TAKE_PROFIT -> "익절 +${config?.takeProfitPercent?.stripTrailingZeros()?.toPlainString() ?: "전역 설정 "}% 법칙"
+            ExitSignal.STOP_LOSS -> "손절 -${config?.stopLossPercent?.stripTrailingZeros()?.toPlainString() ?: "전역 설정 "}% 법칙"
+            else -> ""
+        }
 
     private companion object {
         const val FILL_CHECK_WAIT_MILLIS = 2000L
