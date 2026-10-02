@@ -159,7 +159,7 @@ class EntryScheduler(
     }
 
     /**
-     * 5분 재매수: 주문 기록과 무관하게 [EntryProperties.rebuyInterval] 마다 계속 돌면서, 그 순간 보유가 0주이면 1주를 산다.
+     * 5분 재매수: 주문 기록과 무관하게 [EntryProperties.rebuyInterval] 마다 계속 돌면서, 그 순간 보유가 0주이면 종목 설정의 수량만큼 산다.
      * 보유 중이어도 주기 시각은 흘러간다(보유 중엔 건너뛰고 다음 5분에 다시 본다). 실패해도 다음 주기까지 쉰다.
      */
     private fun checkPeriodicRebuy(
@@ -172,7 +172,7 @@ class EntryScheduler(
         if (last != null && Duration.between(last, now) < properties.rebuyInterval) return
         lastRebuyCheckAt[key] = now
         if (held) return
-        buy(watched, watched.buyQuantity, "진입 스케줄러: 보유 없음 — ${properties.rebuyInterval.toMinutes()}분 재매수")
+        buy(watched, watched.periodicRebuyQuantity, "진입 스케줄러: 보유 없음 — ${properties.rebuyInterval.toMinutes()}분 재매수")
     }
 
     /** 저점 판단 진입: 보유 수량과 상관없이 신호가 뜨면 산다. 쿨다운은 [EntryProperties.cooldown]. */
@@ -190,7 +190,7 @@ class EntryScheduler(
 
         // 실패해도(리스크 가드 등) 다음 사이클마다 재시도해 로그를 스팸하지 않도록, 신호 시점에 바로 쿨다운을 건다.
         lastSignalAt[key] = now
-        buy(watched, watched.buyQuantity, "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)")
+        buy(watched, watched.supportBounceQuantity, "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)")
     }
 
     private fun buy(

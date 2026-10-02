@@ -61,15 +61,18 @@ class SymbolStrategy(
     /** ETF 면 true. 국내 ETF 는 증권거래세가 없어서 모킹 체결의 제세금 계산이 달라진다 ([EtfRegistry]). */
     @Column(nullable = false)
     var etf: Boolean = false,
-    /** true 면 보유 수량과 상관없이 분봉 "저점 판단 진입"(SupportBounceEntryRule) 신호가 뜰 때마다 1주를 산다. 다른 옵션과 별개다. */
+    /** true 면 보유 수량과 상관없이 분봉 "저점 판단 진입"(SupportBounceEntryRule) 신호가 뜰 때마다 [supportBounceQuantity]주를 산다. 다른 옵션과 별개다. */
     @Column(name = "support_bounce_entry", nullable = false, columnDefinition = "bit default 0")
     var supportBounceEntry: Boolean = false,
-    /** true 면 [EntryProperties.rebuyInterval](5분)마다 계속 돌면서, 그 순간 보유가 0주이면 1주를 산다. 다른 옵션과 별개다. */
+    /** true 면 [EntryProperties.rebuyInterval](5분)마다 계속 돌면서, 그 순간 보유가 0주이면 [periodicRebuyQuantity]주를 산다. 다른 옵션과 별개다. */
     @Column(name = "periodic_rebuy", nullable = false, columnDefinition = "bit default 0")
     var periodicRebuy: Boolean = false,
-    /** 5분 재매수·저점 판단 진입이 한 번에 사는 수량. 마틴게일은 보유 수량의 배수로 사므로 이 값을 쓰지 않는다. */
-    @Column(name = "buy_quantity", nullable = false, columnDefinition = "int default 1")
-    var buyQuantity: Int = 1,
+    /** 5분 재매수가 한 번에 사는 수량. 마틴게일은 보유 수량의 배수로 사므로 수량 설정이 없다. */
+    @Column(name = "periodic_rebuy_quantity", nullable = false, columnDefinition = "int default 1")
+    var periodicRebuyQuantity: Int = 1,
+    /** 저점 판단 진입이 한 번에 사는 수량. */
+    @Column(name = "support_bounce_quantity", nullable = false, columnDefinition = "int default 1")
+    var supportBounceQuantity: Int = 1,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -97,7 +100,8 @@ class SymbolStrategyForm {
     var etf: Boolean = false
     var supportBounceEntry: Boolean = false
     var periodicRebuy: Boolean = false
-    var buyQuantity: Int? = null
+    var periodicRebuyQuantity: Int? = null
+    var supportBounceQuantity: Int? = null
 }
 
 interface SymbolStrategyRepository : JpaRepository<SymbolStrategy, Long> {
@@ -149,7 +153,8 @@ class SymbolStrategyService(
         target.martingale = form.martingale
         target.supportBounceEntry = form.supportBounceEntry
         target.periodicRebuy = form.periodicRebuy
-        target.buyQuantity = atLeast(form.buyQuantity, 1, "매수 수량")
+        target.periodicRebuyQuantity = atLeast(form.periodicRebuyQuantity, 1, "5분 재매수 수량")
+        target.supportBounceQuantity = atLeast(form.supportBounceQuantity, 1, "저점 판단 진입 수량")
         target.martingaleDropPercent = positive(form.martingaleDropPercent, "마틴게일 추가매수 하락 %")
         target.martingaleMultiplier = atLeast(form.martingaleMultiplier, 2, "마틴게일 배수")
         target.martingaleMaxStages = atLeast(form.martingaleMaxStages, 1, "마틴게일 최대 단계")
