@@ -24,7 +24,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-class ManualSellServiceTest {
+class ManualOrderServiceTest {
     private val krOpen = ZonedDateTime.of(2026, 9, 29, 10, 0, 0, 0, ZoneId.of("Asia/Seoul"))
 
     private class FakeBroker : BrokerClient {
@@ -63,7 +63,7 @@ class ManualSellServiceTest {
     private val broker = FakeBroker()
     private val tradeService = Mockito.mock(TradeService::class.java)
     private val portfolioService = Mockito.mock(PortfolioService::class.java)
-    private val service = ManualSellService(broker, RiskGuard(RiskProperties(), portfolioService), tradeService, portfolioService)
+    private val service = ManualOrderService(broker, RiskGuard(RiskProperties(), portfolioService), tradeService, portfolioService)
 
     private fun holding(quantity: Int) {
         val price = BigDecimal("272000")
@@ -74,9 +74,9 @@ class ManualSellServiceTest {
     }
 
     @Test
-    fun `보유 수량 전부를 현재가보다 한 호가 낮은 지정가로 판다`() {
+    fun `매도는 현재가보다 한 호가 낮은 지정가로 낸다`() {
         holding(3)
-        assertEquals(3, service.sellAll(Market.KR, "005930", krOpen))
+        service.sell(Market.KR, "005930", 3, krOpen)
         val order = broker.orders.single()
         assertEquals(Side.SELL, order.side)
         assertEquals(3, order.quantity)
@@ -86,15 +86,38 @@ class ManualSellServiceTest {
     @Test
     fun `보유 중이 아니면 주문을 내지 않는다`() {
         holding(0)
-        assertFailsWith<IllegalStateException> { service.sellAll(Market.KR, "005930", krOpen) }
+        assertFailsWith<IllegalStateException> { service.sell(Market.KR, "005930", 1, krOpen) }
         assertTrue(broker.orders.isEmpty())
     }
 
     @Test
     fun `장 시간이 아니면 주문을 내지 않는다`() {
         holding(1)
-        val error = assertFailsWith<IllegalStateException> { service.sellAll(Market.KR, "005930", krOpen.withHour(18)) }
+        val error = assertFailsWith<IllegalStateException> { service.sell(Market.KR, "005930", 1, krOpen.withHour(18)) }
         assertTrue(error.message!!.contains("거래 시간"))
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `보유 수량보다 많이는 팔 수 없다`() {
+        holding(2)
+        assertFailsWith<IllegalStateException> { service.sell(Market.KR, "005930", 3, krOpen) }
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `매수는 현재가보다 한 호가 높은 지정가로 낸다`() {
+        Mockito.`when`(portfolioService.snapshot()).thenReturn(PortfolioSnapshot(emptyList(), emptyMap(), emptyMap()))
+        service.buy(Market.KR, "005930", 2, krOpen)
+        val order = broker.orders.single()
+        assertEquals(Side.BUY, order.side)
+        assertEquals(2, order.quantity)
+        assertEquals(0, BigDecimal("273500").compareTo(order.limitPrice))
+    }
+
+    @Test
+    fun `매수도 장 시간이 아니면 주문을 내지 않는다`() {
+        assertFailsWith<IllegalStateException> { service.buy(Market.KR, "005930", 1, krOpen.withHour(18)) }
         assertTrue(broker.orders.isEmpty())
     }
 }

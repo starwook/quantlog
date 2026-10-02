@@ -9,7 +9,7 @@
         .menu a.active { color: var(--text, #191f28); border-bottom: 2px solid var(--text, #191f28); }
     </style>
     <a href="/" th:classappend="${active == 'account'} ? 'active'">계좌</a>
-    <a href="/chart/KR/005930" th:classappend="${active == 'chart'} ? 'active'">차트</a>
+    <a href="/chart/KR/005930" th:classappend="${active == 'chart'} ? 'active'">관심종목</a>
     <a href="/backtest/KR/005930" th:classappend="${active == 'backtest'} ? 'active'">백테스트</a>
     <a href="/settings" th:classappend="${active == 'settings'} ? 'active'">설정</a>
 </nav>

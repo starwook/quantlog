@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title th:text="${symbolName} + ' 분봉 차트 · quantlog'"></title>
+    <title th:text="${symbolName} + ' 관심종목 · quantlog'"></title>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root {
@@ -102,6 +102,15 @@
         }
         .legend .buy .dot { background: var(--buy); }
         .legend .sell .dot { background: var(--sell); }
+        .banner { padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-size: 14px; background: var(--card); }
+        .banner.ok { border-left: 4px solid var(--neg); }
+        .banner.error { border-left: 4px solid var(--pos); color: var(--pos); }
+        .order { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+        .order input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; }
+        .order .muted { color: var(--muted); font-size: 14px; }
+        .order button { padding: 10px 20px; border: 0; border-radius: 10px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+        .buy-btn { background: var(--pos); }
+        .sell-btn { background: var(--neg); }
         footer {
             margin-top: 16px;
             padding: 0 4px;
@@ -133,6 +142,9 @@
         <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol}}">백테스트 보기 →</a>
     </div>
 
+    <div class="banner ok" th:if="${message}" th:text="${message}"></div>
+    <div class="banner error" th:if="${error}" th:text="${error}"></div>
+
     <h1 th:text="${symbolName} + ' · ' + ${market} + ' 당일 분봉'"></h1>
     <div class="status" id="status">불러오는 중…</div>
 
@@ -145,7 +157,15 @@
         </div>
     </div>
 
-    <footer>모의투자 실험 기록입니다. 투자 권유가 아닙니다. 15초마다 자동으로 갱신됩니다.</footer>
+    <form class="card order" method="post" th:action="@{'/chart/' + ${market} + '/' + ${symbol} + '/order'}"
+          onsubmit="return confirm(event.submitter.dataset.label + ' ' + this.quantity.value + '주 주문할까요?')">
+        <input type="number" name="quantity" min="1" value="1" required aria-label="수량">
+        <span class="muted">주</span>
+        <button type="submit" name="side" value="BUY" data-label="매수" class="buy-btn">매수</button>
+        <button type="submit" name="side" value="SELL" data-label="매도" class="sell-btn">매도</button>
+    </form>
+
+    <footer>모의투자 실험 기록입니다. 매수·매도는 현재가보다 한 호가 불리한 지정가로 즉시 체결됩니다. 투자 권유가 아닙니다. 15초마다 자동으로 갱신됩니다.</footer>
 </main>
 <script th:inline="javascript">
     const market = /*[[${market}]]*/ 'KR';
