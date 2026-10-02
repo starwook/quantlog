@@ -27,5 +27,4 @@
 - 서버 `.env`에 `QUANTLOG_ENTRY_ENABLED` 등 플래그를 넣어 서버 봇을 끌 수 있다.
 
 ## TODO
-- 서버 DB `symbol_strategy` 의 폐기된 재진입 컬럼 삭제 (2026-10-02 마틴게일 재진입 폐기, 아직 안 지움). 안 지우면 설정 화면에서 새 종목을 추가할 때 INSERT 가 실패한다(기존 행·매매에는 영향 없음). 배포 후 deploy-agent 가 실행:
-  `ALTER TABLE symbol_strategy DROP COLUMN martingale_reentry_drop_percent, DROP COLUMN martingale_stop_reentry_drop_percent;`
+- 서버 DB `symbol_strategy` 옛 컬럼 삭제는 `docs/todo.md`의 "서버 DB 옛 컬럼 삭제" 참고 (Claude 서버 권한 허용 설정 후 deploy-agent 가 실행).
