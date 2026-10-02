@@ -1,5 +1,6 @@
 package com.quantlog.chart
 
+import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.Market
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.TradeRepository
@@ -37,7 +38,7 @@ data class TradeMarker(
     val quantity: Int,
 )
 
-data class ChartData(val candles: List<CandlePoint>, val trades: List<TradeMarker>)
+data class ChartData(val candles: List<CandlePoint>, val trades: List<TradeMarker>, val previousClose: BigDecimal?)
 
 /**
  * 분봉 차트 화면. marketdata(분봉)와 position(매매 기록) 두 도메인을 조합해서 보여주는 화면이라
@@ -48,6 +49,7 @@ class ChartController(
     private val marketDataService: MarketDataService,
     private val tradeRepository: TradeRepository,
     private val symbolStrategyService: SymbolStrategyService,
+    private val broker: BrokerClient,
 ) {
     @GetMapping("/chart/{market}/{symbol}")
     fun page(
@@ -95,6 +97,7 @@ class ChartController(
                         quantity = it.quantity,
                     )
                 }
-        return ChartData(candles, trades)
+        val previousClose = runCatching { broker.previousClose(market, symbol) }.getOrNull()
+        return ChartData(candles, trades, previousClose)
     }
 }

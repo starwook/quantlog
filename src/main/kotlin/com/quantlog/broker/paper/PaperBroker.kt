@@ -40,6 +40,11 @@ class PaperBroker(
         symbol: String,
     ): Quote = this.market.quote(market, symbol)
 
+    override fun previousClose(
+        market: Market,
+        symbol: String,
+    ): BigDecimal? = this.market.previousClose(market, symbol)
+
     override fun minuteCandles(
         market: Market,
         symbol: String,

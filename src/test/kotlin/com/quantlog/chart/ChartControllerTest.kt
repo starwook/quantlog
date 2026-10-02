@@ -1,5 +1,6 @@
 package com.quantlog.chart
 
+import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.Side
@@ -35,12 +36,15 @@ class ChartControllerTest {
     private fun controller(
         candles: List<MinuteCandle>,
         trades: List<Trade>,
+        previousClose: BigDecimal? = null,
     ): ChartController {
         val marketDataService = Mockito.mock(MarketDataService::class.java)
         Mockito.`when`(marketDataService.recentCandles(Market.KR, "005930", today)).thenReturn(candles)
         val tradeRepository = Mockito.mock(TradeRepository::class.java)
         Mockito.`when`(tradeRepository.findAllByMarketAndSymbolOrderByExecutedAtAsc(Market.KR, "005930")).thenReturn(trades)
-        return ChartController(marketDataService, tradeRepository, symbolStrategyServiceOf())
+        val broker = Mockito.mock(BrokerClient::class.java)
+        Mockito.`when`(broker.previousClose(Market.KR, "005930")).thenReturn(previousClose)
+        return ChartController(marketDataService, tradeRepository, symbolStrategyServiceOf(), broker)
     }
 
     @Test
@@ -71,5 +75,11 @@ class ChartControllerTest {
         val result = controller(emptyList(), emptyList()).data(Market.KR, "005930")
         assertTrue(result.candles.isEmpty())
         assertTrue(result.trades.isEmpty())
+    }
+
+    @Test
+    fun `전일 종가를 함께 돌려준다`() {
+        val result = controller(emptyList(), emptyList(), BigDecimal("9900")).data(Market.KR, "005930")
+        assertEquals(0, BigDecimal("9900").compareTo(result.previousClose))
     }
 }

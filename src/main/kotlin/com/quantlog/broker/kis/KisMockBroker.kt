@@ -33,6 +33,36 @@ class KisMockBroker(
     /** 실시간 시세는 호가 단위(aspr_unit)를 안 주므로, REST 로 마지막에 받은 값을 잠깐 재사용한다. */
     private val tickSizeCache = ConcurrentHashMap<String, BigDecimal>()
 
+    /** 전일 종가는 하루 동안 안 바뀌므로 (시장, 종목, 현지 날짜)별로 한 번만 REST 로 받는다. */
+    private val previousCloseCache = ConcurrentHashMap<String, BigDecimal>()
+
+    override fun previousClose(
+        market: Market,
+        symbol: String,
+    ): BigDecimal? {
+        val key = "$market:$symbol:${LocalDate.now(market.zone)}"
+        previousCloseCache[key]?.let { return it }
+        val (output, field) =
+            if (market.isOverseas) {
+                val res =
+                    api.get(
+                        "/uapi/overseas-price/v1/quotations/price",
+                        "HHDFS00000300",
+                        mapOf("AUTH" to "", "EXCD" to market.quoteExchangeCode(), "SYMB" to symbol),
+                    )
+                res.path("output") to "base" // 전일종가 (공식 예제 chk_price.py)
+            } else {
+                val res =
+                    api.get(
+                        "/uapi/domestic-stock/v1/quotations/inquire-price",
+                        "FHKST01010100",
+                        mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
+                    )
+                res.path("output") to "stck_prdy_clpr" // 주식 전일 종가 (공식 예제 chk_inquire_price.py)
+            }
+        return output.decimal(field).takeIf { it > BigDecimal.ZERO }?.also { previousCloseCache[key] = it }
+    }
+
     override fun quote(
         market: Market,
         symbol: String,
