@@ -1,6 +1,7 @@
 package com.quantlog.watchlist
 
 import com.quantlog.broker.Market
+import com.quantlog.broker.paper.EtfRegistry
 import com.quantlog.strategy.MartingaleProperties
 import com.quantlog.strategy.StrategyProperties
 import jakarta.persistence.Column
@@ -64,6 +65,9 @@ class SymbolStrategy(
     var martingaleReentryDropPercent: BigDecimal,
     @Column(name = "martingale_stop_reentry_drop_percent", nullable = false, precision = 10, scale = 4)
     var martingaleStopReentryDropPercent: BigDecimal,
+    /** ETF 면 true. 국내 ETF 는 증권거래세가 없어서 모킹 체결의 제세금 계산이 달라진다 ([EtfRegistry]). */
+    @Column(nullable = false)
+    var etf: Boolean = false,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -93,6 +97,7 @@ class SymbolStrategyForm {
     var martingaleFinalStageStopLossPercent: BigDecimal? = null
     var martingaleReentryDropPercent: BigDecimal? = null
     var martingaleStopReentryDropPercent: BigDecimal? = null
+    var etf: Boolean = false
 }
 
 interface SymbolStrategyRepository : JpaRepository<SymbolStrategy, Long> {
@@ -107,7 +112,13 @@ class SymbolStrategyService(
     private val repository: SymbolStrategyRepository,
     private val strategyProperties: StrategyProperties,
     private val martingaleProperties: MartingaleProperties,
-) {
+) : EtfRegistry {
+    /** 등록 안 된 종목은 일반 주식으로 본다(제세금을 더 보수적으로 계산). */
+    override fun isEtf(
+        market: Market,
+        symbol: String,
+    ): Boolean = find(market, symbol)?.etf ?: false
+
     fun find(
         market: Market,
         symbol: String,
@@ -133,6 +144,7 @@ class SymbolStrategyService(
         val takeProfit = positive(form.takeProfitPercent, "익절 %")
         val stopLoss = form.stopLossPercent?.also { positive(it, "손절 %") }
         target.autoTrade = form.autoTrade
+        target.etf = form.etf
         target.takeProfitPercent = takeProfit
         target.stopLossPercent = stopLoss
         target.martingale = form.martingale
@@ -170,12 +182,13 @@ class SymbolStrategyService(
         market: Market,
         symbol: String,
         displayName: String,
+        etf: Boolean = false,
     ) {
         val code = symbol.trim().uppercase()
         require(code.isNotEmpty()) { "종목 코드를 입력해 주세요" }
         require(displayName.isNotBlank()) { "종목 이름을 입력해 주세요" }
         require(find(market, code) == null) { "이미 등록된 종목입니다: $code" }
-        repository.save(defaultRow(market, code, displayName.trim(), trade = false))
+        repository.save(defaultRow(market, code, displayName.trim(), trade = false, etf = etf))
     }
 
     /**
@@ -184,6 +197,10 @@ class SymbolStrategyService(
      */
     @Transactional
     fun seedMissing() {
+        // ETF 여부는 종목의 사실이라, ETF 컬럼이 생기기 전에 만들어진 행도 시드 기준으로 맞춘다(켜기만 하고 끄지는 않는다).
+        SeedSymbol.entries.filter { it.etf }.forEach { seed ->
+            repository.findByMarketAndSymbol(seed.market, seed.symbol)?.etf = true
+        }
         // 이름 컬럼이 생기기 전에 만들어진 행은 이름이 비어 있다 — 시드 이름으로 채운다.
         SeedSymbol.entries.forEach { seed ->
             repository.findByMarketAndSymbol(seed.market, seed.symbol)?.takeIf { it.displayName.isBlank() }?.displayName = seed.displayName
@@ -191,7 +208,7 @@ class SymbolStrategyService(
         SeedSymbol.entries
             .filter { repository.findByMarketAndSymbol(it.market, it.symbol) == null }
             .forEach {
-                repository.save(defaultRow(it.market, it.symbol, it.displayName, it.tradeByDefault))
+                repository.save(defaultRow(it.market, it.symbol, it.displayName, it.tradeByDefault, it.etf))
                 log.info { "[종목 설정] 기본값으로 생성: ${it.market} ${it.symbol} autoTrade=${it.tradeByDefault}" }
             }
     }
@@ -201,6 +218,7 @@ class SymbolStrategyService(
         symbol: String,
         displayName: String,
         trade: Boolean,
+        etf: Boolean,
     ) = SymbolStrategy(
         market = market,
         symbol = symbol,
@@ -215,6 +233,7 @@ class SymbolStrategyService(
         martingaleFinalStageStopLossPercent = martingaleProperties.finalStageStopLossPercent,
         martingaleReentryDropPercent = martingaleProperties.reentryDropPercent,
         martingaleStopReentryDropPercent = martingaleProperties.stopReentryDropPercent,
+        etf = etf,
     )
 }
 
