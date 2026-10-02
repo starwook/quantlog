@@ -148,7 +148,8 @@ class EntryScheduler(
         val quantity = martingaleRule.nextQuantity(cycle, quote) ?: return
         val average = cycle.averagePrice!!
         val reason =
-            "진입 스케줄러: ${cycle.stage + 1}단계 — 평단 $average 대비 " +
+            "진입 스케줄러: 마틴게일 -${watched.martingaleDropPercent.stripTrailingZeros().toPlainString()}% 법칙 " +
+                "${cycle.stage + 1}단계 — 평단 $average 대비 " +
                 "${martingaleRule.addOnTriggerPrice(average, quote)} 이하로 하락 → 보유 ${cycle.quantity}주 기준 ${quantity}주 " +
                 "추가 매수 (MartingaleRule)"
         runCatching { buy(watched, quantity, reason) }
