@@ -27,9 +27,10 @@ class SymbolStrategyController(
         @RequestParam market: Market,
         @RequestParam symbol: String,
         @RequestParam displayName: String,
+        @RequestParam(defaultValue = "false") etf: Boolean,
         redirect: RedirectAttributes,
     ): String {
-        runCatching { service.add(market, symbol, displayName) }
+        runCatching { service.add(market, symbol, displayName, etf) }
             .onSuccess { redirect.addFlashAttribute("message", "$displayName 종목을 추가했어요. 자동매수는 꺼진 상태예요.") }
             .onFailure { redirect.addFlashAttribute("error", "종목 추가 실패: ${it.message}") }
         return "redirect:/settings"

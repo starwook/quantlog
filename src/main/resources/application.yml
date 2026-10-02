@@ -35,6 +35,10 @@ kis:
     # 구독 종목은 DB 의 보유 종목(account_holding)에서 자동으로 정한다 — realtime-max-subscriptions 는 동시 구독 상한.
 
 quantlog:
+  broker:
+    # kis-mock: 주문도 KIS 모의투자로 낸다. paper: 시세·분봉만 KIS 에서 받고 주문은 로컬에서 모킹 체결한다
+    # (broker/paper/PaperBroker). 수수료·초기 자금은 PaperProperties 기본값(검증 전 가정) — 여기서 덮어쓴다.
+    type: ${QUANTLOG_BROKER_TYPE:kis-mock}
   notify:
     # Discord/Slack Incoming Webhook URL (시크릿 — application-local.yml 에만 적는다). 비우면 알림 꺼짐.
     webhook-url: ${QUANTLOG_NOTIFY_WEBHOOK_URL:}

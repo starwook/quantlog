@@ -98,6 +98,7 @@
                 <label>표시 이름
                     <input type="text" name="displayName" required>
                 </label>
+                <label class="toggle"><input type="checkbox" name="etf" value="true">ETF</label>
             </div>
             <button type="submit">추가</button>
         </form>
@@ -133,6 +134,7 @@
                     <div class="toggles">
                         <label class="toggle"><input type="checkbox" name="autoTrade" value="true" th:checked="${row.autoTrade}">자동매수</label>
                         <label class="toggle"><input type="checkbox" name="martingale" value="true" th:checked="${row.martingale}">마틴게일</label>
+                        <label class="toggle"><input type="checkbox" name="etf" value="true" th:checked="${row.etf}">ETF</label>
                     </div>
                     <a th:href="@{'/chart/' + ${row.market} + '/' + ${row.symbol}}" class="vals">차트 →</a>
                 </div>
