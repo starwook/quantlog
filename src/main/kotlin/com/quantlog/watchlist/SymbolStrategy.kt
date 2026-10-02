@@ -50,7 +50,7 @@ class SymbolStrategy(
     var takeProfitPercent: BigDecimal,
     @Column(name = "stop_loss_percent", precision = 10, scale = 4)
     var stopLossPercent: BigDecimal?,
-    /** true 면 보유 중에도 마틴게일 규칙(MartingaleRule)으로 추가 매수·재진입한다. 아래 martingale_* 는 이때만 쓴다. */
+    /** true 면 보유 중에 마틴게일 규칙(MartingaleRule)으로 추가 매수한다. 아래 martingale_* 는 이때만 쓴다. */
     @Column(nullable = false)
     var martingale: Boolean,
     @Column(name = "martingale_drop_percent", nullable = false, precision = 10, scale = 4)
@@ -61,13 +61,15 @@ class SymbolStrategy(
     var martingaleMaxStages: Int,
     @Column(name = "martingale_final_stage_stop_loss_percent", nullable = false, precision = 10, scale = 4)
     var martingaleFinalStageStopLossPercent: BigDecimal,
-    @Column(name = "martingale_reentry_drop_percent", nullable = false, precision = 10, scale = 4)
-    var martingaleReentryDropPercent: BigDecimal,
-    @Column(name = "martingale_stop_reentry_drop_percent", nullable = false, precision = 10, scale = 4)
-    var martingaleStopReentryDropPercent: BigDecimal,
     /** ETF 면 true. 국내 ETF 는 증권거래세가 없어서 모킹 체결의 제세금 계산이 달라진다 ([EtfRegistry]). */
     @Column(nullable = false)
     var etf: Boolean = false,
+    /** true 면 보유 수량과 상관없이 분봉 "저점 판단 진입"(SupportBounceEntryRule) 신호가 뜰 때마다 1주를 산다. 다른 옵션과 별개다. */
+    @Column(name = "support_bounce_entry", nullable = false, columnDefinition = "bit default 0")
+    var supportBounceEntry: Boolean = false,
+    /** true 면 [EntryProperties.rebuyInterval](5분)마다 계속 돌면서, 그 순간 보유가 0주이면 1주를 산다. 다른 옵션과 별개다. */
+    @Column(name = "periodic_rebuy", nullable = false, columnDefinition = "bit default 0")
+    var periodicRebuy: Boolean = false,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -77,8 +79,6 @@ class SymbolStrategy(
     fun martingaleProperties() =
         MartingaleProperties(
             dropPercent = martingaleDropPercent,
-            reentryDropPercent = martingaleReentryDropPercent,
-            stopReentryDropPercent = martingaleStopReentryDropPercent,
             multiplier = martingaleMultiplier,
             maxStages = martingaleMaxStages,
             finalStageStopLossPercent = martingaleFinalStageStopLossPercent,
@@ -95,9 +95,9 @@ class SymbolStrategyForm {
     var martingaleMultiplier: Int? = null
     var martingaleMaxStages: Int? = null
     var martingaleFinalStageStopLossPercent: BigDecimal? = null
-    var martingaleReentryDropPercent: BigDecimal? = null
-    var martingaleStopReentryDropPercent: BigDecimal? = null
     var etf: Boolean = false
+    var supportBounceEntry: Boolean = false
+    var periodicRebuy: Boolean = false
 }
 
 interface SymbolStrategyRepository : JpaRepository<SymbolStrategy, Long> {
@@ -148,12 +148,12 @@ class SymbolStrategyService(
         target.takeProfitPercent = takeProfit
         target.stopLossPercent = stopLoss
         target.martingale = form.martingale
+        target.supportBounceEntry = form.supportBounceEntry
+        target.periodicRebuy = form.periodicRebuy
         target.martingaleDropPercent = positive(form.martingaleDropPercent, "마틴게일 추가매수 하락 %")
         target.martingaleMultiplier = atLeast(form.martingaleMultiplier, 2, "마틴게일 배수")
         target.martingaleMaxStages = atLeast(form.martingaleMaxStages, 1, "마틴게일 최대 단계")
         target.martingaleFinalStageStopLossPercent = positive(form.martingaleFinalStageStopLossPercent, "마지막 단계 손절 %")
-        target.martingaleReentryDropPercent = positive(form.martingaleReentryDropPercent, "익절 뒤 재진입 하락 %")
-        target.martingaleStopReentryDropPercent = positive(form.martingaleStopReentryDropPercent, "손절 뒤 재진입 하락 %")
     }
 
     private fun atLeast(
@@ -231,9 +231,8 @@ class SymbolStrategyService(
         martingaleMultiplier = martingaleProperties.multiplier,
         martingaleMaxStages = martingaleProperties.maxStages,
         martingaleFinalStageStopLossPercent = martingaleProperties.finalStageStopLossPercent,
-        martingaleReentryDropPercent = martingaleProperties.reentryDropPercent,
-        martingaleStopReentryDropPercent = martingaleProperties.stopReentryDropPercent,
         etf = etf,
+        supportBounceEntry = trade,
     )
 }
 

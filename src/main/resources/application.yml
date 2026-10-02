@@ -55,9 +55,6 @@ quantlog:
       max-stages: 10
       # 최대 단계 매수를 마친 뒤, 그 매수가 대비 이만큼(%) 더 떨어지면 전량 손절. 1~4단계엔 손절 없음.
       final-stage-stop-loss-percent: 3
-      # 매도 뒤 재진입: 매도가 대비 이만큼(%) 떨어지면 첫 1주부터 다시 시작 (익절 뒤 / 손절 뒤).
-      reentry-drop-percent: 0.5
-      stop-reentry-drop-percent: 1
     entry:
       # 분봉 체류시간 기반 지지선 근접+반등 진입 신호. 검증 전 가설값 (playbook/principles.md "아직 정하는 중").
       min-candles: 15
