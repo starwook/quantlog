@@ -17,3 +17,10 @@
 
 ## 전일 종가 필드 실측
 `BrokerClient.previousClose`가 쓰는 국내 `stck_prdy_clpr`, 해외 `base`를 실제 응답으로 확인한다(공식 예제 근거만 있고 아직 호출해 보지 않았다). 틀리면 차트 등락률이 "시가 대비"로 대신 표시된다.
+
+## DB `symbol_strategy.auto_trade` 컬럼 삭제 (2026-10-02)
+자동매수 스위치를 코드에서 없앴다(마틴게일·5분 재매수·저점 판단 진입 3개 옵션이 독립). `ddl-auto: update`는 컬럼을 지우지 않고, `auto_trade`는 NOT NULL 기본값 없음이라 **지우기 전까지는 종목 추가(INSERT)가 실패한다.**
+```sql
+ALTER TABLE symbol_strategy DROP COLUMN auto_trade;
+```
+지우기 전에 `/settings`에서 마틴게일·5분 재매수·저점 판단 진입이 의도한 종목에만 켜져 있는지 확인한다 — 예전에 `auto_trade`가 꺼져 있던 종목도 옵션만 켜져 있으면 바로 사기 시작한다.

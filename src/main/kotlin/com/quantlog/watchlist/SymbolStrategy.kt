@@ -30,7 +30,7 @@ private val log = KotlinLogging.logger {}
  * 스케줄러는 매번 읽기 때문에 캐시가 없다. 이 테이블의 행 목록이 곧 감시 종목(분봉 수집·차트·구독 대상)이다 — 종목을 추가하려면 행을 넣으면 된다.
  *
  * 비율은 % 단위다(0.5 = 0.5%). 손절이 null 이면 전역 손절은 보류(안 나감)다.
- * 행이 없는 종목은 자동 매수하지 않는다. 아래 [SymbolStrategySeeder] 가 없는 행만 기본값으로 채운다(기존 값은 안 덮어씀).
+ * 매수 옵션이 하나도 안 켜진 종목은 분봉만 모으고 사지 않는다. 아래 [SymbolStrategySeeder] 가 없는 행만 기본값으로 채운다(기존 값은 안 덮어씀).
  */
 @Entity
 @Table(name = "symbol_strategy", uniqueConstraints = [UniqueConstraint(columnNames = ["market", "symbol"])])
@@ -43,9 +43,6 @@ class SymbolStrategy(
     /** 화면·로그에 보여줄 이름. */
     @Column(name = "display_name", nullable = false, length = 100)
     var displayName: String,
-    /** false 면 분봉만 모으고 매수는 안 한다. 매수 종목 선택 스위치. */
-    @Column(name = "auto_trade", nullable = false)
-    var autoTrade: Boolean,
     @Column(name = "take_profit_percent", nullable = false, precision = 10, scale = 4)
     var takeProfitPercent: BigDecimal,
     @Column(name = "stop_loss_percent", precision = 10, scale = 4)
@@ -87,7 +84,6 @@ class SymbolStrategy(
 
 /** 설정 화면 입력값. 비어 있는 칸도 받아서 [SymbolStrategyService.update] 가 검증 메시지로 돌려준다. */
 class SymbolStrategyForm {
-    var autoTrade: Boolean = false
     var takeProfitPercent: BigDecimal? = null
     var stopLossPercent: BigDecimal? = null
     var martingale: Boolean = false
@@ -143,7 +139,6 @@ class SymbolStrategyService(
         val target = requireNotNull(find(market, symbol)) { "설정이 없는 종목입니다: $symbol" }
         val takeProfit = positive(form.takeProfitPercent, "익절 %")
         val stopLoss = form.stopLossPercent?.also { positive(it, "손절 %") }
-        target.autoTrade = form.autoTrade
         target.etf = form.etf
         target.takeProfitPercent = takeProfit
         target.stopLossPercent = stopLoss
@@ -174,7 +169,7 @@ class SymbolStrategyService(
     }
 
     /**
-     * 감시 종목을 새로 등록한다. 값은 application.yml 기본값이고 자동매수·마틴게일은 꺼진 채로 시작한다 — 화면에서 켠다.
+     * 감시 종목을 새로 등록한다. 값은 application.yml 기본값이고 매수 옵션(마틴게일·5분 재매수·저점 판단 진입)은 모두 꺼진 채로 시작한다 — 화면에서 켠다.
      * 입력이 잘못됐거나 이미 있는 종목이면 [IllegalArgumentException] (메시지는 화면에 그대로 보여준다).
      */
     @Transactional
@@ -193,7 +188,7 @@ class SymbolStrategyService(
 
     /**
      * 없는 종목 행만 기본값으로 채운다. 기본값은 application.yml 의 quantlog.strategy.* 이고,
-     * 자동 매수·마틴게일은 [SeedSymbol.tradeByDefault] 종목만 켠다(2026-09-30 KODEX 코스닥150레버리지만). 이미 있는 행은 건드리지 않는다.
+     * 마틴게일·저점 판단 진입은 [SeedSymbol.tradeByDefault] 종목만 켠다(2026-09-30 KODEX 코스닥150레버리지만). 이미 있는 행은 건드리지 않는다.
      */
     @Transactional
     fun seedMissing() {
@@ -209,7 +204,7 @@ class SymbolStrategyService(
             .filter { repository.findByMarketAndSymbol(it.market, it.symbol) == null }
             .forEach {
                 repository.save(defaultRow(it.market, it.symbol, it.displayName, it.tradeByDefault, it.etf))
-                log.info { "[종목 설정] 기본값으로 생성: ${it.market} ${it.symbol} autoTrade=${it.tradeByDefault}" }
+                log.info { "[종목 설정] 기본값으로 생성: ${it.market} ${it.symbol} 매수 옵션 기본 ${it.tradeByDefault}" }
             }
     }
 
@@ -223,7 +218,6 @@ class SymbolStrategyService(
         market = market,
         symbol = symbol,
         displayName = displayName,
-        autoTrade = trade,
         takeProfitPercent = strategyProperties.takeProfitPercent,
         stopLossPercent = strategyProperties.stopLossPercent,
         martingale = trade,

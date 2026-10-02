@@ -36,7 +36,7 @@ class SymbolStrategyControllerTest {
 
     @Test
     fun `저장하면 설정 화면으로 돌아간다`() {
-        mvc.perform(post("/settings/KR/005930").param("autoTrade", "true").param("takeProfitPercent", "1"))
+        mvc.perform(post("/settings/KR/005930").param("martingale", "true").param("takeProfitPercent", "1"))
             .andExpect(status().is3xxRedirection)
             .andExpect(redirectedUrl("/settings"))
     }
