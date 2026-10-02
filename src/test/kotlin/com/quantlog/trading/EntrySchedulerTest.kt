@@ -250,6 +250,7 @@ class EntrySchedulerTest {
         signal: EntrySignal = EntrySignal.NO_TRADE,
         rebuyQuantity: Int = 1,
         bounceQuantity: Int = 1,
+        intervalMinutes: Int = 5,
     ) = scheduler(
         broker,
         signal,
@@ -263,6 +264,7 @@ class EntrySchedulerTest {
                     supportBounceEntry = bounce,
                     periodicRebuy = true,
                     periodicRebuyQuantity = rebuyQuantity,
+                    periodicRebuyIntervalMinutes = intervalMinutes,
                     supportBounceQuantity = bounceQuantity,
                 ),
             ),
@@ -299,6 +301,17 @@ class EntrySchedulerTest {
         s.checkEntries(krOpen.plusMinutes(5))
         s.checkEntries(krOpen.plusMinutes(10))
         assertEquals(3, broker.orders.size)
+    }
+
+    @Test
+    fun `주기 재매수 - 종목에 설정한 n분마다 돈다`() {
+        val broker = FakeBroker()
+        val s = rebuyScheduler(broker, held = false, intervalMinutes = 3)
+        s.checkEntries(krOpen)
+        s.checkEntries(krOpen.plusMinutes(2))
+        assertEquals(1, broker.orders.size)
+        s.checkEntries(krOpen.plusMinutes(3))
+        assertEquals(2, broker.orders.size)
     }
 
     @Test
