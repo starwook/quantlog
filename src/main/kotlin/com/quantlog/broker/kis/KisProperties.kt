@@ -23,6 +23,8 @@ data class KisProperties(
     val wsUrl: String = "ws://ops.koreainvestment.com:31000/tryitout/H0STCNT0",
     /** 실시간 동시 구독 종목 수 상한(KIS 세션당 제한). 넘는 종목은 REST 폴링으로 남는다. */
     val realtimeMaxSubscriptions: Int = 40,
+    /** KIS Developers 고객(HTS) ID. 실시간 체결통보 구독의 tr_key 라서 비우면 체결통보를 구독하지 않는다. 시크릿 취급 — application-local.yml 에만 적는다. */
+    val htsId: String = "",
 ) {
     val accountNumber: String get() = account.substringBefore("-").trim()
     val accountProductCode: String get() =

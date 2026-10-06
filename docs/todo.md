@@ -1,5 +1,18 @@
 # TODO
 
+## 체결통보 WebSocket 실측 검증 (PR: worktree-fill-notice-ws, 2026-10-06)
+이 PR은 (1) 청산 판정의 `hasUnsyncedTrade` 차단 제거 + `[청산 지연]` 로그, (2) 실시간 체결통보(국내 `H0STCNI9`·해외 `H0GSCNI9`) 구독·복호화·파싱·로그를 넣었다. 구독은 모의에서 성공했고(`SUBSCRIBE SUCCESS`, 암호화 키 수신) **체결 메시지는 아직 못 받아 봤다** — 2026-10-06 15:22 국내 주문이 거래시간(15:20 마감, `Market.KR_CLOSE`) 때문에 거부됐다.
+
+**머지·배포 전 검증** (국내 정규장 09:00~15:20, 사용자 확인 후 소량 주문, 서버 앱은 같은 앱키 세션 충돌 때문에 잠깐 끈다):
+1. 로컬에서 자동 진입·청산·스모크를 끄고(`--quantlog.entry.enabled=false --quantlog.exit.enabled=false --quantlog.smoke.mode=`) 앱을 띄운다. 시크릿은 `SPRING_CONFIG_ADDITIONAL_LOCATION` 으로 메인 폴더 `application-local.yml` 을 가리킨다. 서버 `docker compose stop quantlog` → 검증 → `docker compose start quantlog`.
+2. 삼성전자 1주 매수·매도(수동 주문 API)를 내고 `[체결통보]` 로그를 확인한다.
+3. 확인해서 `kis-api/field-reference.md` 3절의 "확인 못 함"을 채운다: 접수(`CNTG_YN=1`)와 체결(`2`)이 각각 오는가 · **부분체결이 건별인지 누적인지**(`CNTG_QTY` vs `ODER_QTY`) · `SELN_BYOV_CLS` 매도/매수 코드 · 모의에서 체결통보가 지연 없이 오는가(주문 응답 대비 몇 ms) · 해외 `tr_key`(HTS ID가 맞는가)와 접수/체결 구분값(미국장 22:30 KST 이후) · 구독 해제 `tr_type`(`0`/`2`).
+4. 검증 로그에서 `[KIS 느린 호출]` 대기·응답 시간과 `[청산 지연] 신호→주문 접수 N ms` 를 본다. 2026-10-06 로컬 실측에서 KIS 잔고 REST 가 **한 번에 3.6~8초** 걸렸다 — 잔고 동기화(국내+해외 2회)가 10초 이상 걸리는 직접 원인이다.
+
+**배포 시**: 서버 `/opt/quantlog/application-local.yml` 에는 `kis.mock.hts-id` 를 이미 추가했다(2026-10-06, 백업 `application-local.yml.bak-hts`, 확인 후 삭제). 새 코드를 배포한 뒤 컨테이너를 재시작해야 구독이 시작된다. GitHub Secrets 에는 올릴 값이 없다.
+
+**검증 뒤 다음 단계**: ① 체결통보로 `AccountHolding` 수량·평단 즉시 갱신(주문번호별 이미 반영한 수량을 기억해 부분체결 중복 합산 방지, KIS 잔고 REST 는 보정용으로 낮춤) ② 마틴게일을 `PriceTick` 기반으로 판정(`EntryScheduler` 분리, 종목별 "단계 진행 중" 상태, 주문 후 10초 미체결이면 취소)하고 `EntryScheduler` 의 `hasUnsyncedTrade` 차단 제거. 실시간·체결 즉시 갱신이 안 되는 경로는 폴링이 맡는다.
+
 ## 해외(미장) 실시간 시세 WebSocket 연동
 현재 해외 종목은 실시간 푸시가 없어서 차트 현재가가 20초 REST 폴링으로만 갱신되고, 청산 감시도 1초 폴링이 맡는다.
 사양 조사는 끝났다 → [`kis-api/field-reference.md`](kis-api/field-reference.md) 2절 (TR `HDFSCNT0`, 26필드, tr_key `D+거래소+종목`).

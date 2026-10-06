@@ -42,6 +42,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
        app-key: "여기에 모의투자 앱키"
        app-secret: "여기에 모의투자 앱시크릿"
        account: "12345678-01"
+       hts-id: "KIS Developers 고객(HTS) ID"   # 실시간 체결통보 구독용(선택). 비우면 체결통보만 꺼진다
        log-raw: true
    quantlog:
      smoke:

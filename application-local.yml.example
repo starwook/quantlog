@@ -10,6 +10,7 @@ kis:
     app-key: "여기에 모의투자 앱키"
     app-secret: "여기에 모의투자 앱시크릿"
     account: "12345678-01"   # 모의계좌 (뒤 2자리 없으면 "12345678" 만 써도 됨, 기본값 01 적용)
+    hts-id: "여기에 KIS Developers 고객(HTS) ID"   # 실시간 체결통보 구독용. 비우면 체결통보 꺼짐
     log-raw: true             # 첫 연동 확인 때는 true 로 응답 원문을 로그로 본다. 익숙해지면 false
 
 quantlog:

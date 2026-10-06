@@ -54,6 +54,7 @@ class KisRealtimeClient(
     private val objectMapper: ObjectMapper,
     private val eventPublisher: ApplicationEventPublisher,
     private val symbolSource: RealtimeSymbolSource,
+    private val fillNotices: KisFillNoticeHandler,
 ) : RealtimePriceFeed {
     private val httpClient = HttpClient.newHttpClient()
     private val liveQuotes = ConcurrentHashMap<String, LivePrice>()
@@ -96,6 +97,7 @@ class KisRealtimeClient(
             .buildAsync(URI.create(properties.wsUrl), Listener())
             .thenAccept { ws ->
                 webSocket = ws
+                subscribeFillNotices(ws)
                 refreshSubscriptions()
             }
             .exceptionally { e ->
@@ -117,16 +119,28 @@ class KisRealtimeClient(
     fun refreshSubscriptions() {
         val ws = webSocket?.takeIf { connected } ?: return
         val wanted = symbolSource.symbols(Market.KR).take(properties.realtimeMaxSubscriptions).toSet()
-        (wanted - subscribed).forEach { send(ws, SUBSCRIBE, it) }
-        (subscribed - wanted).forEach { send(ws, UNSUBSCRIBE, it) }
+        (wanted - subscribed).forEach { send(ws, SUBSCRIBE, TR_ID, it) }
+        (subscribed - wanted).forEach { send(ws, UNSUBSCRIBE, TR_ID, it) }
         subscribed.retainAll(wanted)
         subscribed.addAll(wanted)
+    }
+
+    /** 연결마다 한 번: 계좌 체결통보(국내·해외)를 구독한다. tr_key 는 HTS ID — 비어 있으면 건너뛴다(시세만 동작). */
+    private fun subscribeFillNotices(ws: WebSocket) {
+        if (properties.htsId.isBlank()) {
+            log.warn { "[체결통보] kis.mock.hts-id 가 비어 있어 구독하지 않는다" }
+            return
+        }
+        listOf(KisFillNoticeHandler.DOMESTIC_TR_ID, KisFillNoticeHandler.OVERSEAS_TR_ID).forEach {
+            send(ws, SUBSCRIBE, it, properties.htsId)
+        }
     }
 
     private fun send(
         ws: WebSocket,
         trType: String,
-        symbol: String,
+        trId: String,
+        trKey: String,
     ) {
         val message =
             objectMapper.writeValueAsString(
@@ -138,7 +152,7 @@ class KisRealtimeClient(
                             "tr_type" to trType,
                             "content-type" to "utf-8",
                         ),
-                    "body" to mapOf("input" to mapOf("tr_id" to TR_ID, "tr_key" to symbol)),
+                    "body" to mapOf("input" to mapOf("tr_id" to trId, "tr_key" to trKey)),
                 ),
             )
         sendChain =
@@ -149,12 +163,19 @@ class KisRealtimeClient(
 
     private fun handle(raw: String) {
         if (raw.startsWith("0") || raw.startsWith("1")) {
-            handleTick(raw)
+            val parts = raw.split("|", limit = 4)
+            if (parts.size == 4 && parts[1] in KisFillNoticeHandler.TR_IDS) {
+                fillNotices.onData(parts[1], encrypted = raw.startsWith("1"), payload = parts[3])
+            } else {
+                handleTick(raw)
+            }
             return
         }
         val node = objectMapper.readTree(raw)
-        if (node.path("header").path("tr_id").asText() == "PINGPONG") {
-            webSocket?.sendPong(ByteBuffer.wrap(raw.toByteArray()))
+        val trId = node.path("header").path("tr_id").asText()
+        when {
+            trId == "PINGPONG" -> webSocket?.sendPong(ByteBuffer.wrap(raw.toByteArray()))
+            trId in KisFillNoticeHandler.TR_IDS -> fillNotices.onSubscribeResponse(trId, node)
         }
     }
 
