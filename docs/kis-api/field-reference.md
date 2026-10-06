@@ -47,3 +47,15 @@
   1 실시간종목코드 · 2 종목코드 · 3 소수점자리수 · 4 현지영업일자 · 5 현지일자 · 6 현지시간 · 7 한국일자 · 8 한국시간 · 9 시가 · 10 고가 · 11 저가 · 12 현재가 · 13 대비구분 · 14 전일대비 · 15 등락율 · 16 매수호가 · 17 매도호가 · 18 매수잔량 · 19 매도잔량 · 20 체결량 · 21 거래량 · 22 거래대금 · 23 매도체결량 · 24 매수체결량 · 25 체결강도 · 26 시장구분
 - 구독 상한: **세션당 41건, 국내·해외·파생 합산** (공지 2026-04-20). 계좌(appkey)당 1세션. 한 연결에서 국내·해외 TR 혼합 구독 가능(공식 샘플).
 - approval_key: `POST {도메인}/oauth2/Approval` body `{grant_type: client_credentials, appkey, secretkey}` → `approval_key`. 공식 샘플은 24시간마다 재발급하지만 서버가 문서화한 유효기간은 확인 못 함.
+
+## 3. 실시간 체결통보 WebSocket (국내 H0STCNI0/9, 해외 H0GSCNI0/9)
+
+출처: 공식 샘플 `examples_llm/domestic_stock/ccnl_notice`, `examples_llm/overseas_stock/ccnl_notice`, `examples_llm/kis_auth.py`, `examples_user/domestic_stock/domestic_stock_examples_ws.py` (웹 요약 경유 — **모의 실측 전**). 구현: `broker/kis/KisFillNoticeHandler.kt`.
+
+- TR ID: 국내 실전 `H0STCNI0` / 모의 `H0STCNI9`, 해외 실전 `H0GSCNI0` / 모의 `H0GSCNI9`. 시세와 같은 연결(키당 1세션)에서 같이 구독한다.
+- 구독: 시세와 같은 요청 형식. 국내 `tr_key` 는 **HTS ID**(샘플: `kws.subscribe(request=ccnl_notice, data=[trenv.my_htsid])`). 해외 `tr_key` 는 샘플 요약에 "종목코드"라고 나왔으나 불확실 — 이 앱은 HTS ID 로 구독한다(**실측 필요**). 체결통보는 구독 한도(41건)에서 건당 1개를 쓴다.
+- 암호화: 구독 응답 JSON 의 `body.output.key` / `iv` 를 저장하고, 수신 데이터(`0|1|TR_ID|건수|데이터` 의 4번째)를 Base64 디코딩 → AES-256-CBC(키·IV 는 UTF-8 문자열) → PKCS7 패딩 제거. 평문 메시지는 맨 앞 글자가 "0".
+- 국내 필드 26개(순서): CUST_ID, ACNT_NO, ODER_NO, OODER_NO, SELN_BYOV_CLS, RCTF_CLS, ODER_KIND, ODER_COND, STCK_SHRN_ISCD, CNTG_QTY, CNTG_UNPR, STCK_CNTG_HOUR, RFUS_YN, CNTG_YN, ACPT_YN, BRNC_NO, ODER_QTY, ACNT_NAME, ORD_COND_PRC, ORD_EXG_GB, POPUP_YN, FILLER, CRDT_CLS, CRDT_LOAN_DATE, CNTG_ISNM40, ODER_PRC
+- 해외 필드 25개(순서): CUST_ID, ACNT_NO, ODER_NO, OODER_NO, SELN_BYOV_CLS, RCTF_CLS, ODER_KIND2, STCK_SHRN_ISCD, CNTG_QTY, CNTG_UNPR, STCK_CNTG_HOUR, RFUS_YN, CNTG_YN, ACPT_YN, BRNC_NO, ODER_QTY, ACNT_NAME, CNTG_ISNM, ODER_COND, DEBT_GB, DEBT_DATE, START_TM, END_TM, TM_DIV_TP, CNTG_UNPR12
+- `CNTG_YN`(국내): `2` 체결통보, `1` 주문·정정·취소·거부 접수 통보. 해외는 값 정의를 못 찾음.
+- **확인 못 함**: 모의(:31000)에서 실제 수신되는지 · 해외 `tr_key` · 구독 해제 `tr_type`(문서마다 `0`/`2`, 기존 시세 코드는 `2`) · 부분체결이 건별/누적 중 무엇인지 · `SELN_BYOV_CLS` 값(매도/매수 코드) · 해외 접수/체결 구분 값. 앱 로그의 `[체결통보]` 줄로 실측해서 이 문서를 고친다.
