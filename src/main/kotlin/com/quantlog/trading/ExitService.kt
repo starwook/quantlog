@@ -110,7 +110,7 @@ class ExitService(
         if (pending.isWaiting(key)) return
 
         val quote = broker.quote(holding.market, holding.symbol)
-        // 익절·손절 %는 종목별 DB 설정(symbol_strategy). 설정 행이 없는 종목은 전역 설정(application.yml)을 쓴다.
+        // 익절·손절 %는 종목별 DB 설정(symbol_strategy). 설정 행이 아예 없는 종목만 application.yml 의 기본값을 대비책으로 쓴다.
         val config = symbolStrategyService.find(holding.market, holding.symbol)
         val rule = config?.let { FixedPercentExitRule(it.takeProfitPercent, it.stopLossPercent) } ?: exitRule
         val signal = rule.evaluate(holding.avgCost, quote)
@@ -156,7 +156,7 @@ class ExitService(
         }
     }
 
-    /** 매도 사유에 남길 "몇 % 법칙으로 팔았는지". 종목 설정 행이 없으면 전역 설정이라 % 를 알 수 없다. */
+    /** 매도 사유에 남길 "몇 % 법칙으로 팔았는지". 종목 설정 행이 없으면 기본값을 써서 % 를 알 수 없다. */
     private fun percentRuleText(
         signal: ExitSignal,
         config: SymbolStrategy?,
