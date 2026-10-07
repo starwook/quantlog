@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>quantlog · 실현손익</title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --pos: #f04452;
+            --neg: #3182f6;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 24px 16px 48px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { max-width: 720px; margin: 0 auto; }
+        .pos { color: var(--pos); }
+        .neg { color: var(--neg); }
+        .zero, .muted { color: var(--muted); }
+        .card { background: var(--card); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+        .month { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+        .month a { color: var(--text); text-decoration: none; padding: 4px 8px; }
+        .month a.off { color: var(--border); pointer-events: none; }
+        .currency { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+        .total { font-size: 28px; font-weight: 800; }
+        .switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--bg); border-radius: 12px; padding: 4px; margin: 16px 0 8px; }
+        .switch a { text-align: center; padding: 10px 0; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--muted); text-decoration: none; }
+        .switch a.active { background: var(--card); color: var(--text); }
+        .day { margin-top: 20px; }
+        .day h3 { font-size: 15px; margin: 0 0 4px; }
+        .day .sum { font-size: 13px; margin-bottom: 4px; }
+        .line { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 15px; }
+        .line:first-of-type { border-top: none; }
+        .line .name { font-weight: 600; color: var(--text); text-decoration: none; }
+        .line .amount { font-weight: 700; text-align: right; }
+        .empty { padding: 32px 0; text-align: center; font-size: 14px; color: var(--muted); }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('orders')}"></nav>
+
+    <div class="month">
+        <a th:href="@{/realized(month=${prevMonth}, view=${view})}">◀</a>
+        <span th:text="${monthText} + ' 실현손익'"></span>
+        <a th:href="${nextMonth} != null ? @{/realized(month=${nextMonth}, view=${view})} : '#'" th:classappend="${nextMonth == null} ? 'off'">▶</a>
+    </div>
+
+    <div class="empty" th:if="${#lists.isEmpty(reports)}">이 달에 실현된 매도가 없습니다.</div>
+
+    <section class="card" th:each="r : ${reports}">
+        <div class="currency" th:text="${r.currency}"></div>
+        <div class="total" th:classappend="${r.totalCss}" th:text="${r.totalText}"></div>
+
+        <div class="switch">
+            <a th:href="@{/realized(month=${month}, view='daily')}" th:classappend="${view == 'daily'} ? 'active'">일별</a>
+            <a th:href="@{/realized(month=${month}, view='symbol')}" th:classappend="${view == 'symbol'} ? 'active'">종목별 합계</a>
+        </div>
+
+        <div th:if="${view == 'daily'}">
+            <div class="day" th:each="d : ${r.days}">
+                <h3 th:text="${d.dateText}"></h3>
+                <div class="sum" th:classappend="${d.css}" th:text="${d.text}"></div>
+                <div class="line" th:each="l : ${d.lines}">
+                    <a class="name" th:href="@{'/chart/' + ${l.market} + '/' + ${l.symbol}}" th:text="${l.symbolName}"></a>
+                    <span class="amount" th:classappend="${l.css}" th:text="${l.text}"></span>
+                </div>
+            </div>
+        </div>
+
+        <div th:if="${view == 'symbol'}">
+            <div class="line" th:each="l : ${r.symbols}">
+                <a class="name" th:href="@{'/chart/' + ${l.market} + '/' + ${l.symbol}}" th:text="${l.symbolName}"></a>
+                <span class="amount" th:classappend="${l.css}" th:text="${l.text}"></span>
+            </div>
+        </div>
+    </section>
+</main>
+</body>
+</html>
