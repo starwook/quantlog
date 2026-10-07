@@ -6,6 +6,7 @@ import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.HoldingsChangedEvent
 import com.quantlog.position.OrderState
 import com.quantlog.position.PortfolioService
+import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.RealizedPnl
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeChangedEvent
@@ -49,7 +50,7 @@ class OrderLiveBroadcaster(
         val filled = newestFirst.filter { it.state == OrderState.FILLED }.take(HISTORY_LIMIT)
         val waiting = newestFirst.filter { it.state != OrderState.FILLED && it.executedAt.isAfter(todayStart) }
         val orders = (waiting + filled).map { it.toView(snapshot.realizedPnlByTradeId[it.id]) }
-        send(session, mapOf("type" to "snapshot", "orders" to orders, "holdings" to holdingViews()))
+        send(session, mapOf("type" to "snapshot", "orders" to orders, "holdings" to holdingViews(), "summary" to summaryView(snapshot)))
     }
 
     fun disconnect(session: WebSocketSession) {
@@ -61,13 +62,18 @@ class OrderLiveBroadcaster(
         if (sessions.isEmpty()) return
         val trade = event.trade
         // 실현손익은 체결된 매도에만 있고, 매매 기록 전체를 FIFO 로 다시 계산해야 해서 그때만 구한다.
-        val pnl =
-            if (trade.side == Side.SELL && trade.state == OrderState.FILLED) {
-                portfolioService.snapshot().realizedPnlByTradeId[trade.id]
-            } else {
-                null
-            }
-        broadcast(mapOf("type" to "order", "order" to trade.toView(pnl)))
+        if (trade.side == Side.SELL && trade.state == OrderState.FILLED) {
+            val snapshot = portfolioService.snapshot()
+            broadcast(
+                mapOf(
+                    "type" to "order",
+                    "order" to trade.toView(snapshot.realizedPnlByTradeId[trade.id]),
+                    "summary" to summaryView(snapshot),
+                ),
+            )
+        } else {
+            broadcast(mapOf("type" to "order", "order" to trade.toView(null)))
+        }
     }
 
     /** 보유 종목이 바뀌면 전체 목록을 다시 보낸다(종목 수가 적다). 커밋된 뒤에 읽어야 해서 트랜잭션이 없으면 바로 실행한다. */
@@ -76,6 +82,9 @@ class OrderLiveBroadcaster(
         if (sessions.isEmpty()) return
         broadcast(mapOf("type" to "holdings", "holdings" to holdingViews()))
     }
+
+    /** 국내 화면이므로 원화 요약만 보낸다. */
+    private fun summaryView(snapshot: PortfolioSnapshot) = snapshot.summaryByCurrency[KRW]?.let { PnlSummaryLiveView.of(it, KRW) }
 
     private fun holdingViews() =
         accountHoldingRepository.findAll()
@@ -103,6 +112,7 @@ class OrderLiveBroadcaster(
     private companion object {
         val KST: ZoneId = ZoneId.of("Asia/Seoul")
         const val HISTORY_LIMIT = 100
+        const val KRW = "KRW"
     }
 }
 

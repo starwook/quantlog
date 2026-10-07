@@ -12,7 +12,14 @@ import java.util.ArrayDeque
 private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 private val HUNDRED: BigDecimal = BigDecimal(100)
 
-data class RealizedPnl(val amount: BigDecimal, val percent: BigDecimal)
+data class RealizedPnl(
+    val amount: BigDecimal,
+    val percent: BigDecimal,
+    /** 이 매도와 FIFO 로 짝지어진 매수분의 평균 매수가. */
+    val avgBuyPrice: BigDecimal,
+    /** 매수분과 실제로 짝지어진 수량(매도 수량보다 적을 수 있다). */
+    val matchedQuantity: Int,
+)
 
 data class HoldingView(
     val market: Market,
@@ -114,7 +121,8 @@ class PortfolioService(
                         val proceeds = price.multiply(BigDecimal(matchedQty))
                         val amount = proceeds.subtract(cost)
                         val percent = percentOf(amount, cost)
-                        trade.id?.let { pnlByTradeId[it] = RealizedPnl(amount, percent) }
+                        val avgBuyPrice = cost.divide(BigDecimal(matchedQty), MathContext.DECIMAL64)
+                        trade.id?.let { pnlByTradeId[it] = RealizedPnl(amount, percent, avgBuyPrice, matchedQty) }
 
                         val acc = realizedByCurrency.getOrPut(trade.market.currency) { RealizedAcc() }
                         acc.totalAmount = acc.totalAmount.add(amount)
