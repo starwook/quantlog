@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <body>
-<!-- 공통 상단 메뉴. 사용: <nav th:replace="~{fragments/nav :: menu('account')}"></nav> (active: account|chart|backtest|settings) -->
+<!-- 공통 상단 메뉴. 사용: <nav th:replace="~{fragments/nav :: menu('account')}"></nav> (active: orders|chart|backtest|settings|errors) -->
 <nav th:fragment="menu(active)" class="menu">
     <style>
         .menu { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border, #eceef1); overflow-x: auto; }
@@ -12,6 +12,7 @@
     <a href="/chart/KR/005930" th:classappend="${active == 'chart'} ? 'active'">관심종목</a>
     <a href="/backtest/KR/005930" th:classappend="${active == 'backtest'} ? 'active'">백테스트</a>
     <a href="/settings" th:classappend="${active == 'settings'} ? 'active'">설정</a>
+    <a href="/errors" th:classappend="${active == 'errors'} ? 'active'">오류</a>
 </nav>
 </body>
 </html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>오류 기록 · quantlog</title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --err: #f04452;
+            --warn: #f59f00;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 24px 16px 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; }
+        h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+        .note { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+        .chip {
+            padding: 6px 12px; border-radius: 999px; background: var(--card); color: var(--muted);
+            font-size: 13px; text-decoration: none; border: 1px solid var(--border);
+        }
+        .chip.active { background: var(--text); color: #fff; border-color: var(--text); }
+        .card { background: var(--card); border-radius: 16px; margin-bottom: 16px; }
+        .summary { padding: 16px 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: center; }
+        .summary .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+        .summary .value { font-size: 20px; font-weight: 700; }
+        .row { padding: 14px 20px; border-top: 1px solid var(--border); font-size: 14px; }
+        .row:first-child { border-top: none; }
+        .row .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .row .meta { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+        .row .msg { margin-top: 6px; word-break: break-word; }
+        .badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; color: #fff; }
+        .badge.neg-strong { background: var(--err); }
+        .badge.warn { background: var(--warn); }
+        .count { font-weight: 700; white-space: nowrap; }
+        details { margin-top: 6px; font-size: 12px; color: var(--muted); }
+        pre { white-space: pre-wrap; word-break: break-all; margin: 6px 0 0; font-size: 11px; max-height: 260px; overflow: auto; }
+        .empty { padding: 48px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+        footer { margin-top: 16px; padding: 0 4px; font-size: 12px; color: var(--muted); }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('errors')}"></nav>
+
+    <h1>오류 기록</h1>
+    <p class="note">
+        서버의 WARN 이상 로그를 같은 종류끼리 묶어 쌓은 기록입니다(숫자만 다른 메시지는 같은 종류). 분류는 로그 앞의 [태그]입니다.
+        기록은 마지막 발생 후 14일이 지나면 지워집니다.
+    </p>
+
+    <div class="chips">
+        <a class="chip" th:each="p : ${periodDays}" th:classappend="${p == days} ? 'active'"
+           th:href="@{/errors(level=${level}, category=${category}, days=${p})}"
+           th:text="${p == 1 ? '24시간' : p + '일'}"></a>
+    </div>
+    <div class="chips">
+        <a class="chip" th:classappend="${level == 'ALL'} ? 'active'" th:href="@{/errors(days=${days}, category=${category})}">전체</a>
+        <a class="chip" th:classappend="${level == 'ERROR'} ? 'active'" th:href="@{/errors(level='ERROR', days=${days}, category=${category})}">ERROR</a>
+        <a class="chip" th:classappend="${level == 'WARN'} ? 'active'" th:href="@{/errors(level='WARN', days=${days}, category=${category})}">WARN</a>
+    </div>
+    <div class="chips">
+        <a class="chip" th:classappend="${category == ''} ? 'active'" th:href="@{/errors(level=${level}, days=${days})}">모든 분류</a>
+        <a class="chip" th:each="c : ${categories}" th:classappend="${c.name == category} ? 'active'"
+           th:href="@{/errors(level=${level}, category=${c.name}, days=${days})}" th:text="${c.name} + ' ' + ${c.count}"></a>
+    </div>
+
+    <div class="card summary">
+        <div>
+            <div class="label">오류 종류</div>
+            <div class="value" th:text="${groupCount} + '건'"></div>
+        </div>
+        <div>
+            <div class="label">발생 횟수 합계</div>
+            <div class="value" th:text="${#numbers.formatInteger(occurrenceCount, 0, 'COMMA')} + '회'"></div>
+        </div>
+        <div>
+            <div class="label">기간 내 ERROR / WARN 종류</div>
+            <div class="value" th:text="${errorGroups} + ' / ' + ${warnGroups}"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="empty" th:if="${#lists.isEmpty(rows)}">이 조건에 맞는 오류 기록이 없습니다.</div>
+        <div class="row" th:each="r : ${rows}">
+            <div class="top">
+                <span><span class="badge" th:classappend="${r.levelCss}" th:text="${r.level}"></span>
+                    <span th:text="' ' + ${r.category}"></span></span>
+                <span class="count" th:text="${r.countText}"></span>
+            </div>
+            <div class="msg" th:text="${r.message}"></div>
+            <div class="meta" th:text="'마지막 ' + ${r.lastSeen} + ' · 처음 ' + ${r.firstSeen}"></div>
+            <div class="meta" th:if="${r.exceptionLine != null}" th:text="${r.exceptionLine}"></div>
+            <details th:if="${r.stackTrace != null}">
+                <summary>스택트레이스</summary>
+                <pre th:text="${r.stackTrace}"></pre>
+            </details>
+        </div>
+    </div>
+
+    <footer th:if="${truncated}">최근 순으로 200건까지만 보여줍니다. 분류·레벨로 좁혀 보세요.</footer>
+</main>
+</body>
+</html>
