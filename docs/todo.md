@@ -3,7 +3,7 @@
 ## 체결통보 WebSocket 실측 검증 (PR: worktree-fill-notice-ws, 2026-10-06)
 이 PR은 (1) 청산 판정의 `hasUnsyncedTrade` 차단 제거 + `[청산 지연]` 로그, (2) 실시간 체결통보(국내 `H0STCNI9`·해외 `H0GSCNI9`) 구독·복호화·파싱·로그를 넣었다. 구독은 모의에서 성공했고(`SUBSCRIBE SUCCESS`, 암호화 키 수신) **체결 메시지는 아직 못 받아 봤다** — 2026-10-06 15:22 국내 주문이 거래시간(15:20 마감, `Market.KR_CLOSE`) 때문에 거부됐다.
 
-**머지·배포 전 검증** (국내 정규장 09:00~15:20, 사용자 확인 후 소량 주문, 서버 앱은 같은 앱키 세션 충돌 때문에 잠깐 끈다):
+**검증** (국내 정규장 09:00~15:20, 사용자 확인 후 소량 주문). 2026-10-07 부터는 서버가 이미 체결통보를 구독 중이라 **서버를 끌 필요 없이** 서버 수동 주문 API(`POST /chart/KR/005930/order`, `side`·`quantity`) + 서버 로그로 한다. 1차 실측(10-07): 통보는 오지만 모의는 한 건 23필드라 첫 버전이 4건 모두 버렸다 → 건수 기반 파싱 + 임시 `[체결통보 진단]` 로그(확정 뒤 삭제)로 고쳤고, 수정 배포 뒤 2차 실측이 필요하다. 아래 1번(로컬 실행)은 서버를 못 쓸 때만:
 1. 로컬에서 자동 진입·청산·스모크를 끄고(`--quantlog.entry.enabled=false --quantlog.exit.enabled=false --quantlog.smoke.mode=`) 앱을 띄운다. 시크릿은 `SPRING_CONFIG_ADDITIONAL_LOCATION` 으로 메인 폴더 `application-local.yml` 을 가리킨다. 서버 `docker compose stop quantlog` → 검증 → `docker compose start quantlog`.
 2. 삼성전자 1주 매수·매도(수동 주문 API)를 내고 `[체결통보]` 로그를 확인한다.
 3. 확인해서 `kis-api/field-reference.md` 3절의 "확인 못 함"을 채운다: 접수(`CNTG_YN=1`)와 체결(`2`)이 각각 오는가 · **부분체결이 건별인지 누적인지**(`CNTG_QTY` vs `ODER_QTY`) · `SELN_BYOV_CLS` 매도/매수 코드 · 모의에서 체결통보가 지연 없이 오는가(주문 응답 대비 몇 ms) · 해외 `tr_key`(HTS ID가 맞는가)와 접수/체결 구분값(미국장 22:30 KST 이후) · 구독 해제 `tr_type`(`0`/`2`).

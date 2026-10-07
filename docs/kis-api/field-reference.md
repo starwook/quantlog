@@ -58,4 +58,8 @@
 - 국내 필드 26개(순서): CUST_ID, ACNT_NO, ODER_NO, OODER_NO, SELN_BYOV_CLS, RCTF_CLS, ODER_KIND, ODER_COND, STCK_SHRN_ISCD, CNTG_QTY, CNTG_UNPR, STCK_CNTG_HOUR, RFUS_YN, CNTG_YN, ACPT_YN, BRNC_NO, ODER_QTY, ACNT_NAME, ORD_COND_PRC, ORD_EXG_GB, POPUP_YN, FILLER, CRDT_CLS, CRDT_LOAN_DATE, CNTG_ISNM40, ODER_PRC
 - 해외 필드 25개(순서): CUST_ID, ACNT_NO, ODER_NO, OODER_NO, SELN_BYOV_CLS, RCTF_CLS, ODER_KIND2, STCK_SHRN_ISCD, CNTG_QTY, CNTG_UNPR, STCK_CNTG_HOUR, RFUS_YN, CNTG_YN, ACPT_YN, BRNC_NO, ODER_QTY, ACNT_NAME, CNTG_ISNM, ODER_COND, DEBT_GB, DEBT_DATE, START_TM, END_TM, TM_DIV_TP, CNTG_UNPR12
 - `CNTG_YN`(국내): `2` 체결통보, `1` 주문·정정·취소·거부 접수 통보. 해외는 값 정의를 못 찾음.
+- **[실측 2026-10-07, 모의 :31000, 삼성전자 1주 수동 매수·매도]**
+  - 체결통보가 **실제로 온다.** 주문 API 호출 후 약 1~1.5초에 도착했고, 우리 주문 응답 로그(`[수동 주문]`)보다 7초 이상 빨랐다(그 사이 호출 한도 재시도·대기). 즉 REST 체결 조회보다 훨씬 빠르다.
+  - **주문 한 건당 통보가 2건** 3ms~43ms 간격으로 연달아 왔다(접수 + 체결로 추정, 구분 확인은 아래 진단 로그 뒤).
+  - **한 건이 26개가 아니라 23개 필드**로 왔다(문서의 26은 맞지 않음). 앞쪽 필드 위치는 샘플과 같은지 `[체결통보 진단]` 로그로 확인 중 — 확정 전까지 앞 17개(주문번호~주문수량)만 읽는다. 건당 필드 수는 메시지 헤더의 건수로 나눠 구한다.
 - **확인 못 함**: 모의(:31000)에서 실제 수신되는지 · 해외 `tr_key` · 구독 해제 `tr_type`(문서마다 `0`/`2`, 기존 시세 코드는 `2`) · 부분체결이 건별/누적 중 무엇인지 · `SELN_BYOV_CLS` 값(매도/매수 코드) · 해외 접수/체결 구분 값. 앱 로그의 `[체결통보]` 줄로 실측해서 이 문서를 고친다.

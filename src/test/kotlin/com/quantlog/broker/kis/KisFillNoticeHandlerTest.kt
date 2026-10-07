@@ -54,7 +54,7 @@ class KisFillNoticeHandlerTest {
     fun `암호화된 국내 체결통보를 복호화해 FillNotice 로 발행한다`() {
         handler.onSubscribeResponse("H0STCNI9", subscribeResponse("H0STCNI9"))
 
-        handler.onData("H0STCNI9", encrypted = true, payload = encrypt(domesticRow()))
+        handler.onData("H0STCNI9", encrypted = true, recordCount = 1, payload = encrypt(domesticRow()))
 
         val notice = events.single() as FillNotice
         assertFalse(notice.overseas)
@@ -67,15 +67,31 @@ class KisFillNoticeHandlerTest {
     }
 
     @Test
+    fun `모의투자처럼 한 건이 23필드로 와도 건수로 나눠 앞쪽 필드를 읽는다`() {
+        val fields = domesticRow().split("^").take(23)
+
+        handler.onData("H0STCNI9", encrypted = false, recordCount = 1, payload = fields.joinToString("^"))
+
+        val notice = events.single() as FillNotice
+        assertEquals("005930", notice.symbol)
+        assertTrue(notice.isFill)
+    }
+
+    @Test
     fun `체결여부 1 은 접수 통보라 체결로 보지 않는다`() {
-        handler.onData("H0STCNI9", encrypted = false, payload = domesticRow(filledFlag = "1"))
+        handler.onData("H0STCNI9", encrypted = false, recordCount = 1, payload = domesticRow(filledFlag = "1"))
 
         assertFalse((events.single() as FillNotice).isFill)
     }
 
     @Test
     fun `한 메시지에 여러 건이 이어 붙어 오면 건마다 발행한다`() {
-        handler.onData("H0STCNI9", encrypted = false, payload = domesticRow(quantity = "1") + "^" + domesticRow(quantity = "2"))
+        handler.onData(
+            "H0STCNI9",
+            encrypted = false,
+            recordCount = 2,
+            payload = domesticRow(quantity = "1") + "^" + domesticRow(quantity = "2"),
+        )
 
         assertEquals(2, events.size)
     }
@@ -91,7 +107,7 @@ class KisFillNoticeHandlerTest {
         fields[15] = "2"
         handler.onSubscribeResponse("H0GSCNI9", subscribeResponse("H0GSCNI9"))
 
-        handler.onData("H0GSCNI9", encrypted = true, payload = encrypt(fields.joinToString("^")))
+        handler.onData("H0GSCNI9", encrypted = true, recordCount = 1, payload = encrypt(fields.joinToString("^")))
 
         val notice = events.single() as FillNotice
         assertTrue(notice.overseas)
@@ -102,8 +118,9 @@ class KisFillNoticeHandlerTest {
 
     @Test
     fun `암호화 키가 없거나 필드 수가 안 맞으면 발행하지 않는다`() {
-        handler.onData("H0STCNI9", encrypted = true, payload = encrypt(domesticRow()))
-        handler.onData("H0STCNI9", encrypted = false, payload = "a^b^c")
+        handler.onData("H0STCNI9", encrypted = true, recordCount = 1, payload = encrypt(domesticRow()))
+        handler.onData("H0STCNI9", encrypted = false, recordCount = 1, payload = "a^b^c")
+        handler.onData("H0STCNI9", encrypted = false, recordCount = 2, payload = domesticRow().substringBeforeLast("^"))
 
         assertTrue(events.isEmpty())
     }

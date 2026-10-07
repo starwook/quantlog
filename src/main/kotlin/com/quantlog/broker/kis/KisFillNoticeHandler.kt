@@ -42,10 +42,11 @@ class KisFillNoticeHandler(
         log.info { "[체결통보] 구독 응답 $trId: rt_cd=$result $message (키 수신=${keys.containsKey(trId)})" }
     }
 
-    /** [payload] 는 `0|1 | TR_ID | 건수 | payload` 의 네 번째 칸. [encrypted] 는 맨 앞 글자가 "1" 인지. */
+    /** [payload] 는 `0|1 | TR_ID | 건수 | payload` 의 네 번째 칸, [recordCount] 는 세 번째 칸(건수). [encrypted] 는 맨 앞 글자가 "1" 인지. */
     fun onData(
         trId: String,
         encrypted: Boolean,
+        recordCount: Int,
         payload: String,
     ) {
         val text =
@@ -57,11 +58,17 @@ class KisFillNoticeHandler(
                 payload
             }
         val overseas = trId in OVERSEAS_TR_IDS
-        val width = if (overseas) OVERSEAS_FIELD_COUNT else DOMESTIC_FIELD_COUNT
         val fields = text.split("^")
-        // 한 메시지에 여러 건이 이어 붙어 올 수 있어 필드 수 단위로 나눈다.
-        if (fields.size % width != 0) log.warn { "[체결통보] $trId 필드 수 ${fields.size} 가 $width 의 배수가 아님 — 사양 확인 필요" }
-        fields.chunked(width).filter { it.size == width }.forEach { row ->
+        // 한 메시지에 여러 건이 이어 붙어 올 수 있다. 한 건의 필드 수는 사양 문서가 아니라 실제 건수로 나눠서 구한다
+        // (2026-10-07 모의 실측: 문서는 26개인데 H0STCNI9 가 23개로 옴).
+        if (recordCount <= 0 || fields.size % recordCount != 0) {
+            return log.warn { "[체결통보] $trId 필드 수 ${fields.size} 를 건수 $recordCount 로 나눌 수 없어 버린다" }
+        }
+        val width = fields.size / recordCount
+        val minWidth = if (overseas) OVERSEAS_MIN_FIELD_COUNT else DOMESTIC_MIN_FIELD_COUNT
+        if (width < minWidth) return log.warn { "[체결통보] $trId 한 건이 ${width}필드뿐이라 파싱할 수 없다 (최소 $minWidth)" }
+        fields.chunked(width).forEach { row ->
+            logLayout(trId, row)
             val notice = if (overseas) parseOverseas(row) else parseDomestic(row)
             log.info {
                 "[체결통보] ${if (overseas) "해외" else "국내"} 종목=${notice.symbol} 주문번호=${notice.orderNo} 원주문=${notice.originalOrderNo} " +
@@ -70,6 +77,18 @@ class KisFillNoticeHandler(
             }
             eventPublisher.publishEvent(notice)
         }
+    }
+
+    /**
+     * 임시 진단: 모의 필드 레이아웃을 실제 값으로 확인하려고 한 건의 필드를 위치와 함께 남긴다. 고객 ID(0)·계좌번호(1)·계좌명(17)은 가린다.
+     * 레이아웃을 확정하고 field-reference.md 에 적은 뒤 지운다 (docs/todo.md).
+     */
+    private fun logLayout(
+        trId: String,
+        row: List<String>,
+    ) {
+        val masked = row.mapIndexed { i, v -> if (i in MASKED_INDEXES) "***" else v }
+        log.info { "[체결통보 진단] $trId 필드 ${row.size}개: ${masked.withIndex().joinToString(" ") { "${it.index}=${it.value}" }}" }
     }
 
     internal fun parseDomestic(f: List<String>) =
@@ -121,7 +140,8 @@ class KisFillNoticeHandler(
         const val OVERSEAS_TR_ID = "H0GSCNI9"
         val OVERSEAS_TR_IDS = setOf(OVERSEAS_TR_ID, "H0GSCNI0")
         val TR_IDS = setOf(DOMESTIC_TR_ID, OVERSEAS_TR_ID, "H0STCNI0", "H0GSCNI0")
-        private const val DOMESTIC_FIELD_COUNT = 26
-        private const val OVERSEAS_FIELD_COUNT = 25
+        private const val DOMESTIC_MIN_FIELD_COUNT = 17
+        private const val OVERSEAS_MIN_FIELD_COUNT = 16
+        private val MASKED_INDEXES = setOf(0, 1, 17)
     }
 }
