@@ -1,18 +1,27 @@
 package com.quantlog.position
 
+import com.quantlog.broker.FillNotice
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
+import com.quantlog.broker.Side
 import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Instant
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 private val log = KotlinLogging.logger {}
 
 /**
  * KIS 잔고를 [AccountHolding] 테이블에 그대로 맞춘다 (KIS 가 정답, DB 는 사본). 새 종목은 추가, 있는 종목은 수량·평단·현재가 갱신,
  * KIS 잔고에서 사라진 종목은 삭제한다. 호출은 [com.quantlog.trading.HoldingSyncScheduler] 가 주기적으로 한다.
+ *
+ * 체결통보(WebSocket)가 오면 [applyFill] 이 그 체결만큼 수량·평단을 바로 계산해 반영한다 — KIS 잔고 REST 는 한 번에 3~8초 걸려서
+ * 주기 동기화만으로는 체결 뒤 DB 가 십수 초 낡았다(2026-10-07 실측). 이 계산값은 임시일 뿐이고 다음 KIS 잔고 동기화가 정답으로 덮어쓴다.
  */
 @Service
 class HoldingSyncService(
@@ -24,6 +33,15 @@ class HoldingSyncService(
     @Volatile
     private var lastSyncedAt: Instant? = null
 
+    /** 체결통보를 이미 반영한 수량(주문번호별). 같은 통보가 다시 와도, 체결수량이 누적으로 와도 주문수량을 넘겨 더하지 않는다. */
+    private val appliedQuantity: MutableMap<String, Int> = boundedMap()
+
+    /** 주문수량만큼 체결통보를 다 반영한 주문번호. */
+    private val completedOrders: MutableMap<String, Boolean> = boundedMap()
+
+    /** 종목별로 체결통보를 마지막으로 반영한 시각. 그보다 먼저 시작한 KIS 잔고 조회 결과로는 그 종목을 덮어쓰지 않는다. */
+    private val fillAppliedAt = ConcurrentHashMap<Pair<Market, String>, Instant>()
+
     /**
      * 이 종목에 잔고 동기화보다 늦게 낸 주문이 있으면 true — 잔고 테이블이 그 주문을 아직 반영하지 못한 상태라
      * 스케줄러는 이 종목 판단(추가 매수·청산)을 다음 동기화까지 미룬다. 첫 동기화 전에도 true.
@@ -34,8 +52,75 @@ class HoldingSyncService(
     ): Boolean {
         val synced = lastSyncedAt ?: return true
         val last = tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(market, symbol) ?: return false
+        // 체결통보로 이미 다 반영한 주문이면 동기화를 기다릴 필요가 없다.
+        if (completedOrders.containsKey(last.orderNo)) return false
         return last.executedAt.isAfter(synced)
     }
+
+    /**
+     * 체결통보 한 건을 보유 현황에 반영한다. 체결 통보(국내)만 처리하고 접수 통보·해외는 건너뛴다(해외는 실측 전).
+     * 매수는 수량 가중평균으로 평단을 다시 계산하고, 매도는 수량만 줄인다(0이 되면 행 삭제). 바뀐 내용 설명을 돌려준다(건너뛰면 null).
+     * 부분체결 통보의 체결수량이 건별인지 누적인지는 실측 전이라 건별로 보고 더하되, 주문수량을 넘기지 않게 막는다.
+     */
+    @Transactional
+    fun applyFill(
+        notice: FillNotice,
+        now: Instant = Instant.now(),
+    ): String? {
+        if (notice.overseas || !notice.isFill) return null
+        val side = notice.side ?: return null
+        val price = notice.filledPrice ?: return null
+        val reported = notice.filledQuantity?.toInt() ?: return null
+        val quantity = reserveFillQuantity(notice.orderNo, reported, notice.orderQuantity?.toInt() ?: Int.MAX_VALUE)
+        if (quantity <= 0) return null
+
+        val market = Market.KR
+        val name = symbolStrategyService.displayName(market, notice.symbol)
+        val row = accountHoldingRepository.findByMarketAndSymbol(market, notice.symbol)
+        val change =
+            when (side) {
+                Side.BUY -> {
+                    if (row == null) {
+                        accountHoldingRepository.save(AccountHolding(market, notice.symbol, quantity, price, price))
+                        "$name 신규 ${quantity}주 (체결 $price)"
+                    } else {
+                        val total = row.quantity + quantity
+                        val average = row.avgCost.multiply(BigDecimal(row.quantity)).add(price.multiply(BigDecimal(quantity)))
+                        row.update(total, average.divide(BigDecimal(total), COST_SCALE, RoundingMode.HALF_UP), price)
+                        "$name ${row.quantity - quantity}주 → ${total}주 (체결 $price, 평단 ${row.avgCost.stripTrailingZeros().toPlainString()})"
+                    }
+                }
+                Side.SELL -> {
+                    if (row == null) return null
+                    val left = row.quantity - quantity
+                    if (left <= 0) {
+                        accountHoldingRepository.delete(row)
+                        "$name 전량 매도 (${row.quantity}주 → 0주, 체결 $price)"
+                    } else {
+                        row.update(left, row.avgCost, price)
+                        "$name ${row.quantity + quantity}주 → ${left}주 (체결 $price)"
+                    }
+                }
+            }
+        fillAppliedAt[market to notice.symbol] = now
+        log.info { "[체결통보 반영] ${notice.orderNo} $change" }
+        return change
+    }
+
+    /** 이 주문에서 이번 통보로 더 반영할 수량을 정하고 기록한다. 이미 주문수량만큼 반영했으면 0. */
+    private fun reserveFillQuantity(
+        orderNo: String,
+        reported: Int,
+        orderQuantity: Int,
+    ): Int =
+        synchronized(appliedQuantity) {
+            val applied = appliedQuantity[orderNo] ?: 0
+            val take = minOf(reported, orderQuantity - applied)
+            if (take <= 0) return@synchronized 0
+            appliedQuantity[orderNo] = applied + take
+            if (applied + take >= orderQuantity) completedOrders[orderNo] = true
+            take
+        }
 
     /**
      * [kis] 는 [fetchedAt] 시점에 받은 잔고 전체. 바뀐 내용 설명 목록을 돌려준다(변화가 없으면 빈 목록).
@@ -54,7 +139,10 @@ class HoldingSyncService(
         val existing = accountHoldingRepository.findAll().associateBy { it.market to it.symbol }
         val changes = mutableListOf<String>()
 
-        actual.forEach { (key, holding) ->
+        // 이 조회를 시작한 뒤에 체결통보로 반영한 종목은 조회 결과가 체결 이전 값일 수 있어 이번 회차엔 건드리지 않는다(다음 회차가 맞춘다).
+        fun reflectedAfterFetch(key: Pair<Market, String>) = fillAppliedAt[key]?.isAfter(fetchedAt) == true
+
+        actual.filterKeys { !reflectedAfterFetch(it) }.forEach { (key, holding) ->
             val quantity = holding.quantity.toInt()
             val row = existing[key]
             if (row == null) {
@@ -69,7 +157,7 @@ class HoldingSyncService(
                 row.update(quantity, holding.averagePrice, holding.currentPrice)
             }
         }
-        existing.filterKeys { it !in actual }.values.forEach {
+        existing.filterKeys { it !in actual && !reflectedAfterFetch(it) }.values.forEach {
             accountHoldingRepository.delete(it)
             changes += "${nameOf(it.market, it.symbol)} 잔고에서 사라짐 (${it.quantity}주)"
         }
@@ -77,5 +165,19 @@ class HoldingSyncService(
         lastSyncedAt = fetchedAt
         changes.forEach { log.info { "[잔고 동기화] $it" } }
         return changes
+    }
+
+    private companion object {
+        /** account_holding.avg_cost 의 소수 자릿수. */
+        const val COST_SCALE = 6
+        const val MAX_TRACKED_ORDERS = 2000
+
+        /** 오래된 항목부터 버리는 크기 제한 맵 — 주문번호는 하루 단위로 쌓이므로 무한히 늘리지 않는다. */
+        fun <V> boundedMap(): MutableMap<String, V> =
+            Collections.synchronizedMap(
+                object : LinkedHashMap<String, V>() {
+                    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, V>) = size > MAX_TRACKED_ORDERS
+                },
+            )
     }
 }

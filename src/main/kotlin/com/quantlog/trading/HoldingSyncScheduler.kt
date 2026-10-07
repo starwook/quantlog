@@ -1,6 +1,7 @@
 package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
+import com.quantlog.broker.FillNotice
 import com.quantlog.broker.Market
 import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.TradeFilledEvent
@@ -42,6 +43,14 @@ class HoldingSyncScheduler(
     @EventListener
     fun onTradeFilled(event: TradeFilledEvent) {
         if (properties.enabled) syncNow()
+    }
+
+    /** 체결통보가 오면 KIS 잔고 조회(3~8초)를 기다리지 않고 그 체결만큼 바로 DB 를 고친다. 틀리면 다음 동기화가 바로잡는다. */
+    @EventListener
+    fun onFillNotice(notice: FillNotice) {
+        if (!properties.enabled) return
+        runCatching { holdingSync.applyFill(notice) }
+            .onFailure { log.warn(it) { "[체결통보 반영] 실패 — 다음 KIS 잔고 동기화가 바로잡는다: ${notice.summary()}" } }
     }
 
     @Synchronized
