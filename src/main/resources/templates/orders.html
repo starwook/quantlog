@@ -238,7 +238,7 @@
     function connect() {
         const conn = document.getElementById('conn');
         const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-        const ws = new WebSocket(proto + location.host + '/ws/orders');
+        const ws = new WebSocket(proto + location.host + '/ws/portfolio');
         ws.onopen = () => { conn.textContent = '실시간 연결됨'; conn.className = 'conn on'; };
         ws.onmessage = (e) => {
             const msg = JSON.parse(e.data);

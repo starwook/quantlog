@@ -38,11 +38,11 @@ import java.util.concurrent.Executors
 private val log = KotlinLogging.logger {}
 
 /**
- * 주문이 접수·체결·취소되거나 보유 종목이 바뀔 때마다 열려 있는 모든 브라우저(/ws/orders)에 그 변화를 밀어준다.
+ * 주문이 접수·체결·취소되거나 보유 종목이 바뀔 때마다 열려 있는 모든 브라우저(/ws/portfolio)에 그 변화를 밀어준다.
  * 새로 연결되면 보유 종목·대기열·최근 체결 내역을 한 번에 보내(snapshot) 화면이 바로 채워지게 한다.
  */
 @Component
-class OrderLiveBroadcaster(
+class PortfolioLiveBroadcaster(
     private val portfolioService: PortfolioService,
     private val accountHoldingRepository: AccountHoldingRepository,
     private val symbolStrategyService: SymbolStrategyService,
@@ -52,7 +52,7 @@ class OrderLiveBroadcaster(
     private val livePrices = ConcurrentHashMap<String, BigDecimal>()
 
     // 틱 푸시 전용 스레드. 스프링 스케줄러(스레드 하나를 모든 @Scheduled 가 공유)나 KIS 수신 스레드에 얹으면 느린 호출·클라이언트에 막혀 화면이 멎는다.
-    private val pushExecutor = Executors.newSingleThreadExecutor { Thread(it, "order-live-push").apply { isDaemon = true } }
+    private val pushExecutor = Executors.newSingleThreadExecutor { Thread(it, "portfolio-live-push").apply { isDaemon = true } }
 
     /** 지금 보유 중인 국내 종목(수량·평단). 보유가 바뀌어 목록을 다시 보낼 때마다 갱신한다. */
     @Volatile
@@ -187,7 +187,7 @@ class OrderLiveBroadcaster(
 }
 
 @Component
-class OrderLiveWebSocketHandler(private val broadcaster: OrderLiveBroadcaster) : TextWebSocketHandler() {
+class PortfolioLiveWebSocketHandler(private val broadcaster: PortfolioLiveBroadcaster) : TextWebSocketHandler() {
     override fun afterConnectionEstablished(session: WebSocketSession) = broadcaster.connect(session)
 
     override fun afterConnectionClosed(
@@ -198,8 +198,8 @@ class OrderLiveWebSocketHandler(private val broadcaster: OrderLiveBroadcaster) :
 
 @Configuration
 @EnableWebSocket
-class OrderLiveWebSocketConfig(private val handler: OrderLiveWebSocketHandler) : WebSocketConfigurer {
+class PortfolioLiveWebSocketConfig(private val handler: PortfolioLiveWebSocketHandler) : WebSocketConfigurer {
     override fun registerWebSocketHandlers(registry: WebSocketHandlerRegistry) {
-        registry.addHandler(handler, "/ws/orders").setAllowedOrigins("*")
+        registry.addHandler(handler, "/ws/portfolio").setAllowedOrigins("*")
     }
 }
