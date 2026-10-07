@@ -124,8 +124,8 @@ class MartingaleServiceTest {
         val order = broker.orders.single()
         assertEquals(Side.BUY, order.side)
         assertEquals(2, order.quantity)
-        // 현재가 10,000 + 0.5% = 10,050 → 호가 단위 올림
-        assertEquals(0, BigDecimal("10050").compareTo(order.limitPrice))
+        // 현재가 10,000 + 한 호가(10) = 10,010
+        assertEquals(0, BigDecimal("10010").compareTo(order.limitPrice))
     }
 
     @Test

@@ -15,7 +15,6 @@ import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
 import java.time.ZonedDateTime
@@ -109,7 +108,7 @@ class MartingaleService(
     ) {
         // 주문 흐름은 스케줄러의 일반 호출보다 먼저 나간다(broker/CallPriority.kt).
         CallPriority.urgent {
-            val limitPrice = quote.roundToTick(quote.price.multiply(BigDecimal.ONE.add(EntryScheduler.BUY_OFFSET)), RoundingMode.CEILING)
+            val limitPrice = quote.oneTickAbove()
             val request = OrderRequest(market, symbol, Side.BUY, quantity, limitPrice)
             riskGuard.checkBuy(request)
             val receipt = broker.placeOrder(request)
