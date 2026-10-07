@@ -10,6 +10,7 @@ import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
+import com.quantlog.broker.kis.KisApiException
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.HoldingSyncService
@@ -35,6 +36,8 @@ class ExitServiceTest {
     private class FakeBroker(var price: BigDecimal) : BrokerClient {
         val orders = mutableListOf<OrderRequest>()
         val cancels = mutableListOf<CancelRequest>()
+        var rejection: RuntimeException? = null
+        var placeAttempts = 0
 
         override fun quote(
             market: Market,
@@ -61,6 +64,8 @@ class ExitServiceTest {
         override fun holdings(market: Market): List<Holding> = emptyList()
 
         override fun placeOrder(order: OrderRequest): OrderReceipt {
+            placeAttempts++
+            rejection?.let { throw it }
             orders += order
             return OrderReceipt("1", "ok")
         }
@@ -272,5 +277,30 @@ class ExitServiceTest {
         val broker = FakeBroker(BigDecimal("274500"))
         scheduler(broker).checkAll(krOpen) { _, symbol -> symbol == "005930" }
         assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `장 시작 전이라 거부당한 종목은 5분 동안 주문을 다시 내지 않는다`() {
+        val broker = FakeBroker(BigDecimal("274500"))
+        broker.rejection = KisApiException("KIS 오류 (VTTT1001U): [40570000] 모의투자 장시작전 입니다.", code = "40570000")
+        val service = scheduler(broker)
+
+        service.checkAll(krOpen)
+        service.checkAll(krOpen.plusSeconds(3))
+        assertEquals(1, broker.placeAttempts)
+
+        service.checkAll(krOpen.plusMinutes(6))
+        assertEquals(2, broker.placeAttempts)
+    }
+
+    @Test
+    fun `다른 이유로 거부당하면 쉬지 않고 다음 판정에서 다시 시도한다`() {
+        val broker = FakeBroker(BigDecimal("274500"))
+        broker.rejection = KisApiException("KIS 오류 (VTTT1001U): [40000000] 기타", code = "40000000")
+        val service = scheduler(broker)
+
+        service.checkAll(krOpen)
+        service.checkAll(krOpen.plusSeconds(3))
+        assertEquals(2, broker.placeAttempts)
     }
 }

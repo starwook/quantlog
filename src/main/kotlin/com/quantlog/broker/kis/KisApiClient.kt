@@ -78,9 +78,8 @@ class KisApiClient(
                         ?: throw KisApiException("KIS 응답이 비어 있습니다: $path ($trId)")
 
                 if (response.path("rt_cd").asText() != "0") {
-                    throw KisApiException(
-                        "KIS 오류 $path ($trId): [${response.path("msg_cd").asText()}] ${response.path("msg1").asText()}",
-                    )
+                    val code = response.path("msg_cd").asText()
+                    throw KisApiException("KIS 오류 $path ($trId): [$code] ${response.path("msg1").asText()}", code = code)
                 }
                 logIfSlow(path, trId, waitMillis = httpStart - waitStart, httpMillis = System.currentTimeMillis() - httpStart)
                 if (properties.logRaw) log.info { "KIS raw $path ($trId): $response" }
