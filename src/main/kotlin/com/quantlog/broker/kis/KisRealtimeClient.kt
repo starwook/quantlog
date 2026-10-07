@@ -165,7 +165,7 @@ class KisRealtimeClient(
         if (raw.startsWith("0") || raw.startsWith("1")) {
             val parts = raw.split("|", limit = 4)
             if (parts.size == 4 && parts[1] in KisFillNoticeHandler.TR_IDS) {
-                fillNotices.onData(parts[1], encrypted = raw.startsWith("1"), payload = parts[3])
+                fillNotices.onData(parts[1], encrypted = raw.startsWith("1"), recordCount = parts[2].toIntOrNull() ?: 1, payload = parts[3])
             } else {
                 handleTick(raw)
             }
