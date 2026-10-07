@@ -143,6 +143,8 @@ class HoldingSyncService(
         val actual = kis.filter { it.quantity.toInt() > 0 }.associateBy { it.market to it.symbol }
         val existing = accountHoldingRepository.findAll().associateBy { it.market to it.symbol }
         val changes = mutableListOf<String>()
+        // 수량이 그대로여도 현재가가 바뀌면 화면(평가손익)이 갱신돼야 한다.
+        var priceChanged = false
 
         // 이 조회를 시작한 뒤에 체결통보로 반영한 종목은 조회 결과가 체결 이전 값일 수 있어 이번 회차엔 건드리지 않는다(다음 회차가 맞춘다).
         fun reflectedAfterFetch(key: Pair<Market, String>) = fillAppliedAt[key]?.isAfter(fetchedAt) == true
@@ -159,6 +161,7 @@ class HoldingSyncService(
                 if (row.quantity != quantity) {
                     changes += "${nameOf(row.market, row.symbol)} ${row.quantity}주 → ${quantity}주 (평단 ${holding.averagePrice})"
                 }
+                if (row.currentPrice.compareTo(holding.currentPrice) != 0) priceChanged = true
                 row.update(quantity, holding.averagePrice, holding.currentPrice)
             }
         }
@@ -169,7 +172,7 @@ class HoldingSyncService(
 
         lastSyncedAt = fetchedAt
         changes.forEach { log.info { "[잔고 동기화] $it" } }
-        if (changes.isNotEmpty()) events.publishEvent(HoldingsChangedEvent)
+        if (changes.isNotEmpty() || priceChanged) events.publishEvent(HoldingsChangedEvent)
         return changes
     }
 

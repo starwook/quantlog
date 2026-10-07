@@ -80,7 +80,7 @@ class OrderLiveBroadcaster(
     @TransactionalEventListener(fallbackExecution = true)
     fun onHoldingsChanged(event: HoldingsChangedEvent) {
         if (sessions.isEmpty()) return
-        broadcast(mapOf("type" to "holdings", "holdings" to holdingViews()))
+        broadcast(mapOf("type" to "holdings", "holdings" to holdingViews(), "summary" to summaryView(portfolioService.snapshot())))
     }
 
     /** 국내 화면이므로 원화 요약만 보낸다. */
