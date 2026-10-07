@@ -1,6 +1,8 @@
 package com.quantlog.order
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.quantlog.broker.Market
+import com.quantlog.broker.PriceTick
 import com.quantlog.broker.Side
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.HoldingsChangedEvent
@@ -14,6 +16,7 @@ import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.event.EventListener
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.event.TransactionalEventListener
 import org.springframework.web.socket.CloseStatus
@@ -23,8 +26,11 @@ import org.springframework.web.socket.config.annotation.EnableWebSocket
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 import org.springframework.web.socket.handler.TextWebSocketHandler
+import java.math.BigDecimal
+import java.math.MathContext
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 
 private val log = KotlinLogging.logger {}
@@ -41,6 +47,10 @@ class OrderLiveBroadcaster(
     private val objectMapper: ObjectMapper,
 ) {
     private val sessions = CopyOnWriteArraySet<WebSocketSession>()
+    private val livePrices = ConcurrentHashMap<String, BigDecimal>()
+
+    @Volatile
+    private var priceDirty = false
 
     fun connect(session: WebSocketSession) {
         sessions.add(session)
@@ -80,17 +90,46 @@ class OrderLiveBroadcaster(
     @TransactionalEventListener(fallbackExecution = true)
     fun onHoldingsChanged(event: HoldingsChangedEvent) {
         if (sessions.isEmpty()) return
-        broadcast(mapOf("type" to "holdings", "holdings" to holdingViews()))
+        broadcast(mapOf("type" to "holdings", "holdings" to holdingViews(), "summary" to summaryView(portfolioService.snapshot())))
     }
 
-    /** 국내 화면이므로 원화 요약만 보낸다. */
-    private fun summaryView(snapshot: PortfolioSnapshot) = snapshot.summaryByCurrency[KRW]?.let { PnlSummaryLiveView.of(it, KRW) }
+    /** 실시간 틱은 수신 스레드에서 오므로 가격만 적어두고, 화면 갱신은 [pushLivePrices] 가 1초에 한 번 모아서 보낸다. */
+    @EventListener
+    fun onPriceTick(tick: PriceTick) {
+        if (sessions.isEmpty() || tick.market != Market.KR) return
+        livePrices[tick.symbol] = tick.price
+        priceDirty = true
+    }
+
+    @Scheduled(fixedDelay = PRICE_PUSH_MILLIS)
+    fun pushLivePrices() {
+        if (!priceDirty || sessions.isEmpty()) return
+        priceDirty = false
+        broadcast(mapOf("type" to "holdings", "holdings" to holdingViews(), "summary" to summaryView(portfolioService.snapshot())))
+    }
+
+    /** 국내 화면이므로 원화 요약만 보낸다. 평가손익은 실시간 현재가로 다시 계산한다. */
+    private fun summaryView(snapshot: PortfolioSnapshot): PnlSummaryLiveView? {
+        val summary = snapshot.summaryByCurrency[KRW] ?: return null
+        val held = accountHoldingRepository.findAll().filter { it.market == Market.KR && it.quantity > 0 }
+        val cost = held.sumOf { it.avgCost.multiply(BigDecimal(it.quantity)) }
+        val value = held.sumOf { (livePrices[it.symbol] ?: it.currentPrice).multiply(BigDecimal(it.quantity)) }
+        val amount = value.subtract(cost)
+        val percent = if (cost.signum() > 0) amount.multiply(BigDecimal(100)).divide(cost, MathContext.DECIMAL64) else BigDecimal.ZERO
+        return PnlSummaryLiveView.of(summary, KRW, amount, percent)
+    }
 
     private fun holdingViews() =
         accountHoldingRepository.findAll()
             .filter { it.quantity > 0 }
             .sortedBy { it.symbol }
-            .map { HoldingLiveView.of(it, symbolStrategyService.displayName(it.market, it.symbol)) }
+            .map {
+                HoldingLiveView.of(
+                    it,
+                    symbolStrategyService.displayName(it.market, it.symbol),
+                    if (it.market == Market.KR) livePrices[it.symbol] else null,
+                )
+            }
 
     private fun Trade.toView(pnl: RealizedPnl?) = OrderLiveView.of(this, symbolStrategyService.displayName(market, symbol), pnl)
 
@@ -113,6 +152,7 @@ class OrderLiveBroadcaster(
         val KST: ZoneId = ZoneId.of("Asia/Seoul")
         const val HISTORY_LIMIT = 100
         const val KRW = "KRW"
+        const val PRICE_PUSH_MILLIS = 1000L
     }
 }
 

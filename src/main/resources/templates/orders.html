@@ -58,7 +58,10 @@
         .summary.flash { animation: flash 3s ease-out; }
         .line { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
         .line + .line { margin-top: 4px; }
-        .name { font-weight: 700; }
+        .name { font-weight: 700; color: inherit; text-decoration: none; }
+        a.name:hover { text-decoration: underline; }
+        .name.pos { color: var(--buy); }
+        .name.neg { color: var(--sell); }
         .code, .sub { font-size: 12px; color: var(--muted); margin-left: 4px; font-weight: 400; }
         .side { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; color: #fff; margin-right: 6px; }
         .side.BUY { background: var(--buy); }
@@ -77,14 +80,14 @@
 <main>
     <nav th:replace="~{fragments/nav :: menu('orders')}"></nav>
     <section class="card summary" id="summary" hidden>
-        <div class="label">오늘 실현손익</div>
+        <div class="label">오늘 실현손익 <span class="sub">(매도 확정분)</span></div>
         <div class="big" id="sumToday"></div>
         <div class="stats">
             <div class="stat"><div class="label">승률</div><div class="v" id="sumWinRate"></div></div>
             <div class="stat"><div class="label">승 / 패</div><div class="v" id="sumWinLoss"></div></div>
             <div class="stat"><div class="label">매수 회수</div><div class="v" id="sumBuy"></div></div>
             <div class="stat"><div class="label">매도 회수</div><div class="v" id="sumSell"></div></div>
-            <div class="stat" style="grid-column: span 2"><div class="label">누적 실현손익</div><div class="v" id="sumTotal"></div></div>
+            <div class="stat" style="grid-column: span 2"><div class="label">현재 평가손익</div><div class="v" id="sumUnrealized"></div></div>
         </div>
     </section>
 
@@ -136,10 +139,17 @@
         return l;
     }
 
-    function sideAndName(side, name, code) {
+    // 종목명은 관심종목 화면(차트)으로 가는 링크다.
+    function symbolLink(market, symbol, name) {
+        const a = el('a', 'name', name);
+        a.href = '/chart/' + market + '/' + symbol;
+        return a;
+    }
+
+    function sideAndName(side, market, name, code) {
         const left = el('span');
         left.appendChild(el('span', 'side ' + side, side === 'BUY' ? '매수' : '매도'));
-        left.appendChild(el('span', 'name', name));
+        left.appendChild(symbolLink(market, code, name));
         left.appendChild(el('span', 'code', code));
         return left;
     }
@@ -147,10 +157,10 @@
     function renderHolding(h) {
         const row = el('div', 'order');
         const left = el('span');
-        left.appendChild(el('span', 'name', h.symbolName));
+        left.appendChild(symbolLink(h.market, h.symbol, h.symbolName));
         left.appendChild(el('span', 'code', h.symbol));
-        row.appendChild(line(left, el('span', 'name', h.quantity + '주')));
-        row.appendChild(line(el('span', 'sub', '평단 ' + h.avgCostText), el('span', 'sub', h.updatedAtText)));
+        row.appendChild(line(left, el('span', 'name ' + h.unrealizedCss, h.unrealizedText)));
+        row.appendChild(line(el('span', 'sub', h.quantity + '주 · 평단 ' + h.avgCostText + ' → 현재 ' + h.currentPriceText), el('span', 'sub', h.updatedAtText)));
         return row;
     }
 
@@ -158,7 +168,7 @@
         const row = el('div', 'order' + (o.key === flashKey ? ' flash' : ''));
         const badge = el('span', 'badge ' + o.state, STATE_TEXT[o.state]);
         badge.dataset.waitingSince = isWaiting(o) ? o.placedAtEpochMs : '';
-        row.appendChild(line(sideAndName(o.side, o.symbolName, o.symbol), badge));
+        row.appendChild(line(sideAndName(o.side, o.market, o.symbolName, o.symbol), badge));
 
         const price = o.filledPriceText ? o.filledPriceText + ' (지정가 ' + o.orderPriceText + ')' : o.orderPriceText + ' (지정가)';
         row.appendChild(line(el('span', '', o.quantity + '주 @ ' + price), el('span', 'sub', o.timeText)));
@@ -178,7 +188,7 @@
         box.hidden = false;
         const set = (id, text, css) => { const e = document.getElementById(id); e.textContent = text; if (css !== undefined) e.className = e.className.replace(/\b(pos|neg|zero)\b/g, '').trim() + ' ' + css; };
         set('sumToday', sm.todayText, sm.todayCss);
-        set('sumTotal', sm.totalText, sm.totalCss);
+        set('sumUnrealized', sm.unrealizedText, sm.unrealizedCss);
         set('sumWinRate', sm.winRateText);
         set('sumWinLoss', sm.win + '승 ' + sm.loss + '패');
         set('sumBuy', sm.buyCount + '회');

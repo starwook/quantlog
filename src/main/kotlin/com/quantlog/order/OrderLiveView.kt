@@ -6,6 +6,7 @@ import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.RealizedPnl
 import com.quantlog.position.Trade
 import java.math.BigDecimal
+import java.math.MathContext
 import java.math.RoundingMode
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -76,27 +77,43 @@ data class OrderLiveView(
     }
 }
 
-/** 실시간 화면의 보유 종목 한 줄. 수량·평단만 보여준다(현재가·평가손익은 아직 넣지 않기로 했다). */
+/** 실시간 화면의 보유 종목 한 줄. 수량·평단·현재가·평가손익. 현재가는 KIS 잔고 동기화(10초)가 가져온 값이다. */
 data class HoldingLiveView(
     val market: String,
     val symbol: String,
     val symbolName: String,
     val quantity: Int,
     val avgCostText: String,
+    val currentPriceText: String,
+    /** 평가손익. 예: +3,000 (+1.10%) */
+    val unrealizedText: String,
+    val unrealizedCss: String,
     val updatedAtText: String,
 ) {
     companion object {
+        /** [livePrice] 가 있으면(실시간 틱) 잔고 사본의 현재가 대신 쓴다. */
         fun of(
             holding: AccountHolding,
             symbolName: String,
-        ) = HoldingLiveView(
-            market = holding.market.name,
-            symbol = holding.symbol,
-            symbolName = symbolName,
-            quantity = holding.quantity,
-            avgCostText = holding.avgCost.money(holding.market.currency),
-            updatedAtText = TIME_FORMAT.format(holding.updatedAt.atZone(KST)),
-        )
+            livePrice: BigDecimal? = null,
+        ): HoldingLiveView {
+            val currency = holding.market.currency
+            val currentPrice = livePrice ?: holding.currentPrice
+            val cost = holding.avgCost.multiply(BigDecimal(holding.quantity))
+            val amount = currentPrice.multiply(BigDecimal(holding.quantity)).subtract(cost)
+            val percent = if (cost.signum() > 0) amount.multiply(BigDecimal(100)).divide(cost, MathContext.DECIMAL64) else BigDecimal.ZERO
+            return HoldingLiveView(
+                market = holding.market.name,
+                symbol = holding.symbol,
+                symbolName = symbolName,
+                quantity = holding.quantity,
+                avgCostText = holding.avgCost.money(currency),
+                currentPriceText = currentPrice.money(currency),
+                unrealizedText = signedMoneyAndPercent(amount, percent, currency),
+                unrealizedCss = pnlCss(amount),
+                updatedAtText = TIME_FORMAT.format(holding.updatedAt.atZone(KST)),
+            )
+        }
     }
 }
 
@@ -119,12 +136,13 @@ internal fun pnlCss(amount: BigDecimal): String =
         else -> "zero"
     }
 
-/** 화면 맨 위 실현손익 요약. 오늘 / 누적 / 오늘 승패. */
+/** 화면 맨 위 손익 요약. 오늘 실현손익 / 현재 평가손익 / 오늘 승패·회수. */
 data class PnlSummaryLiveView(
     val todayText: String,
     val todayCss: String,
-    val totalText: String,
-    val totalCss: String,
+    /** 보유 종목 전체의 현재 평가손익. */
+    val unrealizedText: String,
+    val unrealizedCss: String,
     val buyCount: Int,
     val sellCount: Int,
     val win: Int,
@@ -132,16 +150,19 @@ data class PnlSummaryLiveView(
     val winRateText: String,
 ) {
     companion object {
+        /** [unrealizedAmount]·[unrealizedPercent] 는 실시간 현재가로 다시 계산한 평가손익. */
         fun of(
             summary: PortfolioSummary,
             currency: String,
+            unrealizedAmount: BigDecimal,
+            unrealizedPercent: BigDecimal,
         ): PnlSummaryLiveView {
             val decided = summary.sellWinToday + summary.sellLossToday
             return PnlSummaryLiveView(
                 todayText = signedMoneyAndPercent(summary.realizedPnlToday, summary.realizedPnlTodayPercent, currency),
                 todayCss = pnlCss(summary.realizedPnlToday),
-                totalText = signedMoneyAndPercent(summary.realizedPnlTotal, summary.realizedPnlTotalPercent, currency),
-                totalCss = pnlCss(summary.realizedPnlTotal),
+                unrealizedText = signedMoneyAndPercent(unrealizedAmount, unrealizedPercent, currency),
+                unrealizedCss = pnlCss(unrealizedAmount),
                 buyCount = summary.buyCountToday,
                 sellCount = summary.sellCountToday,
                 win = summary.sellWinToday,
