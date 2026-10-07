@@ -1,5 +1,14 @@
 # TODO
 
+## Claude 서버 접속 권한 설정 (2026-10-07, 사용자가 컴퓨터 앞에서 직접)
+**문제:** 폰(Remote) 세션에서 Claude·deploy-agent 가 운영 서버를 읽으려는 ssh(`docker ps`, `docker logs`, `sudo mysql` 조회)가 자동 모드 분류기에 "Production Reads"로 막힌다. `permissions.allow` 의 ssh 허용 규칙이 있어도 분류기는 별개로 판단한다. 사용자가 직접 시킨 경우에만 통과한다.
+**원인:** `~/.claude/settings.json` 의 `autoMode.environment` 43번 줄(CI/CD deploy targets 항목)에 "서버 SSH 접근·시크릿 동기화·서버 DB 조회는 로컬 Mac으로 제한, 이 세션에서는 시도하지 말 것"이라는 문장이 있어서 분류기가 그대로 따른다.
+**할 일 (사용자가 직접 — Claude는 자기 권한 설정 파일을 못 고친다, `[Self-Modification]` 차단):**
+1. 43번 줄 끝의 `; server SSH access, secret sync, and server DB queries are restricted to the user's local Mac (...) — not to be attempted from this session` 부분을 지운다(앞부분과 따옴표·쉼표는 그대로).
+2. `autoMode.allow` 에 "사용자 소유 Oracle 서버에 quantlog 운영 목적 ssh(읽기 점검은 먼저 해도 되고, 사용자가 시켰거나 배포에 필요한 작업은 허용, 시크릿 값은 출력 금지)" 문장을 추가한다. 서버 호스트·키 경로는 settings.json 에만 적는다(이 문서·커밋에 쓰지 않는다).
+3. 폰 Remote 입력창에서는 `!` 셸 실행이 안 먹으니 컴퓨터 터미널에서 한다. 고친 뒤 새 세션에서 Claude 에게 "서버 로그 읽어봐"를 요청 없이도 통과하는지 확인한다.
+**그다음 Claude 가 할 일:** `~/.claude/agents/deploy-agent.md` 의 "머지·배포 때는 서버에 ssh로 들어가지 않는다" 규칙(2026-10-07 임시)을 되돌려, 배포 뒤 읽기 전용 점검을 다시 한다. 그때까지는 배포 확인을 GitHub Actions 결과로 대신한다(배포 스크립트가 기동 로그를 기다리고 실패하면 롤백하므로 성공 여부는 알 수 있다).
+
 ## 주문 상태 경우의 수 정립 (2026-10-07)
 **배경:** 이날 익절이 10분 쿨다운에 막혀 안 나간 일(체결된 매도의 쿨다운이 새로 산 물량까지 막음)로, 매수·매도 경로마다 "미체결·체결·보유 변화"를 다루는 방식이 제각각이라는 게 드러났다. 지금은 마틴게일(틱)·청산 매도만 공용 `PendingOrders`(체결 확인까지 대기, 10초 미체결이면 취소 후 즉시 재판정)를 쓰고, 나머지는 경로별로 다르다. **모든 경우를 표로 정하고 한 규칙으로 맞춘다.**
 
