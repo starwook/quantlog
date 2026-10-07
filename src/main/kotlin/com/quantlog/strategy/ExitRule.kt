@@ -9,12 +9,12 @@ import java.math.BigDecimal
 enum class ExitSignal { HOLD, TAKE_PROFIT, STOP_LOSS }
 
 /**
- * 청산 기준. 초기값은 익절 +1%이며, 학습 루프(기획서 6.4)가 조정하는 대상이다.
+ * 청산 기준. 초기값은 익절 +0.5%이며, 학습 루프(기획서 6.4)가 조정하는 대상이다.
  * 손절은 null 이면 보류 — 아무리 떨어져도 손절 매도를 내지 않는다(2026-09-30: 사용자가 "손절 -1%는 보류"로 정함).
  */
 @ConfigurationProperties(prefix = "quantlog.strategy")
 data class StrategyProperties(
-    val takeProfitPercent: BigDecimal = BigDecimal("1"),
+    val takeProfitPercent: BigDecimal = BigDecimal("0.5"),
     val stopLossPercent: BigDecimal? = null,
 )
 

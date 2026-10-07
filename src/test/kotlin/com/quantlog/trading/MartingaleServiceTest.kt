@@ -224,6 +224,20 @@ class MartingaleServiceTest {
     }
 
     @Test
+    fun `취소가 계속 거부돼 2분이 지나면 포기하고 다시 판정한다`() {
+        holding(2)
+        val service = service()
+        tick(service)
+        broker.cancelFails = true
+
+        service.expirePending(krOpen.plusSeconds(11))
+        service.expirePending(krOpen.plusSeconds(121))
+        tick(service, at = krOpen.plusSeconds(122))
+
+        assertEquals(2, broker.orders.size)
+    }
+
+    @Test
     fun `취소가 계속 거부돼도 5초 간격으로만 다시 시도한다`() {
         holding(2)
         val service = service()
