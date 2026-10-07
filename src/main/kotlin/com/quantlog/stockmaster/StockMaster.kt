@@ -78,7 +78,13 @@ interface StockMasterRepository : JpaRepository<StockMaster, String> {
         page: Pageable,
     ): List<StockMaster>
 
-    @Query("select s from StockMaster s where s.name like concat('%', :q, '%') order by s.name")
+    // 이름순으로만 정렬하면 "삼성"처럼 이름에 들어간 ETF("ACE 삼성그룹…")가 상위 20건을 채워 정작 삼성전자가 밀린다 →
+    // 주권(ST) 먼저, 그 안에서 이름이 입력어로 시작하는 것 먼저, 짧은 이름(= 더 정확히 일치) 먼저.
+    @Query(
+        "select s from StockMaster s where s.name like concat('%', :q, '%') " +
+            "order by case when s.securityGroup = 'ST' then 0 else 1 end, " +
+            "case when s.name like concat(:q, '%') then 0 else 1 end, length(s.name), s.name",
+    )
     fun searchByNameContaining(
         @Param("q") q: String,
         page: Pageable,

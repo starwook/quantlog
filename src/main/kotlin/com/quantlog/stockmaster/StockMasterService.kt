@@ -3,6 +3,7 @@ package com.quantlog.stockmaster
 import mu.KotlinLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.data.domain.PageRequest
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -98,8 +99,11 @@ class StockMasterService(
     }
 }
 
-/** 처음 켰을 때 비어 있으면 바로 받고, 이후 매일 장 시작 전에 갱신한다(KIS 가 08:45 에도 갱신해서 그 뒤에 받는다). */
+/** 처음 켰을 때 비어 있으면 바로 받고, 이후 매일 장 시작 전에 갱신한다(KIS 가 08:45 에도 갱신해서 그 뒤에 받는다).
+ * `quantlog.stockmaster.enabled=false` 로 끌 수 있다(테스트가 KIS 파일을 받지 않게).
+ */
 @Component
+@ConditionalOnProperty(name = ["quantlog.stockmaster.enabled"], havingValue = "true", matchIfMissing = true)
 class StockMasterScheduler(
     private val service: StockMasterService,
 ) : ApplicationRunner {
