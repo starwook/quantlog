@@ -2,14 +2,17 @@ package com.quantlog.broker.kis
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantlog.broker.FillNotice
+import com.quantlog.broker.Side
 import org.junit.jupiter.api.Test
 import org.springframework.context.ApplicationEventPublisher
+import java.math.BigDecimal
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class KisFillNoticeHandlerTest {
@@ -30,28 +33,40 @@ class KisFillNoticeHandlerTest {
             """{"header":{"tr_id":"$trId"},"body":{"rt_cd":"0","msg1":"SUBSCRIBE SUCCESS","output":{"key":"$key","iv":"$iv"}}}""",
         )
 
-    /** 국내 26개 필드: 위치만 의미 있는 곳(종목·주문번호·수량·단가·체결여부 등)만 채운다. */
+    /**
+     * 국내 모의 실측(2026-10-07) 한 건 23필드 — 값은 실제 통보를 본떴다(식별 필드는 빈 값).
+     * 접수 통보는 9·10 이 주문 수량·주문가이고 22 가 비며, 체결 통보는 9·10 이 체결 수량·체결단가이고 22 가 주문가다.
+     */
     private fun domesticRow(
-        filledFlag: String = "2",
-        quantity: String = "3",
+        side: String = "02",
+        fill: Boolean = true,
+        quantity: String = "0000000001",
+        price: String = "000277500",
     ): String {
-        val fields = MutableList(26) { "" }
-        fields[2] = "0000012345"
-        fields[3] = "0000000000"
-        fields[4] = "02"
+        val fields = MutableList(23) { "" }
+        fields[2] = "0000008775"
+        fields[4] = side
+        fields[5] = "0"
+        fields[6] = "00"
+        fields[7] = "0"
         fields[8] = "005930"
         fields[9] = quantity
-        fields[10] = "273500"
-        fields[11] = "093015"
-        fields[12] = "N"
-        fields[13] = filledFlag
-        fields[14] = "Y"
-        fields[16] = "5"
+        fields[10] = price
+        fields[11] = "092344"
+        fields[12] = "0"
+        fields[13] = if (fill) "2" else "1"
+        fields[14] = if (fill) "2" else "1"
+        fields[15] = "00950"
+        fields[16] = "000000001"
+        fields[18] = "1Y"
+        fields[19] = "10"
+        fields[21] = "삼성전자"
+        fields[22] = if (fill) "000278500" else ""
         return fields.joinToString("^")
     }
 
     @Test
-    fun `암호화된 국내 체결통보를 복호화해 FillNotice 로 발행한다`() {
+    fun `암호화된 국내 체결 통보를 복호화해 체결수량 체결단가 주문가를 채운다`() {
         handler.onSubscribeResponse("H0STCNI9", subscribeResponse("H0STCNI9"))
 
         handler.onData("H0STCNI9", encrypted = true, recordCount = 1, payload = encrypt(domesticRow()))
@@ -59,41 +74,47 @@ class KisFillNoticeHandlerTest {
         val notice = events.single() as FillNotice
         assertFalse(notice.overseas)
         assertEquals("005930", notice.symbol)
-        assertEquals("0000012345", notice.orderNo)
-        assertEquals(0, notice.filledQuantity!!.compareTo(java.math.BigDecimal(3)))
-        assertEquals(0, notice.filledPrice!!.compareTo(java.math.BigDecimal(273500)))
-        assertEquals(0, notice.orderQuantity!!.compareTo(java.math.BigDecimal(5)))
+        assertEquals("0000008775", notice.orderNo)
+        assertEquals(Side.BUY, notice.side)
         assertTrue(notice.isFill)
+        assertEquals(0, notice.filledQuantity!!.compareTo(BigDecimal.ONE))
+        assertEquals(0, notice.filledPrice!!.compareTo(BigDecimal(277500)))
+        assertEquals(0, notice.orderPrice!!.compareTo(BigDecimal(278500)))
+        assertEquals(0, notice.orderQuantity!!.compareTo(BigDecimal.ONE))
     }
 
     @Test
-    fun `모의투자처럼 한 건이 23필드로 와도 건수로 나눠 앞쪽 필드를 읽는다`() {
-        val fields = domesticRow().split("^").take(23)
-
-        handler.onData("H0STCNI9", encrypted = false, recordCount = 1, payload = fields.joinToString("^"))
+    fun `접수 통보의 수량 단가 칸은 체결이 아니라 주문값이라 체결 필드를 비운다`() {
+        handler.onData("H0STCNI9", encrypted = false, recordCount = 1, payload = domesticRow(fill = false, price = "000278500"))
 
         val notice = events.single() as FillNotice
-        assertEquals("005930", notice.symbol)
-        assertTrue(notice.isFill)
+        assertFalse(notice.isFill)
+        assertNull(notice.filledQuantity)
+        assertNull(notice.filledPrice)
+        assertEquals(0, notice.orderPrice!!.compareTo(BigDecimal(278500)))
     }
 
     @Test
-    fun `체결여부 1 은 접수 통보라 체결로 보지 않는다`() {
-        handler.onData("H0STCNI9", encrypted = false, recordCount = 1, payload = domesticRow(filledFlag = "1"))
+    fun `01 은 매도 02 는 매수이고 모르는 코드는 null 이다`() {
+        handler.onData("H0STCNI9", encrypted = false, recordCount = 1, payload = domesticRow(side = "01"))
+        handler.onData("H0STCNI9", encrypted = false, recordCount = 1, payload = domesticRow(side = "99"))
 
-        assertFalse((events.single() as FillNotice).isFill)
+        assertEquals(Side.SELL, (events[0] as FillNotice).side)
+        assertNull((events[1] as FillNotice).side)
     }
 
     @Test
-    fun `한 메시지에 여러 건이 이어 붙어 오면 건마다 발행한다`() {
+    fun `한 메시지에 여러 건이 이어 붙어 오면 건수로 나눠 건마다 발행한다`() {
         handler.onData(
             "H0STCNI9",
             encrypted = false,
             recordCount = 2,
-            payload = domesticRow(quantity = "1") + "^" + domesticRow(quantity = "2"),
+            payload = domesticRow(fill = false) + "^" + domesticRow(fill = true),
         )
 
         assertEquals(2, events.size)
+        assertFalse((events[0] as FillNotice).isFill)
+        assertTrue((events[1] as FillNotice).isFill)
     }
 
     @Test
@@ -112,12 +133,13 @@ class KisFillNoticeHandlerTest {
         val notice = events.single() as FillNotice
         assertTrue(notice.overseas)
         assertEquals("AAPL", notice.symbol)
-        assertEquals(0, notice.filledPrice!!.compareTo(java.math.BigDecimal("189.5")))
+        assertEquals(0, notice.filledPrice!!.compareTo(BigDecimal("189.5")))
+        assertNull(notice.side)
         assertTrue(notice.isFill)
     }
 
     @Test
-    fun `암호화 키가 없거나 필드 수가 안 맞으면 발행하지 않는다`() {
+    fun `암호화 키가 없거나 건수로 나눌 수 없거나 필드가 모자라면 발행하지 않는다`() {
         handler.onData("H0STCNI9", encrypted = true, recordCount = 1, payload = encrypt(domesticRow()))
         handler.onData("H0STCNI9", encrypted = false, recordCount = 1, payload = "a^b^c")
         handler.onData("H0STCNI9", encrypted = false, recordCount = 2, payload = domesticRow().substringBeforeLast("^"))

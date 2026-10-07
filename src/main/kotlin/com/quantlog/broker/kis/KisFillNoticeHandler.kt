@@ -68,31 +68,19 @@ class KisFillNoticeHandler(
         val minWidth = if (overseas) OVERSEAS_MIN_FIELD_COUNT else DOMESTIC_MIN_FIELD_COUNT
         if (width < minWidth) return log.warn { "[체결통보] $trId 한 건이 ${width}필드뿐이라 파싱할 수 없다 (최소 $minWidth)" }
         fields.chunked(width).forEach { row ->
-            logLayout(trId, row)
             val notice = if (overseas) parseOverseas(row) else parseDomestic(row)
-            log.info {
-                "[체결통보] ${if (overseas) "해외" else "국내"} 종목=${notice.symbol} 주문번호=${notice.orderNo} 원주문=${notice.originalOrderNo} " +
-                    "구분=${notice.sellBuyCode} 체결여부=${notice.filledFlag} 접수=${notice.acceptFlag} 거부=${notice.refuseFlag} " +
-                    "체결수량=${notice.filledQuantity} 체결단가=${notice.filledPrice} 주문수량=${notice.orderQuantity} 시각=${notice.time}"
-            }
+            log.info { "[체결통보] ${notice.summary()}" }
             eventPublisher.publishEvent(notice)
         }
     }
 
     /**
-     * 임시 진단: 모의 필드 레이아웃을 실제 값으로 확인하려고 한 건의 필드를 위치와 함께 남긴다. 고객 ID(0)·계좌번호(1)·계좌명(17)은 가린다.
-     * 레이아웃을 확정하고 field-reference.md 에 적은 뒤 지운다 (docs/todo.md).
+     * 국내 모의 실측(2026-10-07, 한 건 23필드): 2 주문번호 · 4 매도/매수(01/02) · 8 종목 · 9 수량 · 10 단가 · 11 시각 · 12 거부 · 13 체결여부(1 접수/2 체결) ·
+     * 14 접수여부 · 16 주문수량 · 22 주문가(체결 통보에서만). 접수 통보의 9·10 은 주문 수량·주문가다.
      */
-    private fun logLayout(
-        trId: String,
-        row: List<String>,
-    ) {
-        val masked = row.mapIndexed { i, v -> if (i in MASKED_INDEXES) "***" else v }
-        log.info { "[체결통보 진단] $trId 필드 ${row.size}개: ${masked.withIndex().joinToString(" ") { "${it.index}=${it.value}" }}" }
-    }
-
-    internal fun parseDomestic(f: List<String>) =
-        FillNotice(
+    internal fun parseDomestic(f: List<String>): FillNotice {
+        val fill = f[13] == FillNotice.FILLED_FLAG
+        return FillNotice(
             overseas = false,
             symbol = f[8],
             orderNo = f[2],
@@ -101,14 +89,18 @@ class KisFillNoticeHandler(
             filledFlag = f[13],
             acceptFlag = f[14],
             refuseFlag = f[12],
-            filledQuantity = f[9].toBigDecimalOrNull(),
-            filledPrice = f[10].toBigDecimalOrNull(),
+            filledQuantity = f[9].toBigDecimalOrNull().takeIf { fill },
+            filledPrice = f[10].toBigDecimalOrNull().takeIf { fill },
             orderQuantity = f[16].toBigDecimalOrNull(),
+            orderPrice = (if (fill) f.getOrNull(22) else f[10])?.toBigDecimalOrNull(),
             time = f[11],
         )
+    }
 
-    internal fun parseOverseas(f: List<String>) =
-        FillNotice(
+    /** 해외는 공식 샘플 순서 그대로이고 실측 전이다(국내와 같은 접수/체결 규칙을 가정). 주문가 위치는 몰라 null. */
+    internal fun parseOverseas(f: List<String>): FillNotice {
+        val fill = f[12] == FillNotice.FILLED_FLAG
+        return FillNotice(
             overseas = true,
             symbol = f[7],
             orderNo = f[2],
@@ -117,11 +109,13 @@ class KisFillNoticeHandler(
             filledFlag = f[12],
             acceptFlag = f[13],
             refuseFlag = f[11],
-            filledQuantity = f[8].toBigDecimalOrNull(),
-            filledPrice = f[9].toBigDecimalOrNull(),
+            filledQuantity = f[8].toBigDecimalOrNull().takeIf { fill },
+            filledPrice = f[9].toBigDecimalOrNull().takeIf { fill },
             orderQuantity = f[15].toBigDecimalOrNull(),
+            orderPrice = null,
             time = f[10],
         )
+    }
 
     /** AES-256-CBC, 키·IV 는 UTF-8 문자열 그대로, 데이터는 Base64, PKCS7 패딩(공식 샘플 kis_auth.py 와 같다). */
     internal fun decrypt(
@@ -142,6 +136,5 @@ class KisFillNoticeHandler(
         val TR_IDS = setOf(DOMESTIC_TR_ID, OVERSEAS_TR_ID, "H0STCNI0", "H0GSCNI0")
         private const val DOMESTIC_MIN_FIELD_COUNT = 17
         private const val OVERSEAS_MIN_FIELD_COUNT = 16
-        private val MASKED_INDEXES = setOf(0, 1, 17)
     }
 }
