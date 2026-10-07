@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${symbolName} + ' 마틴게일 백테스트 · quantlog'"></title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --pos: #f04452;
+            --neg: #3182f6;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 24px 16px 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; }
+        select, input {
+            min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+            background: var(--card); color: var(--text); font-size: 15px;
+        }
+        .symbols { display: flex; gap: 8px; margin-bottom: 12px; }
+        .symbols select { flex: 1; font-weight: 600; }
+        .links { display: flex; gap: 12px; margin-bottom: 12px; font-size: 14px; }
+        .links a { color: var(--muted); text-decoration: none; }
+        h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+        .note { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+        .card { background: var(--card); border-radius: 16px; margin-bottom: 16px; }
+        form.card { padding: 16px 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+        form label.check { flex-direction: row; align-items: center; gap: 8px; grid-column: span 2; font-size: 13px; color: var(--text); }
+        form label.check input { width: auto; }
+        form button {
+            padding: 10px 12px; border: none; border-radius: 10px; background: var(--text); color: #fff;
+            font-size: 15px; font-weight: 600; cursor: pointer;
+        }
+        .summary { padding: 20px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .summary .item { text-align: center; }
+        .summary .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+        .summary .value { font-size: 20px; font-weight: 700; }
+        .section-title { font-size: 15px; font-weight: 700; padding: 4px 4px 10px; }
+        .row { padding: 14px 20px; border-top: 1px solid var(--border); font-size: 14px; }
+        .row:first-child { border-top: none; }
+        .row.selected { background: #f7f8fa; border-radius: 16px; }
+        .row .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .row .sub { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+        .row .strong { font-weight: 700; white-space: nowrap; }
+        .row a { color: inherit; text-decoration: none; }
+        .empty { padding: 48px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+        .pos { color: var(--pos); }
+        .neg { color: var(--neg); }
+        .zero { color: var(--muted); }
+        footer { margin-top: 16px; padding: 0 4px; font-size: 12px; color: var(--muted); }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('backtest')}"></nav>
+
+    <div class="symbols">
+        <select aria-label="종목 선택" onchange="location.href = this.value">
+            <option th:each="s : ${watchedSymbols}"
+                    th:value="@{'/backtest/martingale/' + ${s.market} + '/' + ${s.symbol}}"
+                    th:text="${s.displayName} + ' (' + ${s.market} + ' ' + ${s.symbol} + ')'"
+                    th:selected="${s.symbol == symbol and s.market == market}"></option>
+        </select>
+    </div>
+    <div class="links">
+        <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol}}">← 진입 규칙 백테스트</a>
+        <a th:href="@{'/chart/' + ${market} + '/' + ${symbol}}">차트 보기 →</a>
+    </div>
+
+    <h1 th:text="${symbolName} + ' 마틴게일 백테스트'"></h1>
+    <p class="note">
+        값을 바꿔 "이렇게 했으면 어땠을까"를 봅니다(저장되지 않고, 기본값은 이 종목의 실제 설정).
+        분봉 안의 가격 순서는 알 수 없어 불리하게 가정합니다(추가매수·손절을 먼저, 익절은 나중).
+        호가 단위·수수료·세금은 반영하지 않은 근사치이고, 아래 "최적 조합"은 과거에 맞춘 사후 결과라 참고용입니다.
+    </p>
+
+    <form class="card" method="get">
+        <input type="hidden" name="submitted" value="1">
+        <label>날짜
+            <select name="date">
+                <option th:each="d : ${dates}" th:value="${d}" th:text="${d}" th:selected="${d == date}"></option>
+                <option th:if="${#lists.isEmpty(dates)}" th:value="${date}" th:text="${date}"></option>
+            </select>
+        </label>
+        <label>추가매수 간격 %<input name="drop" inputmode="decimal" th:value="${dropPercent}"></label>
+        <label>익절 %<input name="tp" inputmode="decimal" th:value="${takeProfitPercent}"></label>
+        <label>손절 % (비우면 없음)<input name="stop" inputmode="decimal" th:value="${stopLossPercent}"></label>
+        <label>최대 단계<input name="stages" type="number" min="1" max="10" th:value="${maxStages}"></label>
+        <label>배수<input name="mult" type="number" min="2" max="3" th:value="${multiplier}"></label>
+        <label>시작 수량(주)<input name="qty" type="number" min="1" th:value="${startQuantity}"></label>
+        <label class="check"><input type="checkbox" name="reenter" th:checked="${reenter}">청산 다음 분봉에 다시 시작 (끄면 하루 한 사이클)</label>
+        <button type="submit">다시 계산</button>
+    </form>
+
+    <div class="card summary">
+        <div class="item">
+            <div class="label" th:text="${date} + ' 손익'"></div>
+            <div class="value" th:classappend="${pnlCss}" th:text="${pnlText}"></div>
+        </div>
+        <div class="item">
+            <div class="label">최대 투입금 대비</div>
+            <div class="value" th:classappend="${pnlCss}" th:text="${returnText}"></div>
+        </div>
+        <div class="item">
+            <div class="label">필요했던 최대 투입금</div>
+            <div class="value" th:text="${maxInvestedText}"></div>
+        </div>
+        <div class="item">
+            <div class="label">가장 깊이 간 단계</div>
+            <div class="value" th:text="${maxStageText}"></div>
+        </div>
+    </div>
+
+    <div class="section-title" th:text="${date} + ' 사이클 (' + ${#lists.size(cycles)} + '건)'"></div>
+    <div class="card">
+        <div class="empty" th:if="${candleCount == 0}">이 날짜엔 분봉 데이터가 없습니다.</div>
+        <div class="row" th:each="c : ${cycles}">
+            <div class="top">
+                <span th:text="${c.time}"></span>
+                <span class="strong" th:classappend="${c.pnlCss}" th:text="${c.pnlText}"></span>
+            </div>
+            <div class="sub"
+                 th:text="${c.stages} + '단계 · 최대 ' + ${c.peakQuantity} + ' · 평단 ' + ${c.averagePrice} + ' → 청산 ' + ${c.exitPrice} + ' · 투입 ' + ${c.maxInvested} + ' · ' + ${c.exitReason}"></div>
+        </div>
+    </div>
+
+    <div class="section-title" th:text="'지금 값 vs 그날 최적 (최근 ' + ${sweepDays} + '일)'"></div>
+    <div class="card">
+        <div class="empty" th:if="${#lists.isEmpty(dayRows)}">쌓인 분봉이 없습니다.</div>
+        <div class="row" th:each="r : ${dayRows}" th:classappend="${r.selected} ? 'selected'">
+            <div class="top">
+                <a th:href="@{'/backtest/martingale/' + ${market} + '/' + ${symbol} + '?submitted=1&date=' + ${r.date} + '&drop=' + ${dropPercent} + '&tp=' + ${takeProfitPercent} + '&stop=' + ${stopLossPercent} + '&stages=' + ${maxStages} + '&mult=' + ${multiplier} + '&qty=' + ${startQuantity} + (${reenter} ? '&reenter=on' : '')}"
+                   th:text="${r.date} + ' · 고저폭 ' + ${r.rangeText}"></a>
+                <span class="strong" th:classappend="${r.pnlCss}" th:text="${r.pnlText}"></span>
+            </div>
+            <div class="sub" th:text="'지금 값 최대 ' + ${r.maxStage} + '단계 · 그날 최적: ' + ${r.bestText} + ' → ' + ${r.bestPnlText}"></div>
+        </div>
+    </div>
+
+    <div class="section-title" th:text="'조합 순위 (최근 ' + ${sweepDays} + '일 합계, 상위 10)'"></div>
+    <div class="card">
+        <div class="empty" th:if="${#lists.isEmpty(sweepRows)}">비교할 조합이 없습니다. 손절 %가 간격보다 작으면 조합이 모두 빠집니다.</div>
+        <div class="row" th:each="s : ${sweepRows}">
+            <div class="top">
+                <span th:text="${s.label}"></span>
+                <span class="strong" th:classappend="${s.totalCss}" th:text="${s.totalText}"></span>
+            </div>
+            <div class="sub"
+                 th:text="'투입금 대비 ' + ${s.returnText} + ' · 수익일 ' + ${s.winDaysText} + ' · 최악의 날 ' + ${s.worstDayText} + ' · 최대 투입 ' + ${s.maxInvested}"></div>
+        </div>
+    </div>
+
+    <footer th:text="'분봉 ' + ${candleCount} + '건 기준 · 손익 단위 ' + ${currency}"></footer>
+</main>
+</body>
+</html>

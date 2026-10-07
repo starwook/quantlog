@@ -35,4 +35,9 @@ class MarketDataService(
         symbol: String,
         date: LocalDate,
     ): List<MinuteCandle> = store.recentCandles(market, symbol, date)
+
+    fun candleDates(
+        market: Market,
+        symbol: String,
+    ): List<LocalDate> = store.tradeDates(market, symbol)
 }
