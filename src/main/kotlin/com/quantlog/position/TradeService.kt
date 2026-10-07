@@ -63,7 +63,10 @@ class TradeService(
                 total.amount.divide(total.quantity, PRICE_SCALE, RoundingMode.HALF_UP)
             }
         val trade = repository.findFirstByMarketAndOrderNo(Market.KR, notice.orderNo) ?: return
-        if (trade.apply(OrderStatus.Filled(average))) repository.save(trade)
+        if (trade.apply(OrderStatus.Filled(average))) {
+            repository.save(trade)
+            events.publishEvent(TradeChangedEvent(trade))
+        }
     }
 
     private fun fillPriceOf(
@@ -84,12 +87,14 @@ class TradeService(
     ) {
         if (!trade.apply(status)) return
         repository.save(trade)
+        events.publishEvent(TradeChangedEvent(trade))
         if (status is OrderStatus.Filled) events.publishEvent(TradeFilledEvent(trade.market, trade.symbol))
     }
 
     fun markCanceled(trade: Trade) {
         trade.cancel()
         repository.save(trade)
+        events.publishEvent(TradeChangedEvent(trade))
     }
 
     /** filledPrice: 실제 체결가(호출부가 조회해서 넘긴다). 못 구했으면 null로 둔다 — 지어내지 않는다. */
@@ -122,6 +127,7 @@ class TradeService(
                 "@ ${knownFilledPrice ?: order.limitPrice}${if (knownFilledPrice == null) " (지정가)" else ""} " +
                 "주문번호=${receipt.orderNo}\n사유: $reason",
         )
+        events.publishEvent(TradeChangedEvent(trade))
         if (knownFilledPrice != null) events.publishEvent(TradeFilledEvent(order.market, order.symbol))
         return trade
     }

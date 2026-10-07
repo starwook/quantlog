@@ -11,6 +11,7 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -24,7 +25,7 @@ class HoldingSyncServiceFillTest {
     private val symbol = "005930"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
-    private val service = HoldingSyncService(repository, tradeRepository, symbolStrategyServiceOf())
+    private val service = HoldingSyncService(repository, tradeRepository, symbolStrategyServiceOf(), ApplicationEventPublisher { })
     private val now = Instant.parse("2026-10-07T00:24:00Z")
 
     private fun row(

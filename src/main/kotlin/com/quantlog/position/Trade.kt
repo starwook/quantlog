@@ -84,6 +84,16 @@ class Trade(
     var openConfirmed: Boolean = initialOpenConfirmed
         private set
 
+    /** 화면에 보여줄 주문 상태. 취소 > 체결 > 증권사 확인 미체결 > 체결 확인중 순으로 판정한다. */
+    val state: OrderState
+        get() =
+            when {
+                canceled -> OrderState.CANCELED
+                filledPrice != null -> OrderState.FILLED
+                openConfirmed -> OrderState.OPEN
+                else -> OrderState.CHECKING
+            }
+
     /** 증권사 체결조회 결과를 반영한다. 체결이 확인되면 되돌리지 않는다. 바뀐 게 있으면 true. */
     fun apply(status: OrderStatus): Boolean =
         when (status) {
@@ -96,3 +106,6 @@ class Trade(
             OrderStatus.Unknown -> false
         }
 }
+
+/** 주문 한 건의 진행 상태. [OPEN] 은 증권사가 미체결로 확인한 것, [CHECKING] 은 아직 체결인지 미체결인지 모르는 것. */
+enum class OrderState { CHECKING, OPEN, FILLED, CANCELED }

@@ -76,7 +76,8 @@ class TradeServiceFillTest {
 
         assertEquals(0, BigDecimal("277500").compareTo(trade.filledPrice))
         verify(repository).save(trade)
-        assertTrue(published.isEmpty())
+        assertTrue(published.none { it is TradeFilledEvent })
+        assertTrue(published.any { it is TradeChangedEvent })
     }
 
     @Test

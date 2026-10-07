@@ -6,6 +6,7 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.Side
 import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -27,6 +28,7 @@ class HoldingSyncService(
     private val accountHoldingRepository: AccountHoldingRepository,
     private val tradeRepository: TradeRepository,
     private val symbolStrategyService: SymbolStrategyService,
+    private val events: ApplicationEventPublisher,
 ) {
     /** 마지막으로 잔고를 받기 시작한 시각. 한 번도 못 받았으면 null. */
     @Volatile
@@ -106,6 +108,7 @@ class HoldingSyncService(
             }
         fillAppliedAt[market to notice.symbol] = now
         log.info { "[체결통보 반영] ${notice.orderNo} $change" }
+        events.publishEvent(HoldingsChangedEvent)
         return change
     }
 
@@ -166,6 +169,7 @@ class HoldingSyncService(
 
         lastSyncedAt = fetchedAt
         changes.forEach { log.info { "[잔고 동기화] $it" } }
+        if (changes.isNotEmpty()) events.publishEvent(HoldingsChangedEvent)
         return changes
     }
 

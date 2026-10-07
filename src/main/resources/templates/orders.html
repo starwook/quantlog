@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>quantlog · 주문</title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --buy: #f04452;
+            --sell: #3182f6;
+            --ok: #00a862;
+            --warn: #f59f00;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 24px 16px 48px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { max-width: 720px; margin: 0 auto; }
+        .title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        h1 { font-size: 22px; margin: 0; font-weight: 700; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+        .tab { padding: 6px 14px; border-radius: 16px; border: 1px solid var(--border); background: var(--card); font-size: 14px; font-weight: 600; color: var(--muted); }
+        .tab.active { background: var(--text); color: #fff; border-color: var(--text); }
+        .tab:disabled { opacity: 0.5; }
+        .pos { color: var(--buy); }
+        .neg { color: var(--sell); }
+        .zero, .muted { color: var(--muted); }
+        .conn { font-size: 13px; color: var(--muted); }
+        .conn::before { content: "●"; margin-right: 4px; color: var(--muted); }
+        .conn.on::before { color: var(--ok); }
+        .card { background: var(--card); border-radius: 16px; padding: 8px 20px; margin-bottom: 16px; }
+        h2 { font-size: 15px; margin: 0; padding: 12px 0 4px; color: var(--muted); font-weight: 600; }
+        .order { padding: 12px 0; border-top: 1px solid var(--border); font-size: 15px; }
+        .order:first-child { border-top: none; }
+        .order.flash { animation: flash 1.2s ease-out; }
+        @keyframes flash { from { background: #fff6d6; } to { background: transparent; } }
+        .line { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .line + .line { margin-top: 4px; }
+        .name { font-weight: 700; }
+        .code, .sub { font-size: 12px; color: var(--muted); margin-left: 4px; font-weight: 400; }
+        .side { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; color: #fff; margin-right: 6px; }
+        .side.BUY { background: var(--buy); }
+        .side.SELL { background: var(--sell); }
+        .badge { font-size: 12px; font-weight: 700; }
+        .badge.CHECKING, .badge.OPEN { color: var(--warn); }
+        .badge.FILLED { color: var(--ok); }
+                .reason { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .empty { padding: 20px 0; text-align: center; font-size: 14px; color: var(--muted); }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('orders')}"></nav>
+    <div class="title">
+        <h1>실시간 주문</h1>
+        <span id="conn" class="conn">연결 중</span>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" data-market="KR">국내</button>
+        <button class="tab" disabled title="해외 체결통보 실측 후 지원">해외 (준비중)</button>
+    </div>
+
+    <section class="card">
+        <h2>보유 종목 (<span id="holdCount">0</span>)</h2>
+        <div id="holdings"></div>
+    </section>
+
+    <section class="card">
+        <h2>대기열 — 미체결 (<span id="waitCount">0</span>)</h2>
+        <div id="waiting"></div>
+    </section>
+
+    <section class="card">
+        <h2>체결 내역</h2>
+        <div id="done"></div>
+    </section>
+</main>
+
+<script>
+    // 서버가 접속 직후 보유 종목·대기열·체결 내역 전체(snapshot)를 보내고, 이후 주문 한 건(order)이나 보유 종목 목록(holdings)을 보낸다.
+    // 포맷·색상 판정은 서버가 끝내서 보내므로 여기서는 찍기만 한다.
+    const market = 'KR'; // 해외는 체결통보 실측 후 탭을 연다
+    const orders = new Map(); // key -> 주문
+    let holdings = [];
+    const STATE_TEXT = { CHECKING: '체결 확인중', OPEN: '미체결', FILLED: '체결' };
+    const isWaiting = (o) => o.state === 'CHECKING' || o.state === 'OPEN';
+
+    function el(tag, className, text) {
+        const e = document.createElement(tag);
+        if (className) e.className = className;
+        if (text !== undefined) e.textContent = text;
+        return e;
+    }
+
+    function line(...children) {
+        const l = el('div', 'line');
+        children.forEach((c) => l.appendChild(c));
+        return l;
+    }
+
+    function sideAndName(side, name, code) {
+        const left = el('span');
+        left.appendChild(el('span', 'side ' + side, side === 'BUY' ? '매수' : '매도'));
+        left.appendChild(el('span', 'name', name));
+        left.appendChild(el('span', 'code', code));
+        return left;
+    }
+
+    function renderHolding(h) {
+        const row = el('div', 'order');
+        const left = el('span');
+        left.appendChild(el('span', 'name', h.symbolName));
+        left.appendChild(el('span', 'code', h.symbol));
+        row.appendChild(line(left, el('span', 'name', h.quantity + '주')));
+        row.appendChild(line(el('span', 'sub', '평단 ' + h.avgCostText), el('span', 'sub', h.updatedAtText)));
+        return row;
+    }
+
+    function renderOrder(o, flashKey) {
+        const row = el('div', 'order' + (o.key === flashKey ? ' flash' : ''));
+        const badge = el('span', 'badge ' + o.state, STATE_TEXT[o.state]);
+        badge.dataset.waitingSince = isWaiting(o) ? o.placedAtEpochMs : '';
+        row.appendChild(line(sideAndName(o.side, o.symbolName, o.symbol), badge));
+
+        const price = o.filledPriceText ? o.filledPriceText + ' (지정가 ' + o.orderPriceText + ')' : o.orderPriceText + ' (지정가)';
+        row.appendChild(line(el('span', '', o.quantity + '주 @ ' + price), el('span', 'sub', o.timeText)));
+        if (o.pnlText) row.appendChild(el('div', 'reason ' + o.pnlCss, o.pnlText));
+        if (o.reason) row.appendChild(el('div', 'reason', o.reason));
+        return row;
+    }
+
+    function renderList(container, list, renderRow, emptyText) {
+        container.replaceChildren();
+        if (list.length === 0) container.appendChild(el('div', 'empty', emptyText));
+        list.forEach((x) => container.appendChild(renderRow(x)));
+    }
+
+    function render(flashKey) {
+        const mine = [...orders.values()].filter((o) => o.market === market).sort((a, b) => b.placedAtEpochMs - a.placedAtEpochMs);
+        const waiting = mine.filter(isWaiting);
+        const myHoldings = holdings.filter((h) => h.market === market);
+        document.getElementById('holdCount').textContent = myHoldings.length;
+        document.getElementById('waitCount').textContent = waiting.length;
+        renderList(document.getElementById('holdings'), myHoldings, renderHolding, '보유 종목이 없습니다.');
+        renderList(document.getElementById('waiting'), waiting, (o) => renderOrder(o, flashKey), '대기 중인 주문이 없습니다.');
+        renderList(document.getElementById('done'), mine.filter((o) => o.state === 'FILLED'), (o) => renderOrder(o, flashKey), '체결된 주문이 없습니다.');
+        tick();
+    }
+
+    // 대기열 항목에 경과 초를 매초 갱신해서 붙인다.
+    function tick() {
+        document.querySelectorAll('#waiting .badge').forEach((b) => {
+            const since = Number(b.dataset.waitingSince);
+            if (!since) return;
+            const sec = Math.max(0, Math.floor((Date.now() - since) / 1000));
+            b.textContent = (b.classList.contains('OPEN') ? '미체결' : '체결 확인중') + ' · ' + sec + '초';
+        });
+    }
+    setInterval(tick, 1000);
+
+    function connect() {
+        const conn = document.getElementById('conn');
+        const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const ws = new WebSocket(proto + location.host + '/ws/orders');
+        ws.onopen = () => { conn.textContent = '실시간 연결됨'; conn.className = 'conn on'; };
+        ws.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'snapshot') {
+                orders.clear();
+                msg.orders.forEach((o) => orders.set(o.key, o));
+                holdings = msg.holdings;
+                render();
+            } else if (msg.type === 'order') {
+                // 취소된 주문은 대기열에서 사라질 뿐 내역에 남기지 않는다.
+                if (msg.order.state === 'CANCELED') orders.delete(msg.order.key); else orders.set(msg.order.key, msg.order);
+                render(msg.order.key);
+            } else if (msg.type === 'holdings') {
+                holdings = msg.holdings;
+                render();
+            }
+        };
+        // 끊기면 3초 뒤 다시 붙는다. 다시 붙을 때 snapshot 을 새로 받으므로 놓친 변화도 채워진다.
+        ws.onclose = () => { conn.textContent = '연결 끊김 — 재연결 중'; conn.className = 'conn'; setTimeout(connect, 3000); };
+    }
+    render();
+    connect();
+</script>
+</body>
+</html>
