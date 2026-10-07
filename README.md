@@ -11,7 +11,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 | 브로커 추상화 | `broker/BrokerClient.kt` |
 | KIS 모의투자 구현 (시세·매수가능·잔고·지정가 주문) | `broker/kis/` |
 | 모킹 체결 (선택, `QUANTLOG_BROKER_TYPE=paper`로 켬 — 기본값은 KIS 모의 주문: 시세는 KIS, 주문은 로컬에서 호가 ±1틱에 즉시 체결, 증권사 수수료 0·제세금(국내 주식 거래세, 미국 SEC fee, 국내 ETF 면제)만 반영, `paper_order` 테이블) | `broker/paper/` |
-| 청산 판정 (익절 +0.5%, 전역 손절은 보류, 목표가는 가장 가까운 호가로 맞춤, 설정으로 조정) | `strategy/ExitRule.kt` |
+| 청산 판정 (익절 기본 +0.5%·손절 기본 보류, 종목별 DB 값, 목표가는 가장 가까운 호가로 맞춤, 설정으로 조정) | `strategy/ExitRule.kt` |
 | 삼성전자 마틴게일 (평단 -0.5%마다 보유 2배로 추가 매수·최대 5단계,손절은 종목 손절 % 하나, 사이클은 매매 기록에서 계산). 국내는 실시간 틱마다 판정하고 체결이 DB에 반영될 때까지 다음 단계를 미루며 10초 미체결이면 취소, 해외·실시간 끊김은 `EntryScheduler` 1초 폴링 | `strategy/MartingaleRule.kt`, `trading/MartingaleService.kt`(틱 판정), `MartingaleTickListener.kt`, `MartingaleScheduler.kt`(미체결 취소) |
 | 주문 전 리스크 가드 (주문금액·수량 상한) | `trading/RiskGuard.kt` |
 | 연동 점검 실행기 (READ / BUY / SELL / CANDLES) | `trading/SmokeTestRunner.kt` |

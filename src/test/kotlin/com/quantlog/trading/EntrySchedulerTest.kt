@@ -337,6 +337,19 @@ class EntrySchedulerTest {
     }
 
     @Test
+    fun `자동 매수 지정가 - 주기 재매수는 한 호가 위, 저점 판단 진입만 현재가 +0,5퍼센트`() {
+        val broker = FakeBroker()
+        rebuyScheduler(broker, held = false, bounce = true, signal = EntrySignal.BUY).checkEntries(krOpen)
+        // 현재가 10,000 / 호가 단위 10 → 한 호가 위 10,010, +0.5% 는 10,050.
+        assertEquals(listOf("10010", "10050"), broker.orders.map { it.limitPrice.toPlainString() })
+    }
+
+    @Test
+    fun `마틴게일 폴링 매수도 현재가보다 한 호가 위 지정가`() {
+        assertEquals(0, BigDecimal("10010").compareTo(martingale(buy(2, "10100")).orders.single().limitPrice))
+    }
+
+    @Test
     fun `5분 재매수와 저점 판단 진입은 각자 설정한 수량만큼 산다`() {
         val broker = FakeBroker()
         rebuyScheduler(

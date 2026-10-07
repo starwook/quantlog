@@ -131,7 +131,7 @@ class EntryScheduler(
      * 단계는 매매 기록에서, 보유 수량·평단은 KIS 잔고 테이블에서 온다([MartingaleCycle]). 첫 진입·매도 뒤 재진입은 하지 않는다(2026-10-02 폐기).
      * 가격 조건이라 성공한 매수 뒤엔 쿨다운이 필요 없다(다음 트리거는 또 -0.5%가 필요해서 자연히 걸러짐).
      * 실패(리스크 가드 거부 등)했을 땐 매초 재시도·로그 스팸을 막으려고 쿨다운을 건다.
-     * 평단은 체결가가 아직 안 채워졌으면 지정가(현재가+0.5%)라 최대 0.5% 어긋날 수 있다.
+     * 평단은 체결가가 아직 안 채워졌으면 지정가(현재가 한 호가 위)라 한 호가 어긋날 수 있다.
      */
     private fun checkMartingale(
         watched: SymbolStrategy,
@@ -195,18 +195,25 @@ class EntryScheduler(
 
         // 실패해도(리스크 가드 등) 다음 사이클마다 재시도해 로그를 스팸하지 않도록, 신호 시점에 바로 쿨다운을 건다.
         lastSignalAt[key] = now
-        buy(watched, watched.supportBounceQuantity, "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)")
+        buy(watched, watched.supportBounceQuantity, "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)", widePrice = true)
     }
 
     private fun buy(
         watched: SymbolStrategy,
         quantity: Int,
         reason: String,
+        widePrice: Boolean = false,
     ) {
         // 주문 흐름 전체(시세→주문→체결가 조회)는 스케줄러의 일반 호출보다 먼저 나간다(broker/CallPriority.kt).
         CallPriority.urgent {
             val quote = broker.quote(watched.market, watched.symbol)
-            val limitPrice = quote.roundToTick(quote.price.multiply(BigDecimal.ONE.add(BUY_OFFSET)), RoundingMode.CEILING)
+            // 저점 판단 진입만 넉넉하게(현재가 +0.5%) 걸고, 나머지 매수는 한 호가 위(수동·청산과 같은 방식)다.
+            val limitPrice =
+                if (widePrice) {
+                    quote.roundToTick(quote.price.multiply(BigDecimal.ONE.add(BUY_OFFSET)), RoundingMode.CEILING)
+                } else {
+                    quote.oneTickAbove()
+                }
             val request = OrderRequest(watched.market, watched.symbol, Side.BUY, quantity, limitPrice)
             riskGuard.checkBuy(request)
             val receipt = broker.placeOrder(request)
@@ -226,7 +233,7 @@ class EntryScheduler(
     companion object {
         private const val FILL_CHECK_WAIT_MILLIS = 2000L
 
-        /** 매수 지정가를 현재가보다 이만큼 높여 바로 체결되게 낸다([MartingaleService] 도 같은 값을 쓴다). */
+        /** 저점 판단 진입의 매수 지정가를 현재가보다 이만큼 높여 낸다. 다른 매수는 한 호가 위다. */
         internal val BUY_OFFSET: BigDecimal = BigDecimal("0.005")
     }
 }
