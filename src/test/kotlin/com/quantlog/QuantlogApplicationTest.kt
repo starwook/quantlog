@@ -9,7 +9,10 @@ import org.springframework.boot.test.context.SpringBootTest
 // 개발자의 실제 키 파일을 덮어쓰는 사고가 있었다 (README 참고). 새 테스트를 추가할 때도 이 파일 경로는 건드리지 않는다.
 // 청산 스케줄러·체결가 재확인 배치는 꺼서, 테스트 중에 증권사 호출·주문이 나가지 않게 한다.
 @SpringBootTest(
-    properties = ["spring.profiles.active=test", "quantlog.exit.enabled=false", "quantlog.reconcile.enabled=false"],
+    properties = [
+        "spring.profiles.active=test", "quantlog.exit.enabled=false", "quantlog.reconcile.enabled=false",
+        "quantlog.stockmaster.enabled=false",
+    ],
 )
 class QuantlogApplicationTest {
     @Test
