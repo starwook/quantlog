@@ -20,6 +20,9 @@ class ExitScheduler(
         initialDelayString = "\${quantlog.exit.initial-delay-millis:15000}",
     )
     fun run() {
-        if (properties.enabled) exitService.checkAll(ZonedDateTime.now(), realtimeFeed::isLive)
+        if (!properties.enabled) return
+        val now = ZonedDateTime.now()
+        exitService.expirePending(now)
+        exitService.checkAll(now, realtimeFeed::isLive)
     }
 }

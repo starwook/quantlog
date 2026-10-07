@@ -12,7 +12,7 @@ class ExitSchedulerTest {
     fun `켜져 있으면 전체 폴링을 실행한다`() {
         val service = Mockito.mock(ExitService::class.java)
         ExitScheduler(service, feed, ExitProperties(enabled = true)).run()
-        assertEquals(listOf("checkAll"), Mockito.mockingDetails(service).invocations.map { it.method.name })
+        assertEquals(listOf("expirePending", "checkAll"), Mockito.mockingDetails(service).invocations.map { it.method.name })
     }
 
     @Test
