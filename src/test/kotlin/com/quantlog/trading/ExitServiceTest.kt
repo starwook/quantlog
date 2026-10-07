@@ -2,6 +2,7 @@ package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.BuyingPower
+import com.quantlog.broker.CancelRequest
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
@@ -11,6 +12,7 @@ import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
+import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
@@ -32,6 +34,7 @@ class ExitServiceTest {
     /** 삼성전자 1주, 평단 272,000원 → 익절 274,500 / 손절 269,500 (호가 500원). */
     private class FakeBroker(var price: BigDecimal) : BrokerClient {
         val orders = mutableListOf<OrderRequest>()
+        val cancels = mutableListOf<CancelRequest>()
 
         override fun quote(
             market: Market,
@@ -61,6 +64,10 @@ class ExitServiceTest {
             orders += order
             return OrderReceipt("1", "ok")
         }
+
+        override fun cancelOrder(request: CancelRequest) {
+            cancels += request
+        }
     }
 
     private val seoul = ZoneId.of("Asia/Seoul")
@@ -83,6 +90,7 @@ class ExitServiceTest {
     private fun scheduler(
         broker: FakeBroker,
         tradeService: TradeService = Mockito.mock(TradeService::class.java),
+        holdingSync: HoldingSyncService = Mockito.mock(HoldingSyncService::class.java),
     ) = ExitService(
         broker,
         RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
@@ -91,6 +99,7 @@ class ExitServiceTest {
         Mockito.mock(SymbolStrategyService::class.java),
         tradeService,
         accountHoldingRepositoryWithHolding(),
+        holdingSync,
         ExitProperties(enabled = true),
     )
 
@@ -120,14 +129,39 @@ class ExitServiceTest {
     }
 
     @Test
-    fun `한 번 판 종목은 대기 시간 동안 다시 팔지 않는다`() {
+    fun `매도 주문을 낸 종목은 체결이 확인될 때까지 다시 판정하지 않는다`() {
         val broker = FakeBroker(BigDecimal("274500"))
         val scheduler = scheduler(broker)
         scheduler.checkAll(krOpen)
-        scheduler.checkAll(krOpen.plusMinutes(1))
+        scheduler.checkAll(krOpen.plusSeconds(1))
         assertEquals(1, broker.orders.size)
+    }
 
-        scheduler.checkAll(krOpen.plusMinutes(11))
+    @Test
+    fun `체결이 확인되면 시간이 얼마 안 지났어도 바로 다시 판정한다`() {
+        val broker = FakeBroker(BigDecimal("274500"))
+        val holdingSync = Mockito.mock(HoldingSyncService::class.java)
+        val scheduler = scheduler(broker, holdingSync = holdingSync)
+        scheduler.checkAll(krOpen)
+
+        Mockito.`when`(holdingSync.isOrderFilled("1")).thenReturn(true)
+        scheduler.checkAll(krOpen.plusSeconds(1))
+        assertEquals(2, broker.orders.size)
+    }
+
+    @Test
+    fun `10초가 지나도 미체결이면 주문을 취소하고 바로 다시 판정한다`() {
+        val broker = FakeBroker(BigDecimal("274500"))
+        val scheduler = scheduler(broker)
+        scheduler.checkAll(krOpen)
+
+        scheduler.expirePending(ZonedDateTime.now().plusSeconds(5))
+        assertTrue(broker.cancels.isEmpty())
+
+        scheduler.expirePending(ZonedDateTime.now().plusSeconds(11))
+        assertEquals(1, broker.cancels.size)
+
+        scheduler.checkAll(krOpen.plusSeconds(12))
         assertEquals(2, broker.orders.size)
     }
 
@@ -160,6 +194,7 @@ class ExitServiceTest {
             symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", martingale = true, stopLoss = stopLoss)),
             tradeService,
             accountHoldingRepositoryWithHolding(cycle.quantity, cycle.averagePrice!!),
+            Mockito.mock(HoldingSyncService::class.java),
             ExitProperties(enabled = true),
         )
     }
@@ -208,6 +243,7 @@ class ExitServiceTest {
                 symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", takeProfit = "2")),
                 Mockito.mock(TradeService::class.java),
                 accountHoldingRepositoryWithHolding(),
+                Mockito.mock(HoldingSyncService::class.java),
                 ExitProperties(enabled = true),
             ).checkAll(krOpen)
             return broker.orders.isNotEmpty()
