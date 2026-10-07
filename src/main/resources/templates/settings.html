@@ -48,6 +48,10 @@
         /* 마틴게일이 꺼져 있으면 세부값은 흐리게 — 값은 그대로 저장되고, 켜면 바로 쓰인다. */
         form.item:has(input[name=martingale]:not(:checked)) .body details { opacity: .5; }
         .add summary { font-size: 15px; }
+        .results { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+        .results li { padding: 10px 12px; font-size: 14px; cursor: pointer; border-bottom: 1px solid var(--border); }
+        .results li:last-child { border-bottom: 0; }
+        .results li small { color: var(--muted); margin-left: 6px; }
         /* 종목이 많아도 훑을 수 있게: 종목 1개 = 한 줄 요약, 눌러야 편집 폼이 펼쳐진다. */
         .tools { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
         .tools input[type=search] { flex: 1 1 180px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; }
@@ -86,6 +90,10 @@
     <details class="card add" style="margin-top: 0; padding: 20px;">
         <summary>+ 종목 추가</summary>
         <form method="post" action="/settings">
+            <label style="display:block; margin-top: 12px;">국내 종목 검색 <small>이름 또는 코드를 입력하고 고르면 아래가 채워져요</small>
+                <input type="search" id="stockQ" placeholder="예: 삼성전자, 005930" autocomplete="off">
+            </label>
+            <ul id="stockResults" class="results" hidden></ul>
             <div class="grid" style="margin-top: 12px;">
                 <label>시장
                     <select name="market">
@@ -186,6 +194,36 @@
     <p class="hint" id="none" hidden>조건에 맞는 종목이 없어요.</p>
 </main>
 <script>
+    // 종목 추가: 마스터 검색 결과를 고르면 시장·코드·이름·ETF 칸을 채운다(칸은 직접 고쳐도 된다 — 미국 종목은 직접 입력).
+    const stockQ = document.getElementById('stockQ');
+    const stockResults = document.getElementById('stockResults');
+    let stockTimer;
+    stockQ.addEventListener('input', () => {
+        clearTimeout(stockTimer);
+        stockTimer = setTimeout(async () => {
+            const text = stockQ.value.trim();
+            if (!text) { stockResults.hidden = true; return; }
+            const found = await (await fetch('/stocks/search?q=' + encodeURIComponent(text))).json();
+            stockResults.replaceChildren(...found.map(s => {
+                const li = document.createElement('li');
+                li.textContent = s.name;
+                const sub = document.createElement('small');
+                sub.textContent = s.code + ' · ' + s.exchange + (s.etf ? ' · ETF' : '') + (s.tradingSuspended ? ' · 거래정지' : '');
+                li.append(sub);
+                li.addEventListener('click', () => {
+                    const f = stockQ.form;
+                    f.market.value = 'KR';
+                    f.symbol.value = s.code;
+                    f.displayName.value = s.name;
+                    f.etf.checked = s.etf;
+                    stockResults.hidden = true;
+                });
+                return li;
+            }));
+            stockResults.hidden = found.length === 0;
+        }, 200);
+    });
+
     const items = [...document.querySelectorAll('form.item')];
     const q = document.getElementById('q');
     let filter = 'all';
