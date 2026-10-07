@@ -20,4 +20,10 @@ interface TradeRepository : JpaRepository<Trade, Long> {
         market: Market,
         symbol: String,
     ): Trade?
+
+    /** 주문번호로 매매 기록을 찾는다(체결통보·주문 취소가 이 기록을 이어 붙일 때 쓴다). 주문번호는 하루 단위로 유일하다. */
+    fun findFirstByMarketAndOrderNo(
+        market: Market,
+        orderNo: String,
+    ): Trade?
 }

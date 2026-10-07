@@ -11,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
-import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
 private val log = KotlinLogging.logger {}
@@ -56,6 +55,9 @@ class HoldingSyncService(
         if (completedOrders.containsKey(last.orderNo)) return false
         return last.executedAt.isAfter(synced)
     }
+
+    /** 이 주문을 체결통보로 주문수량만큼 다 반영했는가. 마틴게일의 "단계 진행 중"이 풀리는 기준이다. */
+    fun isOrderFilled(orderNo: String): Boolean = completedOrders.containsKey(orderNo)
 
     /**
      * 체결통보 한 건을 보유 현황에 반영한다. 체결 통보(국내)만 처리하고 접수 통보·해외는 건너뛴다(해외는 실측 전).
@@ -170,14 +172,5 @@ class HoldingSyncService(
     private companion object {
         /** account_holding.avg_cost 의 소수 자릿수. */
         const val COST_SCALE = 6
-        const val MAX_TRACKED_ORDERS = 2000
-
-        /** 오래된 항목부터 버리는 크기 제한 맵 — 주문번호는 하루 단위로 쌓이므로 무한히 늘리지 않는다. */
-        fun <V> boundedMap(): MutableMap<String, V> =
-            Collections.synchronizedMap(
-                object : LinkedHashMap<String, V>() {
-                    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, V>) = size > MAX_TRACKED_ORDERS
-                },
-            )
     }
 }
