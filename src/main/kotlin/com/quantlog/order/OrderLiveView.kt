@@ -13,7 +13,6 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val KST: ZoneId = ZoneId.of("Asia/Seoul")
-private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 private val DATE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")
 
 /** 원화는 소수점 없이, 그 외는 소수점 둘째 자리까지. */
@@ -88,7 +87,6 @@ data class HoldingLiveView(
     /** 평가손익. 예: +3,000 (+1.10%) */
     val unrealizedText: String,
     val unrealizedCss: String,
-    val updatedAtText: String,
 ) {
     companion object {
         /** [livePrice] 가 있으면(실시간 틱) 잔고 사본의 현재가 대신 쓴다. */
@@ -111,7 +109,6 @@ data class HoldingLiveView(
                 currentPriceText = currentPrice.money(currency),
                 unrealizedText = signedMoneyAndPercent(amount, percent, currency),
                 unrealizedCss = pnlCss(amount),
-                updatedAtText = TIME_FORMAT.format(holding.updatedAt.atZone(KST)),
             )
         }
     }
