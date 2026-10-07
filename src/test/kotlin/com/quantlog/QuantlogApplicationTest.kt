@@ -11,7 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 @SpringBootTest(
     properties = [
         "spring.profiles.active=test", "quantlog.exit.enabled=false", "quantlog.reconcile.enabled=false",
-        "quantlog.stockmaster.enabled=false",
+        "quantlog.stockmaster.enabled=false", "quantlog.error-log.enabled=false",
     ],
 )
 class QuantlogApplicationTest {
