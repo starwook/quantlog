@@ -39,10 +39,23 @@
         .conn.on::before { color: var(--ok); }
         .card { background: var(--card); border-radius: 16px; padding: 8px 20px; margin-bottom: 16px; }
         h2 { font-size: 15px; margin: 0; padding: 12px 0 4px; color: var(--muted); font-weight: 600; }
-        .order { padding: 12px 0; border-top: 1px solid var(--border); font-size: 15px; }
+        .summary { padding: 16px 20px; }
+        .summary .label { font-size: 13px; color: var(--muted); }
+        .summary .big { font-size: 26px; font-weight: 800; margin: 2px 0 12px; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .stat { background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+        .stat .v { font-size: 15px; font-weight: 700; margin-top: 2px; }
+        .order { padding: 12px 8px; margin: 0 -8px; border-top: 1px solid var(--border); font-size: 15px; border-radius: 10px; }
         .order:first-child { border-top: none; }
-        .order.flash { animation: flash 1.2s ease-out; }
-        @keyframes flash { from { background: #fff6d6; } to { background: transparent; } }
+        .order.flash { animation: flash 3s ease-out; }
+        .order.flash::before { content: "NEW"; float: right; font-size: 10px; font-weight: 800; color: #fff; background: var(--warn); border-radius: 4px; padding: 1px 5px; margin-left: 6px; animation: fade 3s ease-out forwards; }
+        @keyframes flash {
+            0% { background: #ffe58a; transform: translateX(12px); opacity: 0.3; }
+            15% { transform: none; opacity: 1; }
+            100% { background: transparent; }
+        }
+        @keyframes fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+        .summary.flash { animation: flash 3s ease-out; }
         .line { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
         .line + .line { margin-top: 4px; }
         .name { font-weight: 700; }
@@ -53,13 +66,28 @@
         .badge { font-size: 12px; font-weight: 700; }
         .badge.CHECKING, .badge.OPEN { color: var(--warn); }
         .badge.FILLED { color: var(--ok); }
-                .reason { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .reason { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
+        .pnl { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--bg); }
+        .pnl .amount { font-size: 16px; font-weight: 800; }
+        .pnl .detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
         .empty { padding: 20px 0; text-align: center; font-size: 14px; color: var(--muted); }
     </style>
 </head>
 <body>
 <main>
     <nav th:replace="~{fragments/nav :: menu('orders')}"></nav>
+    <section class="card summary" id="summary" hidden>
+        <div class="label">오늘 실현손익</div>
+        <div class="big" id="sumToday"></div>
+        <div class="stats">
+            <div class="stat"><div class="label">승률</div><div class="v" id="sumWinRate"></div></div>
+            <div class="stat"><div class="label">승 / 패</div><div class="v" id="sumWinLoss"></div></div>
+            <div class="stat"><div class="label">매수 회수</div><div class="v" id="sumBuy"></div></div>
+            <div class="stat"><div class="label">매도 회수</div><div class="v" id="sumSell"></div></div>
+            <div class="stat" style="grid-column: span 2"><div class="label">누적 실현손익</div><div class="v" id="sumTotal"></div></div>
+        </div>
+    </section>
+
     <div class="title">
         <h1>실시간 주문</h1>
         <span id="conn" class="conn">연결 중</span>
@@ -134,9 +162,28 @@
 
         const price = o.filledPriceText ? o.filledPriceText + ' (지정가 ' + o.orderPriceText + ')' : o.orderPriceText + ' (지정가)';
         row.appendChild(line(el('span', '', o.quantity + '주 @ ' + price), el('span', 'sub', o.timeText)));
-        if (o.pnlText) row.appendChild(el('div', 'reason ' + o.pnlCss, o.pnlText));
+        if (o.pnlText) {
+            const box = el('div', 'pnl');
+            box.appendChild(el('div', 'amount ' + o.pnlCss, '실현손익 ' + o.pnlText));
+            box.appendChild(el('div', 'detail', o.pnlDetailText));
+            row.appendChild(box);
+        }
         if (o.reason) row.appendChild(el('div', 'reason', o.reason));
         return row;
+    }
+
+    function renderSummary(sm, flash) {
+        const box = document.getElementById('summary');
+        if (!sm) return;
+        box.hidden = false;
+        const set = (id, text, css) => { const e = document.getElementById(id); e.textContent = text; if (css !== undefined) e.className = e.className.replace(/\b(pos|neg|zero)\b/g, '').trim() + ' ' + css; };
+        set('sumToday', sm.todayText, sm.todayCss);
+        set('sumTotal', sm.totalText, sm.totalCss);
+        set('sumWinRate', sm.winRateText);
+        set('sumWinLoss', sm.win + '승 ' + sm.loss + '패');
+        set('sumBuy', sm.buyCount + '회');
+        set('sumSell', sm.sellCount + '회');
+        if (flash) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
     }
 
     function renderList(container, list, renderRow, emptyText) {
@@ -179,10 +226,12 @@
                 orders.clear();
                 msg.orders.forEach((o) => orders.set(o.key, o));
                 holdings = msg.holdings;
+                renderSummary(msg.summary, false);
                 render();
             } else if (msg.type === 'order') {
                 // 취소된 주문은 대기열에서 사라질 뿐 내역에 남기지 않는다.
                 if (msg.order.state === 'CANCELED') orders.delete(msg.order.key); else orders.set(msg.order.key, msg.order);
+                renderSummary(msg.summary, true);
                 render(msg.order.key);
             } else if (msg.type === 'holdings') {
                 holdings = msg.holdings;
