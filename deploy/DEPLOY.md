@@ -25,6 +25,3 @@
 ## 주의
 - 같은 KIS 계좌로 로컬 IDE 실행과 서버 봇이 동시에 돌면 주문이 중복될 수 있다. 서버 배포 중에는 로컬 봇을 끄거나 스케줄러 플래그(`QUANTLOG_ENTRY_ENABLED=false` 등)를 쓴다.
 - 서버 `.env`에 `QUANTLOG_ENTRY_ENABLED` 등 플래그를 넣어 서버 봇을 끌 수 있다.
-
-## TODO
-- 서버 DB `symbol_strategy` 옛 컬럼 삭제는 `docs/todo.md`의 "서버 DB 옛 컬럼 삭제" 참고 (Claude 서버 권한 허용 설정 후 deploy-agent 가 실행).
