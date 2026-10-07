@@ -56,7 +56,6 @@ class SymbolStrategyServiceTest {
             martingaleDropPercent = BigDecimal("2")
             martingaleMultiplier = 3
             martingaleMaxStages = 4
-            martingaleFinalStageStopLossPercent = BigDecimal("5")
             periodicRebuyQuantity = 3
             periodicRebuyIntervalMinutes = 15
             supportBounceQuantity = 4
@@ -76,6 +75,28 @@ class SymbolStrategyServiceTest {
         assertEquals(3, existing.periodicRebuyQuantity)
         assertEquals(15, existing.periodicRebuyIntervalMinutes)
         assertEquals(4, existing.supportBounceQuantity)
+    }
+
+    @Test
+    fun `마틴게일을 켠 종목의 손절은 추가매수 하락 퍼센트 이상이어야 한다`() {
+        val existing = symbolStrategy(SeedSymbol.SAMSUNG.market, SeedSymbol.SAMSUNG.symbol, takeProfit = "0.5")
+        Mockito.`when`(repository.findByMarketAndSymbol(existing.market, existing.symbol)).thenReturn(existing)
+
+        // 하락 2% 인데 손절 1% → 첫 추가매수 전에 손절되므로 거절
+        assertFailsWith<IllegalArgumentException> {
+            service.update(existing.market, existing.symbol, validForm().apply { stopLossPercent = BigDecimal("1") })
+        }
+        // 같거나 크면 통과, 손절을 비우거나 마틴게일이 꺼져 있으면 검사 안 함
+        service.update(existing.market, existing.symbol, validForm().apply { stopLossPercent = BigDecimal("2") })
+        service.update(
+            existing.market,
+            existing.symbol,
+            validForm().apply {
+                stopLossPercent = BigDecimal("1")
+                martingale = false
+            },
+        )
+        assertEquals(0, BigDecimal("1").compareTo(existing.stopLossPercent))
     }
 
     @Test

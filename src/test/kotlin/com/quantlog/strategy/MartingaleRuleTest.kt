@@ -119,22 +119,4 @@ class MartingaleRuleTest {
     fun `보유 중이 아니면 추가 매수 없음`() {
         assertNull(rule.nextQuantity(MartingaleCycle(emptyList()), krw("1000")))
     }
-
-    // ── 5단계 손절 ──
-
-    @Test
-    fun `1~4단계엔 손절이 없다`() {
-        val four = cycleOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500")
-        assertNull(rule.stopLossPrice(four, krw("100000")))
-        assertFalse(rule.shouldStopLoss(four, krw("100000")))
-    }
-
-    @Test
-    fun `5단계 손절 경계 - 평단 -3퍼센트 호가 이하`() {
-        val five = cycleOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500", 16 to "266000")
-        // 평단 8,285,000 / 31 ≈ 267,258 × 0.97 = 259,240 → 259,000 (마지막 매수가 기준이었다면 258,000)
-        assertEquals("259000", price(rule.stopLossPrice(five, krw("260000"))))
-        assertTrue(rule.shouldStopLoss(five, krw("259000")))
-        assertFalse(rule.shouldStopLoss(five, krw("259500")))
-    }
 }

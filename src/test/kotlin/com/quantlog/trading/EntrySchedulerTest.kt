@@ -413,7 +413,6 @@ class EntrySchedulerTest {
             symbolStrategy(Market.KR, "005930", martingale = true).let {
                 SymbolStrategy(
                     it.market, it.symbol, it.displayName, it.takeProfitPercent, null, true, java.math.BigDecimal("1"), 3, 5,
-                    java.math.BigDecimal("3"),
                 )
             }
         val broker = FakeBroker()

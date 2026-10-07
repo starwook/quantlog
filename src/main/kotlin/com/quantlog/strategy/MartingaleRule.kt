@@ -9,7 +9,7 @@ import java.math.MathContext
 
 /**
  * 2026-09-30 사용자 지정: 첫 1주 매수 후 평단 대비 0.5% 떨어질 때마다 보유 수량이 2배가 되도록 추가 매수(최대 5단계),
- * 최대 단계까지 산 뒤 평단 대비 3% 더 떨어지면 손절. (매도 뒤 재진입은 2026-10-02 폐기 — 첫 진입은 5분 재매수·저점 판단 진입 옵션이 맡는다.)
+ * (손절은 마틴게일 전용이 없고 종목의 손절 %(SymbolStrategy.stopLossPercent) 하나로 단계와 무관하게 평단 기준 적용 — 2026-10-07.) (매도 뒤 재진입은 2026-10-02 폐기 — 첫 진입은 5분 재매수·저점 판단 진입 옵션이 맡는다.)
  * (처음 -1%로 시작했다가 "오늘은 수익률보다 최대한 많이 거래"가 목표라 0.5%로 줄임.)
  *
  * 종목별 실제 값은 DB(watchlist.SymbolStrategy)가 갖고, 여기(application.yml)는 새 종목 행을 만들 때 쓰는 기본값이다.
@@ -19,7 +19,6 @@ data class MartingaleProperties(
     val dropPercent: BigDecimal = BigDecimal("0.5"),
     val multiplier: Int = 2,
     val maxStages: Int = 5,
-    val finalStageStopLossPercent: BigDecimal = BigDecimal("3"),
 )
 
 data class CycleBuy(val quantity: Int, val price: BigDecimal)
@@ -109,18 +108,4 @@ class MartingaleRule(
         val quantity = cycle.quantity * (properties.multiplier - 1)
         return if (quote.price <= addOnTriggerPrice(average, quote)) quantity else null
     }
-
-    /** 최대 단계 매수를 마친 뒤에만 있는 손절가: 평단 -3%(2026-09-30 사용자 결정: 마지막 매수가는 불안정해서 평단 기준). 그 전 단계엔 null(손절 없음). */
-    fun stopLossPrice(
-        cycle: MartingaleCycle,
-        quote: Quote,
-    ): BigDecimal? {
-        if (cycle.stage < properties.maxStages) return null
-        return below(cycle.averagePrice ?: return null, properties.finalStageStopLossPercent, quote)
-    }
-
-    fun shouldStopLoss(
-        cycle: MartingaleCycle,
-        quote: Quote,
-    ): Boolean = stopLossPrice(cycle, quote)?.let { quote.price <= it } == true
 }

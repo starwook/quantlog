@@ -147,7 +147,7 @@
                     <label>손절 %
                         <input type="number" step="any" min="0" name="stopLossPercent" placeholder="비우면 손절 안 함"
                                th:value="${row.stopLossPercent != null} ? ${row.stopLossPercent.stripTrailingZeros().toPlainString()} : ''">
-                        <small>마틴게일은 아래 마지막 단계 손절이 따로 있음</small>
+                        <small>평단 대비. 마틴게일을 켜면 추가매수 하락 % 이상이어야 함</small>
                     </label>
                 </div>
                 <p class="hint">위 세 가지가 매수 옵션이에요. 서로 독립이고, 하나도 안 켜면 이 종목은 분봉만 모으고 사지 않아요.</p>
@@ -176,9 +176,6 @@
                         </label>
                         <label>최대 단계
                             <input type="number" step="1" min="1" name="martingaleMaxStages" th:value="${row.martingaleMaxStages}" required>
-                        </label>
-                        <label>마지막 단계 손절 % <small>평단 대비</small>
-                            <input type="number" step="any" min="0" name="martingaleFinalStageStopLossPercent" th:value="${row.martingaleFinalStageStopLossPercent.stripTrailingZeros().toPlainString()}" required>
                         </label>
                     </div>
                 </details>

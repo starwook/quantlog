@@ -138,10 +138,11 @@ class ExitServiceTest {
         assertTrue(broker.orders.isEmpty())
     }
 
-    // ── 마틴게일(삼성전자) 손절: 전역 손절은 보류(null)이고, 5단계 매수 뒤에만 별도 손절이 있다 ──
+    // ── 마틴게일 종목의 손절: 단계와 무관하게 종목의 손절 % 하나만 평단 기준으로 적용된다 ──
 
     private fun martingaleScheduler(
         broker: FakeBroker,
+        stopLoss: String?,
         vararg buyPrices: Pair<Int, String>,
     ): ExitService {
         val tradeService = Mockito.mock(TradeService::class.java)
@@ -156,7 +157,7 @@ class ExitServiceTest {
             broker,
             RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
             FixedPercentExitRule(BigDecimal("0.5"), null),
-            symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", martingale = true)),
+            symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", martingale = true, stopLoss = stopLoss)),
             tradeService,
             accountHoldingRepositoryWithHolding(cycle.quantity, cycle.averagePrice!!),
             ExitProperties(enabled = true),
@@ -166,24 +167,32 @@ class ExitServiceTest {
     private val fiveStages = arrayOf(1 to "272000", 2 to "270500", 4 to "269000", 8 to "267500", 16 to "266000")
 
     @Test
-    fun `마틴게일 5단계 손절 경계 - 평단 -3퍼센트 이하면 전량 매도`() {
+    fun `마틴게일 손절 경계 - 평단 -3퍼센트 이하면 전량 매도`() {
         // 평단 = 8,285,000 / 31 ≈ 267,258 → × 0.97 = 259,240 → 259,000
         val broker = FakeBroker(BigDecimal("259000"))
-        martingaleScheduler(broker, *fiveStages).checkAll(krOpen)
+        martingaleScheduler(broker, "3", *fiveStages).checkAll(krOpen)
         assertEquals(Side.SELL, broker.orders.single().side)
     }
 
     @Test
-    fun `마틴게일 5단계라도 손절가 위면 팔지 않는다`() {
+    fun `마틴게일이라도 손절가 위면 팔지 않는다`() {
         val broker = FakeBroker(BigDecimal("259500"))
-        martingaleScheduler(broker, *fiveStages).checkAll(krOpen)
+        martingaleScheduler(broker, "3", *fiveStages).checkAll(krOpen)
         assertTrue(broker.orders.isEmpty())
     }
 
     @Test
-    fun `마틴게일 1~4단계에서는 아무리 떨어져도 손절 안 한다`() {
+    fun `마틴게일 최대 단계 전(돈이 모자라 못 산 경우)에도 손절가에 닿으면 판다`() {
+        // 4단계: 수량 15, 평단 4,029,000 / 15 = 268,600 → × 0.97 ≈ 260,500 아래면 손절
         val broker = FakeBroker(BigDecimal("150000"))
-        martingaleScheduler(broker, *fiveStages.take(4).toTypedArray()).checkAll(krOpen)
+        martingaleScheduler(broker, "3", *fiveStages.take(4).toTypedArray()).checkAll(krOpen)
+        assertEquals(Side.SELL, broker.orders.single().side)
+    }
+
+    @Test
+    fun `마틴게일이라도 손절을 비우면(보류) 아무리 떨어져도 안 판다`() {
+        val broker = FakeBroker(BigDecimal("150000"))
+        martingaleScheduler(broker, null, *fiveStages).checkAll(krOpen)
         assertTrue(broker.orders.isEmpty())
     }
 
