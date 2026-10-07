@@ -246,11 +246,25 @@
     const holdingEl = document.getElementById('holding');
     let holding = null;
     let lastPrice = null;
+    // 주문 화면(/ws/orders)이 보내는 보유 종목. 연결되면 REST 의 holding 대신 이걸 쓴다 — 두 화면의 평단·평가손익이 같은 값이 된다.
+    let liveHolding;
     function showHolding() {
+        if (liveHolding !== undefined) {
+            if (liveHolding === null) {
+                holdingEl.textContent = '보유 없음';
+                return;
+            }
+            const css = liveHolding.unrealizedCss === 'pos' ? 'up' : liveHolding.unrealizedCss === 'neg' ? 'down' : '';
+            holdingEl.innerHTML = '보유 ' + liveHolding.quantity + '주 · 평단 ' + liveHolding.avgCostText
+                + ' · 평가금액 ' + liveHolding.valueText
+                + ' · <span class="' + css + '">평가손익 ' + liveHolding.unrealizedText + '</span>';
+            return;
+        }
         if (!holding || holding.quantity <= 0) {
             holdingEl.textContent = '보유 없음';
             return;
         }
+        if (lastPrice === null) return;
         const profit = (lastPrice - holding.avgCost) * holding.quantity;
         const pct = ((lastPrice - holding.avgCost) / holding.avgCost * 100).toFixed(2);
         const sign = profit > 0 ? '+' : '';
@@ -365,6 +379,30 @@
         ws.onerror = () => ws.close();
     }
     connectLive();
+
+    // WebSocket(/ws/orders): 보유 수량·평단·평가손익은 주문 화면과 같은 스트림으로 받는다(체결 즉시 반영).
+    function connectHolding() {
+        const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const ws = new WebSocket(proto + location.host + '/ws/orders');
+        const mine = (h) => h.market === market && h.symbol === symbol;
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'snapshot' || msg.type === 'holdings') {
+                liveHolding = msg.holdings.find(mine) || null;
+            } else if (msg.type === 'price' && mine(msg.holding)) {
+                liveHolding = msg.holding;
+            } else {
+                return;
+            }
+            showHolding();
+        };
+        ws.onclose = () => {
+            liveHolding = undefined;
+            setTimeout(connectHolding, 3000);
+        };
+        ws.onerror = () => ws.close();
+    }
+    connectHolding();
 </script>
 </body>
 </html>
