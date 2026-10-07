@@ -9,10 +9,10 @@ import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
-import com.quantlog.position.HoldingView
+import com.quantlog.position.AccountHolding
+import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
-import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.TradeService
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -63,14 +63,13 @@ class ManualOrderServiceTest {
     private val broker = FakeBroker()
     private val tradeService = Mockito.mock(TradeService::class.java)
     private val portfolioService = Mockito.mock(PortfolioService::class.java)
-    private val service = ManualOrderService(broker, RiskGuard(RiskProperties(), portfolioService), tradeService, portfolioService)
+    private val accountHoldingRepository = Mockito.mock(AccountHoldingRepository::class.java)
+    private val service = ManualOrderService(broker, RiskGuard(RiskProperties(), portfolioService), tradeService, accountHoldingRepository)
 
     private fun holding(quantity: Int) {
         val price = BigDecimal("272000")
-        val zero = BigDecimal.ZERO
-        val holding = HoldingView(Market.KR, "005930", quantity, price, price, zero, zero, zero)
-        val summary = PortfolioSummary("KRW", listOf(holding), zero, zero, zero, zero, zero, zero, zero, zero)
-        Mockito.`when`(portfolioService.snapshot()).thenReturn(PortfolioSnapshot(emptyList(), emptyMap(), mapOf("KRW" to summary)))
+        Mockito.`when`(accountHoldingRepository.findByMarketAndSymbol(Market.KR, "005930"))
+            .thenReturn(AccountHolding(Market.KR, "005930", quantity, price, price))
     }
 
     @Test
