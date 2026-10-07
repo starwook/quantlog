@@ -3,6 +3,7 @@ package com.quantlog.trading
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.CallPriority
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.RealtimePriceFeed
 import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.HoldingSyncService
@@ -39,6 +40,8 @@ data class EntryProperties(
     val enabled: Boolean = false,
     /** 한 번 산 종목은 이 시간 동안 다시 신호를 봐도 사지 않는다. */
     val cooldown: Duration = Duration.ofMinutes(10),
+    /** 마틴게일 틱 주문이 이 시간 안에 체결 확인이 안 되면 취소한다([MartingaleService]). */
+    val fillTimeout: Duration = Duration.ofSeconds(10),
 )
 
 /**
@@ -63,6 +66,7 @@ class EntryScheduler(
     private val tradeService: TradeService,
     private val portfolioService: PortfolioService,
     private val holdingSync: HoldingSyncService,
+    private val realtimeFeed: RealtimePriceFeed,
     private val properties: EntryProperties,
 ) {
     private val lastSignalAt = ConcurrentHashMap<String, Instant>()
@@ -97,15 +101,17 @@ class EntryScheduler(
                 .onFailure { log.warn(it) { "[분봉 수집] 실패: ${watched.market} ${watched.symbol}" } }
 
             // 무엇을 살지는 같은 행(symbol_strategy)의 매수 옵션이 정한다 — 하나도 안 켜져 있으면 아래 세 분기가 모두 건너뛰어진다.
-            // 이 종목에 잔고 동기화보다 늦은 주문이 있으면 보유 현황이 낡았다 — 중복 매수를 막으려고 다음 동기화까지 미룬다.
-            if (holdingSync.hasUnsyncedTrade(watched.market, watched.symbol)) return@forEach
-
             // 세 진입 옵션은 완전히 별개다 — 서로의 조건·결과를 보지 않고 각자 판단한다(같은 주기에 둘 이상 주문이 나갈 수도 있다).
             val held =
                 snapshot.summaryByCurrency[watched.market.currency]?.holdings?.any {
                     it.market == watched.market && it.symbol == watched.symbol
                 } == true
-            if (watched.martingale && held) {
+            // 국내 실시간이 커버하는 종목의 마틴게일은 틱 경로([MartingaleService])가 맡는다. 여기선 해외·실시간 끊김 종목만 폴링하고,
+            // 체결통보가 없는 이 경로에서만 "잔고 동기화보다 늦은 주문이 있으면 보유 현황이 낡았다"며 다음 동기화까지 미룬다.
+            val polledMartingale =
+                watched.martingale && held && !realtimeFeed.isLive(watched.market, watched.symbol) &&
+                    !holdingSync.hasUnsyncedTrade(watched.market, watched.symbol)
+            if (polledMartingale) {
                 runCatching { checkMartingale(watched, snapshot, now.toInstant()) }
                     .onFailure { log.warn(it) { "[마틴게일] 실패: ${watched.market} ${watched.symbol}" } }
             }
@@ -217,8 +223,10 @@ class EntryScheduler(
         }
     }
 
-    private companion object {
-        const val FILL_CHECK_WAIT_MILLIS = 2000L
-        val BUY_OFFSET: BigDecimal = BigDecimal("0.005")
+    companion object {
+        private const val FILL_CHECK_WAIT_MILLIS = 2000L
+
+        /** 매수 지정가를 현재가보다 이만큼 높여 바로 체결되게 낸다([MartingaleService] 도 같은 값을 쓴다). */
+        internal val BUY_OFFSET: BigDecimal = BigDecimal("0.005")
     }
 }

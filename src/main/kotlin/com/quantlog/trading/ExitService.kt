@@ -7,7 +7,6 @@ import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import com.quantlog.position.AccountHoldingRepository
-import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.ExitSignal
 import com.quantlog.strategy.FixedPercentExitRule
@@ -53,7 +52,6 @@ class ExitService(
     private val symbolStrategyService: SymbolStrategyService,
     private val tradeService: TradeService,
     private val accountHoldingRepository: AccountHoldingRepository,
-    private val holdingSync: HoldingSyncService,
     private val properties: ExitProperties,
 ) {
     private val lastSellAt = ConcurrentHashMap<String, Instant>()
@@ -105,8 +103,6 @@ class ExitService(
         key: String,
         now: Instant,
     ) {
-        // 이 종목에 잔고 동기화보다 늦은 주문이 있으면 잔고 테이블이 아직 낡았다 — 이미 판 수량을 또 팔지 않게 다음 동기화까지 미룬다.
-        if (holdingSync.hasUnsyncedTrade(holding.market, holding.symbol)) return
         val last = lastSellAt[key]
         if (last != null && Duration.between(last, now) < properties.cooldown) return
 
@@ -118,7 +114,7 @@ class ExitService(
         val percentRule = percentRuleText(signal, config)
         if (signal == ExitSignal.HOLD) return
 
-        sell(holding, quote, signal, rule, percentRule)
+        sell(holding, quote, signal, rule, percentRule, signaledAt = System.currentTimeMillis())
         lastSellAt[key] = now
     }
 
@@ -128,6 +124,7 @@ class ExitService(
         signal: ExitSignal,
         rule: FixedPercentExitRule,
         percentRule: String,
+        signaledAt: Long,
     ) {
         // 청산 주문 흐름은 스케줄러의 일반 호출보다 먼저 나간다(broker/CallPriority.kt).
         CallPriority.urgent {
@@ -142,6 +139,7 @@ class ExitService(
                 )
             riskGuard.check(request)
             val receipt = broker.placeOrder(request)
+            log.info { "[청산 지연] ${request.market} ${request.symbol} 신호→주문 접수 ${System.currentTimeMillis() - signaledAt}ms" }
             Thread.sleep(FILL_CHECK_WAIT_MILLIS)
             val filledPrice =
                 runCatching { broker.filledPrice(request.market, receipt.orderNo) }

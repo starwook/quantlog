@@ -11,7 +11,6 @@ import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
-import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
@@ -92,7 +91,6 @@ class ExitServiceTest {
         Mockito.mock(SymbolStrategyService::class.java),
         tradeService,
         accountHoldingRepositoryWithHolding(),
-        Mockito.mock(HoldingSyncService::class.java),
         ExitProperties(enabled = true),
     )
 
@@ -162,7 +160,6 @@ class ExitServiceTest {
             symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", martingale = true, stopLoss = stopLoss)),
             tradeService,
             accountHoldingRepositoryWithHolding(cycle.quantity, cycle.averagePrice!!),
-            Mockito.mock(HoldingSyncService::class.java),
             ExitProperties(enabled = true),
         )
     }
@@ -211,7 +208,6 @@ class ExitServiceTest {
                 symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", takeProfit = "2")),
                 Mockito.mock(TradeService::class.java),
                 accountHoldingRepositoryWithHolding(),
-                Mockito.mock(HoldingSyncService::class.java),
                 ExitProperties(enabled = true),
             ).checkAll(krOpen)
             return broker.orders.isNotEmpty()
