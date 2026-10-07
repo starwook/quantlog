@@ -2,9 +2,7 @@ package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.CallPriority
-import com.quantlog.broker.CancelRequest
 import com.quantlog.broker.Market
-import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
@@ -44,13 +42,8 @@ class MartingaleService(
     private val holdingSync: HoldingSyncService,
     private val properties: EntryProperties,
 ) {
-    private class PendingOrder(val request: OrderRequest, val receipt: OrderReceipt, val placedAt: Instant) {
-        /** 마지막으로 취소를 시도한 시각. 거부가 이어질 때 매초 두드리지 않으려고 쓴다. */
-        var lastCancelTryAt: Instant? = null
-    }
-
     /** 주문은 냈는데 체결이 아직 DB 에 반영 안 된 종목. */
-    private val pending = ConcurrentHashMap<String, PendingOrder>()
+    private val pending = PendingOrders("마틴게일", broker, tradeService, holdingSync, properties.fillTimeout)
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
     private val lastFailureAt = ConcurrentHashMap<String, Instant>()
 
@@ -78,10 +71,7 @@ class MartingaleService(
         tickPrice: BigDecimal,
         now: ZonedDateTime,
     ) {
-        pending[key]?.let { order ->
-            if (!holdingSync.isOrderFilled(order.receipt.orderNo)) return
-            pending.remove(key)
-        }
+        if (pending.isWaiting(key)) return
         val failedAt = lastFailureAt[key]
         if (failedAt != null && Duration.between(failedAt, now.toInstant()) < properties.cooldown) return
 
@@ -123,67 +113,28 @@ class MartingaleService(
             val request = OrderRequest(market, symbol, Side.BUY, quantity, limitPrice)
             riskGuard.checkBuy(request)
             val receipt = broker.placeOrder(request)
-            pending[key] = PendingOrder(request, receipt, now)
+            pending.track(key, request, receipt, now)
             // 체결가 조회를 기다리지 않는다 — 체결통보가 이미 왔으면 TradeService 가 보관한 체결가를 채우고, 아니면 통보가 올 때 채운다.
             tradeService.record(request, receipt, reason)
             log.info { "[마틴게일 주문] $market $symbol x$quantity @ $limitPrice 주문번호=${receipt.orderNo} — $reason" }
         }
     }
 
-    /**
-     * 주문한 지 [EntryProperties.fillTimeout] 이 지났는데도 체결이 반영되지 않은 주문을 취소한다(주기 호출). 취소가 거부되면 이미 체결됐을
-     * 수 있어 체결통보를 계속 기다리되, [GIVE_UP] 이 지나면 포기하고 판정을 다시 연다(보유 수량은 다음 KIS 잔고 동기화가 바로잡는다).
-     */
+    /** 주문한 지 [EntryProperties.fillTimeout] 이 지났는데도 체결이 반영되지 않은 주문을 취소한다(주기 호출). */
     fun expirePending(now: ZonedDateTime) {
-        pending.forEach { (key, order) ->
-            if (holdingSync.isOrderFilled(order.receipt.orderNo)) {
-                pending.remove(key)
-                return@forEach
-            }
-            val age = Duration.between(order.placedAt, now.toInstant())
-            if (age < properties.fillTimeout) return@forEach
-            if (age > GIVE_UP) {
-                log.warn { "[마틴게일] ${order.request.symbol} 주문 ${order.receipt.orderNo} 의 체결·취소를 확인하지 못해 포기한다" }
-                pending.remove(key)
-                return@forEach
-            }
-            val lastTry = order.lastCancelTryAt
-            if (lastTry != null && Duration.between(lastTry, now.toInstant()) < CANCEL_RETRY) return@forEach
-            if (!inFlight.add(key)) return@forEach
-            try {
-                order.lastCancelTryAt = now.toInstant()
-                cancel(key, order)
-            } finally {
-                inFlight.remove(key)
+        pending.expire(now) { key, action ->
+            if (inFlight.add(key)) {
+                try {
+                    action()
+                } finally {
+                    inFlight.remove(key)
+                }
             }
         }
-    }
-
-    private fun cancel(
-        key: String,
-        order: PendingOrder,
-    ) {
-        val request = order.request
-        val orderNo = order.receipt.orderNo
-        runCatching {
-            CallPriority.urgent {
-                val cancelRequest =
-                    CancelRequest(request.market, request.symbol, orderNo, order.receipt.branchNo, request.quantity, request.limitPrice)
-                broker.cancelOrder(cancelRequest)
-            }
-        }
-            .onSuccess {
-                tradeService.findByOrderNo(request.market, orderNo)?.let(tradeService::markCanceled)
-                pending.remove(key)
-                log.info { "[마틴게일 취소] ${request.market} ${request.symbol} 미체결 주문 $orderNo 을 취소했다 — 다음 틱부터 다시 판정" }
-            }
-            .onFailure { log.warn(it) { "[마틴게일] ${request.symbol} 주문 $orderNo 취소 실패(이미 체결됐을 수 있다) — 체결통보를 기다린다" } }
     }
 
     private companion object {
         /** 호가 단위 반올림 오차(가장 큰 호가는 가격의 약 0.2%)를 덮는 여유 0.3%. */
         val PRECHECK_MARGIN: BigDecimal = BigDecimal("0.003")
-        val GIVE_UP: Duration = Duration.ofMinutes(2)
-        val CANCEL_RETRY: Duration = Duration.ofSeconds(5)
     }
 }

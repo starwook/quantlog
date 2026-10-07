@@ -2,9 +2,7 @@ package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.CallPriority
-import com.quantlog.broker.CancelRequest
 import com.quantlog.broker.Market
-import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
@@ -60,13 +58,8 @@ class ExitService(
     private val holdingSync: HoldingSyncService,
     private val properties: ExitProperties,
 ) {
-    private class PendingOrder(val request: OrderRequest, val receipt: OrderReceipt, val placedAt: Instant) {
-        /** 마지막으로 취소를 시도한 시각. 거부가 이어질 때 매초 두드리지 않으려고 쓴다. */
-        var lastCancelTryAt: Instant? = null
-    }
-
     /** 매도 주문은 냈는데 체결 확인이 아직 안 된 종목. */
-    private val pending = ConcurrentHashMap<String, PendingOrder>()
+    private val pending = PendingOrders("청산", broker, tradeService, holdingSync, properties.fillTimeout)
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
 
     /** 보유 종목 전체를 판정한다. [exclude] 가 true 인 종목은 다른 경로(실시간)가 맡고 있으니 건너뛴다. */
@@ -114,10 +107,7 @@ class ExitService(
         holding: ExitPosition,
         key: String,
     ) {
-        pending[key]?.let { order ->
-            if (!holdingSync.isOrderFilled(order.receipt.orderNo)) return
-            pending.remove(key)
-        }
+        if (pending.isWaiting(key)) return
 
         val quote = broker.quote(holding.market, holding.symbol)
         // 익절·손절 %는 종목별 DB 설정(symbol_strategy). 설정 행이 없는 종목은 전역 설정(application.yml)을 쓴다.
@@ -152,7 +142,7 @@ class ExitService(
                 )
             riskGuard.check(request)
             val receipt = broker.placeOrder(request)
-            pending[key] = PendingOrder(request, receipt, Instant.now())
+            pending.track(key, request, receipt, Instant.now())
             log.info { "[청산 지연] ${request.market} ${request.symbol} 신호→주문 접수 ${System.currentTimeMillis() - signaledAt}ms" }
             val reason =
                 "청산 스케줄러: $percentRule — $signal (평단 ${holding.avgCost} → 현재 ${quote.price}, " +
@@ -177,58 +167,16 @@ class ExitService(
             else -> ""
         }
 
-    /**
-     * 주문한 지 [ExitProperties.fillTimeout] 이 지났는데도 체결이 확인되지 않은 매도 주문을 취소한다(주기 호출). 취소가 거부되면 이미
-     * 체결됐을 수 있어 체결통보를 계속 기다리되, [GIVE_UP] 이 지나면 포기하고 판정을 다시 연다(보유는 다음 KIS 잔고 동기화가 바로잡는다).
-     */
+    /** 주문한 지 [ExitProperties.fillTimeout] 이 지났는데도 체결이 확인되지 않은 매도 주문을 취소한다(주기 호출). */
     fun expirePending(now: ZonedDateTime) {
-        pending.forEach { (key, order) ->
-            if (holdingSync.isOrderFilled(order.receipt.orderNo)) {
-                pending.remove(key)
-                return@forEach
-            }
-            val age = Duration.between(order.placedAt, now.toInstant())
-            if (age < properties.fillTimeout) return@forEach
-            if (age > GIVE_UP) {
-                log.warn { "[청산] ${order.request.symbol} 주문 ${order.receipt.orderNo} 의 체결·취소를 확인하지 못해 포기한다" }
-                pending.remove(key)
-                return@forEach
-            }
-            val lastTry = order.lastCancelTryAt
-            if (lastTry != null && Duration.between(lastTry, now.toInstant()) < CANCEL_RETRY) return@forEach
-            if (!inFlight.add(key)) return@forEach
-            try {
-                order.lastCancelTryAt = now.toInstant()
-                cancel(key, order)
-            } finally {
-                inFlight.remove(key)
+        pending.expire(now) { key, action ->
+            if (inFlight.add(key)) {
+                try {
+                    action()
+                } finally {
+                    inFlight.remove(key)
+                }
             }
         }
-    }
-
-    private fun cancel(
-        key: String,
-        order: PendingOrder,
-    ) {
-        val request = order.request
-        val orderNo = order.receipt.orderNo
-        runCatching {
-            CallPriority.urgent {
-                broker.cancelOrder(
-                    CancelRequest(request.market, request.symbol, orderNo, order.receipt.branchNo, request.quantity, request.limitPrice),
-                )
-            }
-        }
-            .onSuccess {
-                tradeService.findByOrderNo(request.market, orderNo)?.let(tradeService::markCanceled)
-                pending.remove(key)
-                log.info { "[청산 취소] ${request.market} ${request.symbol} 미체결 매도 $orderNo 을 취소했다 — 다음 틱부터 다시 판정" }
-            }
-            .onFailure { log.warn(it) { "[청산] ${request.symbol} 주문 $orderNo 취소 실패(이미 체결됐을 수 있다) — 체결통보를 기다린다" } }
-    }
-
-    private companion object {
-        val GIVE_UP: Duration = Duration.ofMinutes(2)
-        val CANCEL_RETRY: Duration = Duration.ofSeconds(5)
     }
 }
