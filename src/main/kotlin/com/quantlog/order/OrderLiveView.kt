@@ -91,13 +91,16 @@ data class HoldingLiveView(
     val updatedAtText: String,
 ) {
     companion object {
+        /** [livePrice] 가 있으면(실시간 틱) 잔고 사본의 현재가 대신 쓴다. */
         fun of(
             holding: AccountHolding,
             symbolName: String,
+            livePrice: BigDecimal? = null,
         ): HoldingLiveView {
             val currency = holding.market.currency
+            val currentPrice = livePrice ?: holding.currentPrice
             val cost = holding.avgCost.multiply(BigDecimal(holding.quantity))
-            val amount = holding.currentPrice.multiply(BigDecimal(holding.quantity)).subtract(cost)
+            val amount = currentPrice.multiply(BigDecimal(holding.quantity)).subtract(cost)
             val percent = if (cost.signum() > 0) amount.multiply(BigDecimal(100)).divide(cost, MathContext.DECIMAL64) else BigDecimal.ZERO
             return HoldingLiveView(
                 market = holding.market.name,
@@ -105,7 +108,7 @@ data class HoldingLiveView(
                 symbolName = symbolName,
                 quantity = holding.quantity,
                 avgCostText = holding.avgCost.money(currency),
-                currentPriceText = holding.currentPrice.money(currency),
+                currentPriceText = currentPrice.money(currency),
                 unrealizedText = signedMoneyAndPercent(amount, percent, currency),
                 unrealizedCss = pnlCss(amount),
                 updatedAtText = TIME_FORMAT.format(holding.updatedAt.atZone(KST)),
@@ -147,16 +150,19 @@ data class PnlSummaryLiveView(
     val winRateText: String,
 ) {
     companion object {
+        /** [unrealizedAmount]·[unrealizedPercent] 는 실시간 현재가로 다시 계산한 평가손익. */
         fun of(
             summary: PortfolioSummary,
             currency: String,
+            unrealizedAmount: BigDecimal,
+            unrealizedPercent: BigDecimal,
         ): PnlSummaryLiveView {
             val decided = summary.sellWinToday + summary.sellLossToday
             return PnlSummaryLiveView(
                 todayText = signedMoneyAndPercent(summary.realizedPnlToday, summary.realizedPnlTodayPercent, currency),
                 todayCss = pnlCss(summary.realizedPnlToday),
-                unrealizedText = signedMoneyAndPercent(summary.unrealizedPnl, summary.unrealizedPnlPercent, currency),
-                unrealizedCss = pnlCss(summary.unrealizedPnl),
+                unrealizedText = signedMoneyAndPercent(unrealizedAmount, unrealizedPercent, currency),
+                unrealizedCss = pnlCss(unrealizedAmount),
                 buyCount = summary.buyCountToday,
                 sellCount = summary.sellCountToday,
                 win = summary.sellWinToday,
