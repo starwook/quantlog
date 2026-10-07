@@ -11,6 +11,8 @@ import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Instant
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 private val log = KotlinLogging.logger {}
 
@@ -30,13 +32,25 @@ class HoldingSyncScheduler(
     private val holdingSync: HoldingSyncService,
     private val properties: HoldingSyncProperties,
 ) {
+    private val executor = Executors.newSingleThreadExecutor { Thread(it, "holding-sync").apply { isDaemon = true } }
+    private val running = AtomicBoolean(false)
+
     @Scheduled(
         fixedDelayString = "\${quantlog.holding-sync.interval-millis:10000}",
         // 다른 스케줄러들은 첫 동기화가 끝나야 움직이므로(hasUnsyncedTrade) 가장 먼저 시작한다.
         initialDelayString = "\${quantlog.holding-sync.initial-delay-millis:5000}",
     )
     fun run() {
-        if (properties.enabled) syncNow()
+        if (!properties.enabled || !running.compareAndSet(false, true)) return
+        // 스프링 스케줄러는 스레드 하나를 모든 @Scheduled 가 나눠 쓴다. 느린 KIS 호출 하나가 잔고 동기화를 몇 분씩 막은 적이 있어
+        // (2026-10-07: 화면 보유 종목이 갱신 안 됨) 동기화는 전용 스레드에서 돌리고, 이전 회차가 안 끝났으면 건너뛴다.
+        executor.execute {
+            try {
+                syncNow()
+            } finally {
+                running.set(false)
+            }
+        }
     }
 
     /** 체결이 확인되면 10초 주기를 기다리지 않고 바로 잔고를 다시 받는다. */

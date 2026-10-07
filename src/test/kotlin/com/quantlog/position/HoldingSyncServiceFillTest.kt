@@ -118,6 +118,21 @@ class HoldingSyncServiceFillTest {
     }
 
     @Test
+    fun `체결통보의 주문수량이 0 이어도 매매 기록 수량을 상한으로 반영한다`() {
+        val existing = row(100, "8320")
+        Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(existing)
+        val trade = Trade(Market.KR, symbol, Side.SELL, 100, BigDecimal("8330"), "0000027523", "ok")
+        Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "0000027523")).thenReturn(trade)
+
+        // 실측: 44주 + 56주로 쪼개져 오고 둘 다 주문수량 0
+        service.applyFill(notice(Side.SELL, 44, "8335", orderNo = "0000027523", orderQuantity = 0), now)
+        assertEquals(56, existing.quantity)
+        service.applyFill(notice(Side.SELL, 56, "8335", orderNo = "0000027523", orderQuantity = 0), now)
+        verify(repository).delete(existing)
+        assertTrue(service.isOrderFilled("0000027523"))
+    }
+
+    @Test
     fun `체결통보를 반영한 종목은 그 전에 시작한 KIS 잔고 조회로 덮어쓰지 않는다`() {
         val existing = row(3, "9000")
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(existing)

@@ -64,7 +64,7 @@ class HoldingSyncService(
     /**
      * 체결통보 한 건을 보유 현황에 반영한다. 체결 통보(국내)만 처리하고 접수 통보·해외는 건너뛴다(해외는 실측 전).
      * 매수는 수량 가중평균으로 평단을 다시 계산하고, 매도는 수량만 줄인다(0이 되면 행 삭제). 바뀐 내용 설명을 돌려준다(건너뛰면 null).
-     * 부분체결 통보의 체결수량이 건별인지 누적인지는 실측 전이라 건별로 보고 더하되, 주문수량을 넘기지 않게 막는다.
+     * 부분체결 통보의 체결수량은 건별이다(2026-10-07 실측: 100주 매도가 44주 + 56주로 왔다). 그대로 더하고 빼되, 같은 통보가 중복 와도 주문수량을 넘기지 않게만 막는다.
      */
     @Transactional
     fun applyFill(
@@ -75,7 +75,7 @@ class HoldingSyncService(
         val side = notice.side ?: return null
         val price = notice.filledPrice ?: return null
         val reported = notice.filledQuantity?.toInt() ?: return null
-        val quantity = reserveFillQuantity(notice.orderNo, reported, notice.orderQuantity?.toInt() ?: Int.MAX_VALUE)
+        val quantity = reserveFillQuantity(notice.orderNo, reported, orderQuantityOf(notice))
         if (quantity <= 0) return null
 
         val market = Market.KR
@@ -110,6 +110,16 @@ class HoldingSyncService(
         log.info { "[체결통보 반영] ${notice.orderNo} $change" }
         events.publishEvent(HoldingsChangedEvent)
         return change
+    }
+
+    /**
+     * 주문수량. 체결통보가 주문수량을 0 으로 보내오는 경우가 있다(2026-10-07 실측: 쪼개져 온 매도 체결 두 건 모두 0 → 반영이 통째로 건너뛰어졌다).
+     * 0 이하면 우리 매매 기록(Trade)의 수량을 쓰고, 그것도 없으면 상한 없이 체결수량을 그대로 믿는다.
+     */
+    private fun orderQuantityOf(notice: FillNotice): Int {
+        val reported = notice.orderQuantity?.toInt() ?: 0
+        if (reported > 0) return reported
+        return tradeRepository.findFirstByMarketAndOrderNo(Market.KR, notice.orderNo)?.quantity ?: Int.MAX_VALUE
     }
 
     /** 이 주문에서 이번 통보로 더 반영할 수량을 정하고 기록한다. 이미 주문수량만큼 반영했으면 0. */
