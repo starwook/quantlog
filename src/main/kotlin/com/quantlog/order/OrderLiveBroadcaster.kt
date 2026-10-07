@@ -124,6 +124,7 @@ class OrderLiveBroadcaster(
                 "holding" to HoldingLiveView.of(holding, symbolStrategyService.displayName(holding.market, symbol), livePrices[symbol]),
                 "unrealizedText" to signedMoneyAndPercent(amount, percent, KRW),
                 "unrealizedCss" to pnlCss(amount),
+                "totalValueText" to totalValueOf(heldKr.values).money(KRW),
             ),
         )
     }
@@ -137,11 +138,16 @@ class OrderLiveBroadcaster(
         return amount to percent
     }
 
+    /** 보유 종목 전체의 총 평가금액. 현재가는 [unrealizedOf] 와 같은 규칙. */
+    private fun totalValueOf(held: Collection<AccountHolding>): BigDecimal =
+        held.sumOf { (livePrices[it.symbol] ?: it.currentPrice).multiply(BigDecimal(it.quantity)) }
+
     /** 국내 화면이므로 원화 요약만 보낸다. 평가손익은 실시간 현재가로 다시 계산한다. */
     private fun summaryView(snapshot: PortfolioSnapshot): PnlSummaryLiveView? {
         val summary = snapshot.summaryByCurrency[KRW] ?: return null
-        val (amount, percent) = unrealizedOf(accountHoldingRepository.findAll().filter { it.market == Market.KR && it.quantity > 0 })
-        return PnlSummaryLiveView.of(summary, KRW, amount, percent)
+        val held = accountHoldingRepository.findAll().filter { it.market == Market.KR && it.quantity > 0 }
+        val (amount, percent) = unrealizedOf(held)
+        return PnlSummaryLiveView.of(summary, KRW, amount, percent, totalValueOf(held))
     }
 
     private fun holdingViews(): List<HoldingLiveView> {

@@ -16,7 +16,7 @@ private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 private val DATE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")
 
 /** 원화는 소수점 없이, 그 외는 소수점 둘째 자리까지. */
-private fun BigDecimal.money(currency: String): String = String.format(Locale.US, "%,.${if (currency == "KRW") 0 else 2}f", this)
+internal fun BigDecimal.money(currency: String): String = String.format(Locale.US, "%,.${if (currency == "KRW") 0 else 2}f", this)
 
 /** 실시간 주문 화면이 그대로 찍을 수 있게 포맷을 끝낸 주문 한 건. 화면에는 포맷·색상 판정 로직을 두지 않는다. */
 data class OrderLiveView(
@@ -84,6 +84,8 @@ data class HoldingLiveView(
     val quantity: Int,
     val avgCostText: String,
     val currentPriceText: String,
+    /** 종목 평가금액(현재가 × 수량). */
+    val valueText: String,
     /** 평가손익. 예: +3,000 (+1.10%) */
     val unrealizedText: String,
     val unrealizedCss: String,
@@ -107,6 +109,7 @@ data class HoldingLiveView(
                 quantity = holding.quantity,
                 avgCostText = holding.avgCost.money(currency),
                 currentPriceText = currentPrice.money(currency),
+                valueText = currentPrice.multiply(BigDecimal(holding.quantity)).money(currency),
                 unrealizedText = signedMoneyAndPercent(amount, percent, currency),
                 unrealizedCss = pnlCss(amount),
             )
@@ -140,6 +143,8 @@ data class PnlSummaryLiveView(
     /** 보유 종목 전체의 현재 평가손익. */
     val unrealizedText: String,
     val unrealizedCss: String,
+    /** 보유 종목 전체의 총 평가금액(현재가 × 수량 합계). */
+    val totalValueText: String,
     val buyCount: Int,
     val sellCount: Int,
     val win: Int,
@@ -147,12 +152,13 @@ data class PnlSummaryLiveView(
     val winRateText: String,
 ) {
     companion object {
-        /** [unrealizedAmount]·[unrealizedPercent] 는 실시간 현재가로 다시 계산한 평가손익. */
+        /** [unrealizedAmount]·[unrealizedPercent]·[totalValue] 는 실시간 현재가로 다시 계산한 값. */
         fun of(
             summary: PortfolioSummary,
             currency: String,
             unrealizedAmount: BigDecimal,
             unrealizedPercent: BigDecimal,
+            totalValue: BigDecimal,
         ): PnlSummaryLiveView {
             val decided = summary.sellWinToday + summary.sellLossToday
             return PnlSummaryLiveView(
@@ -160,6 +166,7 @@ data class PnlSummaryLiveView(
                 todayCss = pnlCss(summary.realizedPnlToday),
                 unrealizedText = signedMoneyAndPercent(unrealizedAmount, unrealizedPercent, currency),
                 unrealizedCss = pnlCss(unrealizedAmount),
+                totalValueText = totalValue.money(currency),
                 buyCount = summary.buyCountToday,
                 sellCount = summary.sellCountToday,
                 win = summary.sellWinToday,

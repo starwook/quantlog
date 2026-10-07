@@ -42,7 +42,8 @@
         .summary { padding: 16px 20px; }
         .summary .label { font-size: 13px; color: var(--muted); }
         .summary .big { font-size: 26px; font-weight: 800; margin: 2px 0 12px; }
-        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .top { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
         .stat { background: var(--bg); border-radius: 12px; padding: 10px 12px; }
         .stat .v { font-size: 15px; font-weight: 700; margin-top: 2px; }
         .order { padding: 12px 8px; margin: 0 -8px; border-top: 1px solid var(--border); font-size: 15px; border-radius: 10px; }
@@ -80,14 +81,16 @@
 <main>
     <nav th:replace="~{fragments/nav :: menu('orders')}"></nav>
     <section class="card summary" id="summary" hidden>
-        <div class="label">오늘 실현손익 <span class="sub">(매도 확정분)</span></div>
-        <div class="big" id="sumToday"></div>
+        <div class="top">
+            <div><div class="label">오늘 실현손익 <span class="sub">(매도 확정분)</span></div><div class="big" id="sumToday"></div></div>
+            <div><div class="label">현재 평가손익</div><div class="big" id="sumUnrealized"></div></div>
+        </div>
+        <div class="label">총 평가금액 <span class="sub">(보유 종목 합계)</span></div>
+        <div class="big" id="sumTotalValue"></div>
         <div class="stats">
-            <div class="stat"><div class="label">승률</div><div class="v" id="sumWinRate"></div></div>
-            <div class="stat"><div class="label">승 / 패</div><div class="v" id="sumWinLoss"></div></div>
+            <div class="stat"><div class="label">승률 (승 / 패)</div><div class="v" id="sumWinRate"></div></div>
             <div class="stat"><div class="label">매수 회수</div><div class="v" id="sumBuy"></div></div>
             <div class="stat"><div class="label">매도 회수</div><div class="v" id="sumSell"></div></div>
-            <div class="stat" style="grid-column: span 2"><div class="label">현재 평가손익</div><div class="v" id="sumUnrealized"></div></div>
         </div>
     </section>
 
@@ -161,6 +164,7 @@
         left.appendChild(el('span', 'code', h.symbol));
         row.appendChild(line(left, el('span', 'name ' + h.unrealizedCss, h.unrealizedText)));
         row.appendChild(el('div', 'sub', h.quantity + '주 · 평단 ' + h.avgCostText + ' → 현재 ' + h.currentPriceText));
+        row.appendChild(el('div', 'sub', '평가금액 ' + h.valueText));
         return row;
     }
 
@@ -189,8 +193,8 @@
         const set = (id, text, css) => { const e = document.getElementById(id); e.textContent = text; if (css !== undefined) e.className = e.className.replace(/\b(pos|neg|zero)\b/g, '').trim() + ' ' + css; };
         set('sumToday', sm.todayText, sm.todayCss);
         set('sumUnrealized', sm.unrealizedText, sm.unrealizedCss);
-        set('sumWinRate', sm.winRateText);
-        set('sumWinLoss', sm.win + '승 ' + sm.loss + '패');
+        set('sumTotalValue', sm.totalValueText);
+        set('sumWinRate', sm.winRateText + ' (' + sm.win + '승 ' + sm.loss + '패)');
         set('sumBuy', sm.buyCount + '회');
         set('sumSell', sm.sellCount + '회');
         if (flash) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
@@ -252,6 +256,7 @@
                 // 보유 종목 한 건의 실시간 틱: 그 종목 행과 요약 카드의 평가손익만 바꾼다.
                 holdings = holdings.map((h) => (h.market === msg.holding.market && h.symbol === msg.holding.symbol ? msg.holding : h));
                 renderHoldings();
+                document.getElementById('sumTotalValue').textContent = msg.totalValueText;
                 const sum = document.getElementById('sumUnrealized');
                 sum.textContent = msg.unrealizedText;
                 sum.className = sum.className.replace(/\b(pos|neg|zero)\b/g, '').trim() + ' ' + msg.unrealizedCss;
