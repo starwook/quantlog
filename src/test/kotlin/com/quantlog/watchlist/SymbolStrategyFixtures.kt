@@ -27,7 +27,6 @@ fun symbolStrategy(
     martingaleDropPercent = BigDecimal("0.5"),
     martingaleMultiplier = 2,
     martingaleMaxStages = 5,
-    martingaleFinalStageStopLossPercent = BigDecimal("3"),
     supportBounceEntry = supportBounceEntry,
     periodicRebuy = periodicRebuy,
     periodicRebuyQuantity = periodicRebuyQuantity,

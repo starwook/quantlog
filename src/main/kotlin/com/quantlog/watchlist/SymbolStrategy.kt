@@ -29,7 +29,7 @@ private val log = KotlinLogging.logger {}
  * 코드가 아니라 DB(`symbol_strategy` 테이블)에 둔다 — 값을 UPDATE 하면 재시작 없이 스케줄러의 다음 주기(1초)부터 반영된다.
  * 스케줄러는 매번 읽기 때문에 캐시가 없다. 이 테이블의 행 목록이 곧 감시 종목(분봉 수집·차트·구독 대상)이다 — 종목을 추가하려면 행을 넣으면 된다.
  *
- * 비율은 % 단위다(0.5 = 0.5%). 손절이 null 이면 전역 손절은 보류(안 나감)다.
+ * 비율은 % 단위다(0.5 = 0.5%). 손절이 null 이면 보류(안 나감)다. 손절은 마틴게일 여부·단계와 무관하게 평단 기준 하나뿐이다.
  * 매수 옵션이 하나도 안 켜진 종목은 분봉만 모으고 사지 않는다. 아래 [SymbolStrategySeeder] 가 없는 행만 기본값으로 채운다(기존 값은 안 덮어씀).
  */
 @Entity
@@ -56,8 +56,6 @@ class SymbolStrategy(
     var martingaleMultiplier: Int,
     @Column(name = "martingale_max_stages", nullable = false)
     var martingaleMaxStages: Int,
-    @Column(name = "martingale_final_stage_stop_loss_percent", nullable = false, precision = 10, scale = 4)
-    var martingaleFinalStageStopLossPercent: BigDecimal,
     /** ETF 면 true. 국내 ETF 는 증권거래세가 없어서 모킹 체결의 제세금 계산이 달라진다 ([EtfRegistry]). */
     @Column(nullable = false)
     var etf: Boolean = false,
@@ -87,7 +85,6 @@ class SymbolStrategy(
             dropPercent = martingaleDropPercent,
             multiplier = martingaleMultiplier,
             maxStages = martingaleMaxStages,
-            finalStageStopLossPercent = martingaleFinalStageStopLossPercent,
         )
 }
 
@@ -99,7 +96,6 @@ class SymbolStrategyForm {
     var martingaleDropPercent: BigDecimal? = null
     var martingaleMultiplier: Int? = null
     var martingaleMaxStages: Int? = null
-    var martingaleFinalStageStopLossPercent: BigDecimal? = null
     var etf: Boolean = false
     var supportBounceEntry: Boolean = false
     var periodicRebuy: Boolean = false
@@ -151,6 +147,14 @@ class SymbolStrategyService(
         val target = requireNotNull(find(market, symbol)) { "설정이 없는 종목입니다: $symbol" }
         val takeProfit = positive(form.takeProfitPercent, "익절 %")
         val stopLoss = form.stopLossPercent?.also { positive(it, "손절 %") }
+        // 마틴게일은 단계마다 평단이 -dropPercent 씩 내려가 추가 매수하는데, 손절이 그보다 작으면 첫 추가 매수 전에 손절돼 마틴게일이 성립하지 않는다.
+        if (form.martingale && stopLoss != null) {
+            val drop = positive(form.martingaleDropPercent, "마틴게일 추가매수 하락 %")
+            require(stopLoss >= drop) {
+                val stopText = stopLoss.stripTrailingZeros().toPlainString()
+                "마틴게일을 켠 종목은 손절 %($stopText)가 추가매수 하락 %(${drop.stripTrailingZeros().toPlainString()}) 이상이어야 합니다"
+            }
+        }
         target.etf = form.etf
         target.takeProfitPercent = takeProfit
         target.stopLossPercent = stopLoss
@@ -163,7 +167,6 @@ class SymbolStrategyService(
         target.martingaleDropPercent = positive(form.martingaleDropPercent, "마틴게일 추가매수 하락 %")
         target.martingaleMultiplier = atLeast(form.martingaleMultiplier, 2, "마틴게일 배수")
         target.martingaleMaxStages = atLeast(form.martingaleMaxStages, 1, "마틴게일 최대 단계")
-        target.martingaleFinalStageStopLossPercent = positive(form.martingaleFinalStageStopLossPercent, "마지막 단계 손절 %")
     }
 
     private fun atLeast(
@@ -239,7 +242,6 @@ class SymbolStrategyService(
         martingaleDropPercent = martingaleProperties.dropPercent,
         martingaleMultiplier = martingaleProperties.multiplier,
         martingaleMaxStages = martingaleProperties.maxStages,
-        martingaleFinalStageStopLossPercent = martingaleProperties.finalStageStopLossPercent,
         etf = etf,
         supportBounceEntry = trade,
     )

@@ -11,8 +11,6 @@ import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.ExitSignal
 import com.quantlog.strategy.FixedPercentExitRule
-import com.quantlog.strategy.MartingaleCycle
-import com.quantlog.strategy.MartingaleRule
 import com.quantlog.watchlist.SymbolStrategy
 import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
@@ -116,19 +114,8 @@ class ExitService(
         // 익절·손절 %는 종목별 DB 설정(symbol_strategy). 설정 행이 없는 종목은 전역 설정(application.yml)을 쓴다.
         val config = symbolStrategyService.find(holding.market, holding.symbol)
         val rule = config?.let { FixedPercentExitRule(it.takeProfitPercent, it.stopLossPercent) } ?: exitRule
-        var signal = rule.evaluate(holding.avgCost, quote)
-        var percentRule = percentRuleText(signal, config)
-        // 마틴게일 종목의 손절은 전역 손절(보류)이 아니라 최대 단계 매수 뒤에만 있는 별도 손절이다.
-        if (signal == ExitSignal.HOLD && config?.martingale == true) {
-            val cycle =
-                MartingaleCycle.from(
-                    tradeService.trades(holding.market, holding.symbol),
-                ).withAccount(holding.quantity, holding.avgCost)
-            if (MartingaleRule(config.martingaleProperties()).shouldStopLoss(cycle, quote)) {
-                signal = ExitSignal.STOP_LOSS
-                percentRule = "마틴게일 최대 단계 손절 -${config.martingaleFinalStageStopLossPercent.stripTrailingZeros().toPlainString()}% 법칙"
-            }
-        }
+        val signal = rule.evaluate(holding.avgCost, quote)
+        val percentRule = percentRuleText(signal, config)
         if (signal == ExitSignal.HOLD) return
 
         sell(holding, quote, signal, rule, percentRule)
@@ -162,7 +149,7 @@ class ExitService(
                     .getOrNull()
             val reason =
                 "청산 스케줄러: $percentRule — $signal (평단 ${holding.avgCost} → 현재 ${quote.price}, " +
-                    "익절 ${targets.takeProfitPrice} / 손절 ${targets.stopLossPrice ?: "없음(마틴게일은 최대 단계 뒤에만)"})"
+                    "익절 ${targets.takeProfitPrice} / 손절 ${targets.stopLossPrice ?: "없음"})"
             tradeService.record(request, receipt, reason, filledPrice)
             log.info {
                 "[청산] ${request.market} ${request.symbol} x${request.quantity} @ ${request.limitPrice} " +
