@@ -7,7 +7,7 @@ import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.OrderStatus
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
-import com.quantlog.position.PortfolioService
+import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.TradeService
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
@@ -26,7 +26,7 @@ class ManualOrderService(
     private val broker: BrokerClient,
     private val riskGuard: RiskGuard,
     private val tradeService: TradeService,
-    private val portfolioService: PortfolioService,
+    private val accountHoldingRepository: AccountHoldingRepository,
 ) {
     /** 살 수 없으면 [IllegalStateException]/[RiskViolationException] (메시지는 화면에 그대로 보여준다). [limitPrice] 가 null 이면 즉시 체결가. */
     fun buy(
@@ -54,10 +54,8 @@ class ManualOrderService(
     ) {
         require(quantity > 0) { "수량은 1주 이상이어야 합니다" }
         check(market.isTradable(now)) { "지금은 $market 거래 시간이 아닙니다" }
-        val holding =
-            portfolioService.snapshot().summaryByCurrency.values
-                .flatMap { it.holdings }
-                .firstOrNull { it.market == market && it.symbol == symbol && it.quantity > 0 }
+        // 매매 기록 전체를 계산하는 스냅숏 대신 잔고 사본(종목당 1행)만 읽는다 — 수동 주문 응답을 가볍게 유지하려고.
+        val holding = accountHoldingRepository.findByMarketAndSymbol(market, symbol)?.takeIf { it.quantity > 0 }
         checkNotNull(holding) { "보유 중이 아닙니다: $symbol" }
         check(quantity <= holding.quantity) { "보유 수량(${holding.quantity}주)보다 많이 팔 수 없습니다" }
 
@@ -101,22 +99,8 @@ class ManualOrderService(
         reason: String,
     ) {
         val receipt = broker.placeOrder(request)
-        Thread.sleep(FILL_CHECK_WAIT_MILLIS)
-        val status =
-            runCatching { broker.orderStatus(request.market, receipt.orderNo, request.quantity) }
-                .onFailure { log.warn(it) { "[체결 조회 실패] ${request.market} ${receipt.orderNo} — 체결 확인중으로 기록" } }
-                .getOrDefault(OrderStatus.Unknown)
-        tradeService.record(
-            request,
-            receipt,
-            reason,
-            filledPrice = (status as? OrderStatus.Filled)?.price,
-            openConfirmed = status == OrderStatus.Open,
-        )
+        // 체결가 조회를 기다리지 않는다(자동 청산과 같다) — 체결통보가 이미 왔으면 TradeService 가 보관한 체결가를 채우고, 아니면 통보가 올 때 채운다.
+        tradeService.record(request, receipt, reason)
         log.info { "[수동 주문] ${request.side} ${request.market} ${request.symbol} x${request.quantity} 주문번호=${receipt.orderNo}" }
-    }
-
-    private companion object {
-        const val FILL_CHECK_WAIT_MILLIS = 2000L
     }
 }
