@@ -91,7 +91,8 @@
         <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol} + '?date=' + ${prevDate}}">← 전날</a>
         <span class="current" th:text="${date}"></span>
         <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol} + '?date=' + ${nextDate}}">다음날 →</a>
-        <a th:href="@{'/chart/' + ${market} + '/' + ${symbol}}" style="margin-left: auto;">차트 보기 →</a>
+        <a th:href="@{'/backtest/martingale/' + ${market} + '/' + ${symbol}}" style="margin-left: auto;">마틴게일 백테스트 →</a>
+        <a th:href="@{'/chart/' + ${market} + '/' + ${symbol}}">차트 보기 →</a>
     </div>
 
     <h1 th:text="${symbolName} + ' 백테스트'"></h1>

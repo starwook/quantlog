@@ -8,11 +8,8 @@ import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestParam
-import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.Locale
 
 private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 
@@ -77,22 +74,4 @@ class BacktestController(
             returnCss = pnlCss(returnPercent),
             exitReason = exitReason,
         )
-
-    private fun BigDecimal.money(currency: String): String {
-        val scale = if (currency == "KRW") 0 else 2
-        return String.format(Locale.US, "%,.${scale}f", this)
-    }
-
-    private fun signedPercent(value: BigDecimal): String {
-        val v = value.setScale(2, RoundingMode.HALF_UP)
-        val sign = if (v > BigDecimal.ZERO) "+" else ""
-        return "$sign${v.toPlainString()}%"
-    }
-
-    private fun pnlCss(value: BigDecimal): String =
-        when {
-            value > BigDecimal.ZERO -> "pos"
-            value < BigDecimal.ZERO -> "neg"
-            else -> "zero"
-        }
 }

@@ -31,6 +31,12 @@ class MinuteCandleStore(private val repository: MinuteCandleRepository) {
             .asReversed()
             .map { it.toDomain() }
 
+    /** 분봉이 쌓여 있는 날짜(최신순). */
+    fun tradeDates(
+        market: Market,
+        symbol: String,
+    ): List<LocalDate> = repository.findTradeDates(market, symbol)
+
     private fun MinuteCandleEntity.toDomain() =
         MinuteCandle(
             date = tradeDate,
