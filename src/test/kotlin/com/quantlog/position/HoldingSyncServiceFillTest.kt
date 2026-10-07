@@ -147,6 +147,18 @@ class HoldingSyncServiceFillTest {
     }
 
     @Test
+    fun `주문수량만큼 다 반영해야 체결 완료이고 일부만 반영된 주문은 아직이다`() {
+        Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(row(10, "9000"))
+
+        service.applyFill(notice(Side.BUY, 3, "9000", orderNo = "P1", orderQuantity = 5), now)
+        assertFalse(service.isOrderFilled("P1"))
+
+        service.applyFill(notice(Side.BUY, 2, "9000", orderNo = "P1", orderQuantity = 5), now)
+        assertTrue(service.isOrderFilled("P1"))
+        assertFalse(service.isOrderFilled("없는 주문"))
+    }
+
+    @Test
     fun `주문을 체결통보로 다 반영했으면 잔고 동기화를 기다리지 않아도 된다`() {
         val synced = Instant.parse("2026-10-07T00:00:00Z")
         service.sync(emptyList(), synced)

@@ -8,6 +8,7 @@ import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
+import com.quantlog.broker.RealtimePriceFeed
 import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.HoldingSyncService
@@ -125,6 +126,8 @@ class EntrySchedulerTest {
         marketDataService: MarketDataService = marketDataServiceStub(),
         tradeService: TradeService = Mockito.mock(TradeService::class.java),
         configs: List<SymbolStrategy> = defaultConfigs,
+        holdingSync: HoldingSyncService = Mockito.mock(HoldingSyncService::class.java),
+        realtimeFeed: RealtimePriceFeed = Mockito.mock(RealtimePriceFeed::class.java),
     ) = EntryScheduler(
         broker,
         RiskGuard(RiskProperties(), noopPortfolioService()),
@@ -136,7 +139,8 @@ class EntrySchedulerTest {
         marketDataService,
         tradeService,
         portfolioService,
-        Mockito.mock(HoldingSyncService::class.java),
+        holdingSync,
+        realtimeFeed,
         EntryProperties(enabled = true),
     )
 
@@ -239,6 +243,59 @@ class EntrySchedulerTest {
     }
 
     @Test
+    fun `국내 실시간이 커버하는 종목의 마틴게일은 틱 경로가 맡아서 폴링은 사지 않는다`() {
+        val trades = arrayOf(buy(2, "10100"))
+        val feed = Mockito.mock(RealtimePriceFeed::class.java)
+        Mockito.`when`(feed.isLive(Market.KR, "005930")).thenReturn(true)
+        val broker = FakeBroker()
+
+        scheduler(
+            broker,
+            EntrySignal.NO_TRADE,
+            portfolioService = portfolioServiceHeldBy(*trades),
+            tradeService = tradeServiceWith(*trades),
+            realtimeFeed = feed,
+        )
+            .checkEntries(krOpen)
+
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `체결통보가 없는 폴링 마틴게일은 잔고 동기화 전엔 미루고 동기화되면 산다`() {
+        val trades = arrayOf(buy(2, "10100"))
+        val sync = Mockito.mock(HoldingSyncService::class.java)
+        Mockito.`when`(sync.hasUnsyncedTrade(Market.KR, "005930")).thenReturn(true)
+        val broker = FakeBroker()
+        val scheduler =
+            scheduler(
+                broker,
+                EntrySignal.NO_TRADE,
+                portfolioService = portfolioServiceHeldBy(*trades),
+                tradeService = tradeServiceWith(*trades),
+                holdingSync = sync,
+            )
+
+        scheduler.checkEntries(krOpen)
+        assertTrue(broker.orders.isEmpty())
+
+        Mockito.`when`(sync.hasUnsyncedTrade(Market.KR, "005930")).thenReturn(false)
+        scheduler.checkEntries(krOpen)
+        assertEquals(2, broker.orders.single().quantity)
+    }
+
+    @Test
+    fun `5분 재매수는 잔고 동기화를 기다리지 않는다`() {
+        val sync = Mockito.mock(HoldingSyncService::class.java)
+        Mockito.`when`(sync.hasUnsyncedTrade(Market.KR, "005930")).thenReturn(true)
+        val broker = FakeBroker()
+
+        rebuyScheduler(broker, held = false, holdingSync = sync).checkEntries(krOpen)
+
+        assertEquals(1, broker.orders.single().quantity)
+    }
+
+    @Test
     fun `마틴게일만 켜면 첫 진입은 하지 않는다 - 저점 판단 진입·5분 재매수는 별개 옵션`() {
         assertTrue(martingale(signal = EntrySignal.BUY).orders.isEmpty())
     }
@@ -246,6 +303,7 @@ class EntrySchedulerTest {
     private fun rebuyScheduler(
         broker: FakeBroker,
         held: Boolean,
+        holdingSync: HoldingSyncService = Mockito.mock(HoldingSyncService::class.java),
         bounce: Boolean = false,
         signal: EntrySignal = EntrySignal.NO_TRADE,
         rebuyQuantity: Int = 1,
@@ -268,6 +326,7 @@ class EntrySchedulerTest {
                     supportBounceQuantity = bounceQuantity,
                 ),
             ),
+        holdingSync = holdingSync,
     )
 
     @Test
