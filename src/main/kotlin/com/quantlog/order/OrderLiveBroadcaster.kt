@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantlog.broker.Market
 import com.quantlog.broker.PriceTick
 import com.quantlog.broker.Side
+import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.HoldingsChangedEvent
 import com.quantlog.position.OrderState
@@ -13,10 +14,10 @@ import com.quantlog.position.RealizedPnl
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeChangedEvent
 import com.quantlog.watchlist.SymbolStrategyService
+import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.event.EventListener
-import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.event.TransactionalEventListener
 import org.springframework.web.socket.CloseStatus
@@ -32,6 +33,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.Executors
 
 private val log = KotlinLogging.logger {}
 
@@ -49,8 +51,12 @@ class OrderLiveBroadcaster(
     private val sessions = CopyOnWriteArraySet<WebSocketSession>()
     private val livePrices = ConcurrentHashMap<String, BigDecimal>()
 
+    // 틱 푸시 전용 스레드. 스프링 스케줄러(스레드 하나를 모든 @Scheduled 가 공유)나 KIS 수신 스레드에 얹으면 느린 호출·클라이언트에 막혀 화면이 멎는다.
+    private val pushExecutor = Executors.newSingleThreadExecutor { Thread(it, "order-live-push").apply { isDaemon = true } }
+
+    /** 지금 보유 중인 국내 종목(수량·평단). 보유가 바뀌어 목록을 다시 보낼 때마다 갱신한다. */
     @Volatile
-    private var priceDirty = false
+    private var heldKr: Map<String, AccountHolding> = emptyMap()
 
     fun connect(session: WebSocketSession) {
         sessions.add(session)
@@ -93,43 +99,62 @@ class OrderLiveBroadcaster(
         broadcast(mapOf("type" to "holdings", "holdings" to holdingViews(), "summary" to summaryView(portfolioService.snapshot())))
     }
 
-    /** 실시간 틱은 수신 스레드에서 오므로 가격만 적어두고, 화면 갱신은 [pushLivePrices] 가 1초에 한 번 모아서 보낸다. */
+    /**
+     * 보유 중인 국내 종목의 실시간 틱이 오면 그 틱마다 현재가·평가손익을 계산해 바로 보낸다. 수량·평단은 메모리([heldKr])에 있어 DB 를 읽지 않는다.
+     * 틱은 KIS 수신 스레드에서 오므로, 브라우저 전송(느린 클라이언트에 막힐 수 있다)은 전용 스레드로 넘긴다.
+     */
     @EventListener
     fun onPriceTick(tick: PriceTick) {
-        if (sessions.isEmpty() || tick.market != Market.KR) return
+        if (tick.market != Market.KR || sessions.isEmpty() || tick.symbol !in heldKr) return
         livePrices[tick.symbol] = tick.price
-        priceDirty = true
+        pushExecutor.execute { runCatching { pushPrice(tick.symbol) }.onFailure { log.warn(it) { "[주문 화면] 실시간 현재가 푸시 실패" } } }
     }
 
-    @Scheduled(fixedDelay = PRICE_PUSH_MILLIS)
-    fun pushLivePrices() {
-        if (!priceDirty || sessions.isEmpty()) return
-        priceDirty = false
-        broadcast(mapOf("type" to "holdings", "holdings" to holdingViews(), "summary" to summaryView(portfolioService.snapshot())))
+    @PreDestroy
+    fun stopPricePush() {
+        pushExecutor.shutdownNow()
+    }
+
+    private fun pushPrice(symbol: String) {
+        val holding = heldKr[symbol] ?: return
+        val (amount, percent) = unrealizedOf(heldKr.values)
+        broadcast(
+            mapOf(
+                "type" to "price",
+                "holding" to HoldingLiveView.of(holding, symbolStrategyService.displayName(holding.market, symbol), livePrices[symbol]),
+                "unrealizedText" to signedMoneyAndPercent(amount, percent, KRW),
+                "unrealizedCss" to pnlCss(amount),
+            ),
+        )
+    }
+
+    /** 보유 국내 종목 전체의 평가손익(금액, 퍼센트). 현재가는 실시간 틱이 있으면 그걸, 없으면 잔고 사본 값을 쓴다. */
+    private fun unrealizedOf(held: Collection<AccountHolding>): Pair<BigDecimal, BigDecimal> {
+        val cost = held.sumOf { it.avgCost.multiply(BigDecimal(it.quantity)) }
+        val value = held.sumOf { (livePrices[it.symbol] ?: it.currentPrice).multiply(BigDecimal(it.quantity)) }
+        val amount = value.subtract(cost)
+        val percent = if (cost.signum() > 0) amount.multiply(BigDecimal(100)).divide(cost, MathContext.DECIMAL64) else BigDecimal.ZERO
+        return amount to percent
     }
 
     /** 국내 화면이므로 원화 요약만 보낸다. 평가손익은 실시간 현재가로 다시 계산한다. */
     private fun summaryView(snapshot: PortfolioSnapshot): PnlSummaryLiveView? {
         val summary = snapshot.summaryByCurrency[KRW] ?: return null
-        val held = accountHoldingRepository.findAll().filter { it.market == Market.KR && it.quantity > 0 }
-        val cost = held.sumOf { it.avgCost.multiply(BigDecimal(it.quantity)) }
-        val value = held.sumOf { (livePrices[it.symbol] ?: it.currentPrice).multiply(BigDecimal(it.quantity)) }
-        val amount = value.subtract(cost)
-        val percent = if (cost.signum() > 0) amount.multiply(BigDecimal(100)).divide(cost, MathContext.DECIMAL64) else BigDecimal.ZERO
+        val (amount, percent) = unrealizedOf(accountHoldingRepository.findAll().filter { it.market == Market.KR && it.quantity > 0 })
         return PnlSummaryLiveView.of(summary, KRW, amount, percent)
     }
 
-    private fun holdingViews() =
-        accountHoldingRepository.findAll()
-            .filter { it.quantity > 0 }
-            .sortedBy { it.symbol }
-            .map {
-                HoldingLiveView.of(
-                    it,
-                    symbolStrategyService.displayName(it.market, it.symbol),
-                    if (it.market == Market.KR) livePrices[it.symbol] else null,
-                )
-            }
+    private fun holdingViews(): List<HoldingLiveView> {
+        val held = accountHoldingRepository.findAll().filter { it.quantity > 0 }.sortedBy { it.symbol }
+        heldKr = held.filter { it.market == Market.KR }.associateBy { it.symbol }
+        return held.map {
+            HoldingLiveView.of(
+                it,
+                symbolStrategyService.displayName(it.market, it.symbol),
+                if (it.market == Market.KR) livePrices[it.symbol] else null,
+            )
+        }
+    }
 
     private fun Trade.toView(pnl: RealizedPnl?) = OrderLiveView.of(this, symbolStrategyService.displayName(market, symbol), pnl)
 
@@ -152,7 +177,6 @@ class OrderLiveBroadcaster(
         val KST: ZoneId = ZoneId.of("Asia/Seoul")
         const val HISTORY_LIMIT = 100
         const val KRW = "KRW"
-        const val PRICE_PUSH_MILLIS = 1000L
     }
 }
 
