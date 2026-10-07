@@ -245,6 +245,7 @@
                 render(msg.order.key);
             } else if (msg.type === 'holdings') {
                 holdings = msg.holdings;
+                renderSummary(msg.summary, false);
                 render();
             }
         };
