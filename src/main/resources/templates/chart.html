@@ -246,7 +246,7 @@
     const holdingEl = document.getElementById('holding');
     let holding = null;
     let lastPrice = null;
-    // 주문 화면(/ws/orders)이 보내는 보유 종목. 연결되면 REST 의 holding 대신 이걸 쓴다 — 두 화면의 평단·평가손익이 같은 값이 된다.
+    // 포트폴리오 스트림(/ws/portfolio)이 보내는 보유 종목. 연결되면 REST 의 holding 대신 이걸 쓴다 — 두 화면의 평단·평가손익이 같은 값이 된다.
     let liveHolding;
     function showHolding() {
         if (liveHolding !== undefined) {
@@ -380,10 +380,10 @@
     }
     connectLive();
 
-    // WebSocket(/ws/orders): 보유 수량·평단·평가손익은 주문 화면과 같은 스트림으로 받는다(체결 즉시 반영).
+    // WebSocket(/ws/portfolio): 보유 수량·평단·평가손익은 주문 화면과 같은 포트폴리오 스트림으로 받는다(체결 즉시 반영).
     function connectHolding() {
         const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-        const ws = new WebSocket(proto + location.host + '/ws/orders');
+        const ws = new WebSocket(proto + location.host + '/ws/portfolio');
         const mine = (h) => h.market === market && h.symbol === symbol;
         ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
