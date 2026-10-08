@@ -19,6 +19,9 @@ import java.time.Instant
 enum class FillSource {
     /** 실시간 체결통보. 체결 시각·그 시점 평단이 정확하다. */
     NOTICE,
+
+    /** 체결통보를 놓쳐서 KIS 체결내역 조회로 나중에 채운 줄. 체결 시각은 채운 시각이고 체결 직전 평단은 모른다. */
+    REST_BACKFILL,
 }
 
 /**

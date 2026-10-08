@@ -7,6 +7,7 @@ import com.quantlog.broker.CancelRequest
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
+import com.quantlog.broker.OrderFillTotal
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.OrderStatus
@@ -229,32 +230,44 @@ class KisMockBroker(
         orderNo: String,
         quantity: Int,
     ): OrderStatus {
-        val today = LocalDate.now(KST).format(DATE_FORMAT)
-        val res =
-            api.get(
-                "/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
-                "VTTC0081R",
-                accountParams() +
-                    mapOf(
-                        "INQR_STRT_DT" to today,
-                        "INQR_END_DT" to today,
-                        "SLL_BUY_DVSN_CD" to "00",
-                        "PDNO" to "",
-                        "CCLD_DVSN" to "00",
-                        "INQR_DVSN" to "00",
-                        "INQR_DVSN_3" to "00",
-                        "ORD_GNO_BRNO" to "",
-                        "ODNO" to orderNo,
-                        "INQR_DVSN_1" to "",
-                        "CTX_AREA_FK100" to "",
-                        "CTX_AREA_NK100" to "",
-                        "EXCG_ID_DVSN_CD" to "KRX",
-                    ),
-            )
+        val res = dailyCcld(orderNo)
         val row = res.path("output1").firstOrNull { it.path("odno").asText() == orderNo } ?: return OrderStatus.Unknown
         val filledQty = row.path("tot_ccld_qty").asText("0").toIntOrNull() ?: 0
         return if (filledQty >= quantity) OrderStatus.Filled(row.decimal("avg_prvs")) else OrderStatus.Open
     }
+
+    /** 오늘 주문 체결 전체(한 페이지). [orderNo] 를 주면 그 주문만, 비우면 오늘 주문 전부. */
+    private fun dailyCcld(orderNo: String): JsonNode {
+        val today = LocalDate.now(KST).format(DATE_FORMAT)
+        return api.get(
+            "/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
+            "VTTC0081R",
+            accountParams() +
+                mapOf(
+                    "INQR_STRT_DT" to today,
+                    "INQR_END_DT" to today,
+                    "SLL_BUY_DVSN_CD" to "00",
+                    "PDNO" to "",
+                    "CCLD_DVSN" to "00",
+                    "INQR_DVSN" to "00",
+                    "INQR_DVSN_3" to "00",
+                    "ORD_GNO_BRNO" to "",
+                    "ODNO" to orderNo,
+                    "INQR_DVSN_1" to "",
+                    "CTX_AREA_FK100" to "",
+                    "CTX_AREA_NK100" to "",
+                    "EXCG_ID_DVSN_CD" to "KRX",
+                ),
+        )
+    }
+
+    /** 필드명(odno, tot_ccld_qty, avg_prvs)은 2026-09-29 실측으로 확인됐다. 체결이 0인 주문은 뺀다. */
+    override fun todayOrderFills(market: Market): List<OrderFillTotal> =
+        dailyCcld("").path("output1").mapNotNull { row ->
+            val quantity = row.path("tot_ccld_qty").asText("0").toIntOrNull() ?: 0
+            if (quantity <= 0) return@mapNotNull null
+            OrderFillTotal(row.path("odno").asText(), quantity, row.decimal("avg_prvs"))
+        }
 
     private fun accountParams() = mapOf("CANO" to properties.accountNumber, "ACNT_PRDT_CD" to properties.accountProductCode)
 

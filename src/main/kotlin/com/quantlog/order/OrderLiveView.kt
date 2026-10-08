@@ -1,13 +1,19 @@
 package com.quantlog.order
 
+import com.quantlog.broker.Market
+import com.quantlog.broker.Side
 import com.quantlog.position.AccountHolding
+import com.quantlog.position.FillAppliedEvent
+import com.quantlog.position.FillSource
 import com.quantlog.position.OrderState
 import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.RealizedPnl
 import com.quantlog.position.Trade
+import com.quantlog.position.TradeFill
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
+import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -115,6 +121,137 @@ data class HoldingLiveView(
                 valueText = currentPrice.multiply(BigDecimal(holding.quantity)).money(currency),
                 unrealizedText = signedMoneyAndPercent(amount, percent, currency),
                 unrealizedCss = pnlCss(amount),
+            )
+        }
+    }
+}
+
+/**
+ * 체결 내역 한 줄 — 체결통보 1건(원장 한 줄)이다. 주문 단위가 아니라서 부분체결이 쪼개진 그대로 보인다.
+ * [orderNo] 로 화면이 같은 주문의 사유(reason)를 찾아 붙인다. 옛 기록(원장 없는 주문)은 주문 한 건을 한 줄로 보여준다.
+ */
+data class FillLiveView(
+    val key: String,
+    val orderNo: String,
+    val market: String,
+    val symbol: String,
+    val symbolName: String,
+    val side: String,
+    val quantity: Int,
+    val priceText: String,
+    /** 체결통보를 놓쳐 KIS 조회로 나중에 채운 줄이면 true (체결 시각은 채운 시각). */
+    val backfilled: Boolean,
+    val placedAtEpochMs: Long,
+    val timeText: String,
+    /** 매도이고 체결 직전 평단을 알 때만 채운다. */
+    val pnlText: String?,
+    val pnlDetailText: String?,
+    val pnlCss: String,
+) {
+    companion object {
+        fun of(
+            fill: TradeFill,
+            symbolName: String,
+        ): FillLiveView =
+            build(
+                Facts(
+                    market = fill.market,
+                    symbol = fill.symbol,
+                    side = fill.side,
+                    orderNo = fill.orderNo,
+                    quantity = fill.quantity,
+                    price = fill.price,
+                    avgCostBefore = fill.avgCostBefore,
+                    filledAt = fill.filledAt,
+                    backfilled = fill.source == FillSource.REST_BACKFILL,
+                ),
+                key = "fill:${fill.id}",
+                symbolName = symbolName,
+            )
+
+        /** 방금 반영된 체결통보(DB 저장 전이라 id 가 없어 주문번호·시각·수량으로 키를 만든다). */
+        fun of(
+            event: FillAppliedEvent,
+            symbolName: String,
+        ): FillLiveView =
+            build(
+                Facts(
+                    market = event.market,
+                    symbol = event.symbol,
+                    side = event.side,
+                    orderNo = event.orderNo,
+                    quantity = event.quantity,
+                    price = event.price,
+                    avgCostBefore = event.avgCostBefore,
+                    filledAt = event.filledAt,
+                    backfilled = false,
+                ),
+                key = "fill:${event.orderNo}:${event.filledAt.toEpochMilli()}:${event.quantity}",
+                symbolName = symbolName,
+            )
+
+        /** 원장이 없는 옛 체결 주문 한 건. 손익은 옛 FIFO 계산값. */
+        fun ofLegacy(
+            trade: Trade,
+            symbolName: String,
+            pnl: RealizedPnl?,
+        ): FillLiveView {
+            val currency = trade.market.currency
+            val price = (trade.filledPrice ?: trade.orderPrice).money(currency)
+            return FillLiveView(
+                key = "order:${trade.market}:${trade.orderNo}",
+                orderNo = trade.orderNo,
+                market = trade.market.name,
+                symbol = trade.symbol,
+                symbolName = symbolName,
+                side = trade.side.name,
+                quantity = trade.quantity,
+                priceText = price,
+                backfilled = false,
+                placedAtEpochMs = trade.executedAt.toEpochMilli(),
+                timeText = DATE_TIME_FORMAT.format(trade.executedAt.atZone(KST)),
+                pnlText = pnl?.let { signedMoneyAndPercent(it.amount, it.percent, currency) },
+                pnlDetailText = pnl?.let { "매수 평단 ${it.avgBuyPrice.money(currency)} → 체결 $price · ${it.matchedQuantity}주" },
+                pnlCss = pnl?.let { pnlCss(it.amount) } ?: "muted",
+            )
+        }
+
+        private class Facts(
+            val market: Market,
+            val symbol: String,
+            val side: Side,
+            val orderNo: String,
+            val quantity: Int,
+            val price: BigDecimal,
+            val avgCostBefore: BigDecimal?,
+            val filledAt: Instant,
+            val backfilled: Boolean,
+        )
+
+        private fun build(
+            f: Facts,
+            key: String,
+            symbolName: String,
+        ): FillLiveView {
+            val currency = f.market.currency
+            val avg = f.avgCostBefore?.takeIf { f.side == Side.SELL && it.signum() > 0 }
+            val amount = avg?.let { f.price.subtract(it).multiply(BigDecimal(f.quantity)) }
+            val percent = avg?.let { f.price.subtract(it).multiply(BigDecimal(100)).divide(it, MathContext.DECIMAL64) }
+            return FillLiveView(
+                key = key,
+                orderNo = f.orderNo,
+                market = f.market.name,
+                symbol = f.symbol,
+                symbolName = symbolName,
+                side = f.side.name,
+                quantity = f.quantity,
+                priceText = f.price.money(currency),
+                backfilled = f.backfilled,
+                placedAtEpochMs = f.filledAt.toEpochMilli(),
+                timeText = DATE_TIME_FORMAT.format(f.filledAt.atZone(KST)),
+                pnlText = if (amount != null && percent != null) signedMoneyAndPercent(amount, percent, currency) else null,
+                pnlDetailText = avg?.let { "매수 평단 ${it.money(currency)} → 체결 ${f.price.money(currency)} · ${f.quantity}주" },
+                pnlCss = amount?.let { pnlCss(it) } ?: "muted",
             )
         }
     }

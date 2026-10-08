@@ -101,3 +101,10 @@ data class BuyingPower(
     val orderableAmount: BigDecimal,
     val maxQuantity: BigDecimal,
 )
+
+/** 증권사가 알려 준 주문 한 건의 체결 누적(쪼개진 체결 한 건씩이 아니다). [averagePrice] 는 체결평균가. */
+data class OrderFillTotal(
+    val orderNo: String,
+    val filledQuantity: Int,
+    val averagePrice: BigDecimal,
+)
