@@ -160,6 +160,11 @@ class GatewayBrokerClient(
         )
     }
 
+    /** 감시 종목이 바뀌었다고 알려 게이트웨이가 실시간 구독을 지금 맞추게 한다. `BrokerClient` 계약(증권사 호출)이 아니라 게이트웨이 전용 신호다. */
+    fun refreshWatchSymbols() {
+        post("/api/watch/refresh", emptyMap<String, String>(), Map::class.java)
+    }
+
     private fun <T : Any> get(
         uri: String,
         type: Class<T>,

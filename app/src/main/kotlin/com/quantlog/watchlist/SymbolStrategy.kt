@@ -1,11 +1,14 @@
 package com.quantlog.watchlist
 
 import com.quantlog.broker.Market
+import com.quantlog.gatewayclient.WatchSymbolRow
+import com.quantlog.gatewayclient.WatchSymbolRowRepository
 import com.quantlog.strategy.MartingaleProperties
 import com.quantlog.strategy.StrategyProperties
 import mu.KotlinLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -37,11 +40,16 @@ class SymbolStrategyForm {
     var supportBounceQuantity: Int? = null
 }
 
+/** 감시 종목이 추가·삭제됐다. 게이트웨이 같은 구독자가 커밋 뒤에 따라가게 하려는 신호다(도메인은 누가 듣는지 모른다). */
+object WatchSymbolsChanged
+
 @Service
 class SymbolStrategyService(
     private val repository: SymbolStrategyRepository,
+    private val watchSymbols: WatchSymbolRowRepository,
     private val strategyProperties: StrategyProperties,
     private val martingaleProperties: MartingaleProperties,
+    private val events: ApplicationEventPublisher,
 ) {
     /** 등록 안 된 종목은 일반 주식으로 본다(제세금을 더 보수적으로 계산). */
     fun isEtf(
@@ -81,7 +89,7 @@ class SymbolStrategyService(
                 "마틴게일을 켠 종목은 손절 %($stopText)가 추가매수 하락 %(${drop.stripTrailingZeros().toPlainString()}) 이상이어야 합니다"
             }
         }
-        target.etf = form.etf
+        target.watchSymbol?.etf = form.etf
         target.takeProfitPercent = takeProfit
         target.stopLossPercent = stopLoss
         target.martingale = form.martingale
@@ -128,7 +136,40 @@ class SymbolStrategyService(
         require(displayName.isNotBlank()) { "종목 이름을 입력해 주세요" }
         require(find(market, code) == null) { "이미 등록된 종목입니다: $code" }
         repository.save(defaultRow(market, code, displayName.trim(), trade = false, etf = etf))
+        events.publishEvent(WatchSymbolsChanged)
     }
+
+    /** 감시 종목을 지운다. 종목 원본(`watch_symbol`)도 같은 트랜잭션에서 지운다. 보유 중인 종목은 게이트웨이가 계속 구독한다. */
+    @Transactional
+    fun remove(
+        market: Market,
+        symbol: String,
+    ) {
+        val target = requireNotNull(find(market, symbol)) { "등록되지 않은 종목입니다: $symbol" }
+        repository.delete(target)
+        repository.flush()
+        target.watchSymbol?.let(watchSymbols::delete)
+        events.publishEvent(WatchSymbolsChanged)
+    }
+
+    /**
+     * `watch_symbol` 연결이 없는 기존 행에 연결한다. 이미 같은 종목의 `watch_symbol` 행이 있으면(옛 동기화가 써 둔 것) 그걸 쓰고, 없으면 옛 ETF 값으로 만든다.
+     * 반복 실행해도 안전하다.
+     */
+    @Transactional
+    fun linkWatchSymbols() {
+        repository.findAll().filter { it.watchSymbol == null }.forEach { row ->
+            row.watchSymbol = watchSymbolOf(row.market, row.symbol, row.legacyEtf)
+        }
+    }
+
+    /** 같은 종목의 `watch_symbol` 행이 이미 있으면 그걸, 없으면 새로 만든다(unique 키 충돌 방지). */
+    private fun watchSymbolOf(
+        market: Market,
+        symbol: String,
+        etf: Boolean,
+    ): WatchSymbolRow =
+        watchSymbols.findByMarketAndSymbol(market.name, symbol) ?: watchSymbols.save(WatchSymbolRow(market.name, symbol, etf))
 
     /**
      * 없는 종목 행만 기본값으로 채운다. 기본값은 application.yml 의 quantlog.strategy.* 이고,
@@ -138,7 +179,7 @@ class SymbolStrategyService(
     fun seedMissing() {
         // ETF 여부는 종목의 사실이라, ETF 컬럼이 생기기 전에 만들어진 행도 시드 기준으로 맞춘다(켜기만 하고 끄지는 않는다).
         SeedSymbol.entries.filter { it.etf }.forEach { seed ->
-            repository.findByMarketAndSymbol(seed.market, seed.symbol)?.etf = true
+            repository.findByMarketAndSymbol(seed.market, seed.symbol)?.watchSymbol?.etf = true
         }
         // 이름 컬럼이 생기기 전에 만들어진 행은 이름이 비어 있다 — 시드 이름으로 채운다.
         SeedSymbol.entries.forEach { seed ->
@@ -168,8 +209,9 @@ class SymbolStrategyService(
         martingaleDropPercent = martingaleProperties.dropPercent,
         martingaleMultiplier = martingaleProperties.multiplier,
         martingaleMaxStages = martingaleProperties.maxStages,
-        etf = etf,
+        legacyEtf = etf,
         supportBounceEntry = trade,
+        watchSymbol = watchSymbolOf(market, symbol, etf),
     )
 }
 
@@ -177,5 +219,10 @@ class SymbolStrategyService(
 class SymbolStrategySeeder(
     private val service: SymbolStrategyService,
 ) : ApplicationRunner {
-    override fun run(args: ApplicationArguments) = service.seedMissing()
+    override fun run(args: ApplicationArguments) {
+        // 연결은 별도 트랜잭션이다. 읽을 수 없는 옛 행(지원 안 하는 시장 등)이 있어도 앱 기동을 막지 않고 오류만 남긴다.
+        runCatching { service.linkWatchSymbols() }
+            .onFailure { log.error(it) { "[종목 설정] watch_symbol 연결 실패 — 연결 안 된 종목은 ETF 설정이 반영되지 않는다: ${it.message}" } }
+        service.seedMissing()
+    }
 }

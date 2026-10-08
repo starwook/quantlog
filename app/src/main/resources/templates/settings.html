@@ -127,7 +127,7 @@
     <form class="item" th:each="row : ${rows}" method="post"
           th:action="@{'/settings/' + ${row.market} + '/' + ${row.symbol}}"
           th:attr="data-name=${row.displayName + ' ' + row.symbol}, data-buy=${row.martingale or row.periodicRebuy or row.supportBounceEntry}, data-marti=${row.martingale}"
-          onsubmit="return confirm('이 설정은 바로 매매에 반영됩니다. 저장할까요?')">
+          onsubmit="return confirm(event.submitter.dataset.confirm || '이 설정은 바로 매매에 반영됩니다. 저장할까요?')">
         <details>
             <summary>
                 <div class="sum">
@@ -188,6 +188,8 @@
                     </div>
                 </details>
                 <button type="submit">저장</button>
+                <button type="submit" th:formaction="@{'/settings/' + ${row.market} + '/' + ${row.symbol} + '/delete'}" formnovalidate
+                        data-confirm="이 종목을 감시 목록에서 삭제할까요? 보유 중이면 시세 구독은 유지됩니다.">종목 삭제</button>
             </div>
         </details>
     </form>

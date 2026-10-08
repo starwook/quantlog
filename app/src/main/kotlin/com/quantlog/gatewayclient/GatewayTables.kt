@@ -142,7 +142,12 @@ class WatchSymbolRow(
         protected set
 }
 
-interface WatchSymbolRowRepository : JpaRepository<WatchSymbolRow, Long>
+interface WatchSymbolRowRepository : JpaRepository<WatchSymbolRow, Long> {
+    fun findByMarketAndSymbol(
+        market: String,
+        symbol: String,
+    ): WatchSymbolRow?
+}
 
 /** 앱이 체결 원장을 어디까지 처리했는지(`broker_projection_cursor`). 앱이 재시작돼도 이 ID 다음부터 이어서 처리한다. */
 @Entity

@@ -1,6 +1,7 @@
 package com.quantlog.watchlist
 
 import com.quantlog.broker.Market
+import com.quantlog.gatewayclient.WatchSymbolRow
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -8,6 +9,8 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.JoinColumn
+import jakarta.persistence.OneToOne
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import org.springframework.data.jpa.repository.JpaRepository
@@ -45,9 +48,12 @@ class SymbolStrategy(
     var martingaleMultiplier: Int,
     @Column(name = "martingale_max_stages", nullable = false)
     var martingaleMaxStages: Int,
-    /** ETF 면 true. 국내 ETF 는 증권거래세가 없어서 모킹 체결의 제세금 계산이 달라진다. */
-    @Column(nullable = false)
-    var etf: Boolean = false,
+    /**
+     * 옛 ETF 컬럼. ETF 여부는 이제 [watchSymbol] 이 갖는다. 이 컬럼은 NOT NULL 이라 매핑을 지우면 새 행 insert 가 깨져서 남겨 두고,
+     * 외래키 연결([SymbolStrategyService.linkWatchSymbols]) 때 값을 옮기는 데만 읽는다.
+     */
+    @Column(name = "etf", nullable = false)
+    var legacyEtf: Boolean = false,
     /** true 면 보유 수량과 상관없이 분봉 "저점 판단 진입"(SupportBounceEntryRule) 신호가 뜰 때마다 [supportBounceQuantity]주를 산다. 다른 옵션과 별개다. */
     @Column(name = "support_bounce_entry", nullable = false, columnDefinition = "bit default 0")
     var supportBounceEntry: Boolean = false,
@@ -63,11 +69,21 @@ class SymbolStrategy(
     /** 저점 판단 진입이 한 번에 사는 수량. */
     @Column(name = "support_bounce_quantity", nullable = false, columnDefinition = "int default 1")
     var supportBounceQuantity: Int = 1,
+    /**
+     * 이 종목의 원본 행(`watch_symbol`). 게이트웨이가 읽는 계약 테이블이고 ETF 여부도 여기 있다. 종목을 추가·삭제하면 이 행과 같은 트랜잭션에서 함께 바뀐다.
+     * 기존 행은 null 일 수 있고 시작 시 채워진다.
+     */
+    @OneToOne
+    @JoinColumn(name = "watch_symbol_id", unique = true)
+    var watchSymbol: WatchSymbolRow? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null
         protected set
+
+    /** ETF 면 true. 국내 ETF 는 증권거래세가 없어서 모킹 체결의 제세금 계산이 달라진다. */
+    val etf: Boolean get() = watchSymbol?.etf ?: false
 }
 
 interface SymbolStrategyRepository : JpaRepository<SymbolStrategy, Long> {

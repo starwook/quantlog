@@ -16,6 +16,7 @@
 | `GET /api/quotes/{market}/{symbol}/candles?time=HHmmss` | | `[{date, time, open, high, low, close, volume}]` |
 | `GET /api/account/holdings?market` | | `[{market, symbol, name, quantity, averagePrice, currentPrice}]` |
 | `GET /api/account/buying-power?market&symbol&price` | | `{currency, orderableAmount, maxQuantity}` |
+| `POST /api/watch/refresh` | (없음) | `{liveSymbols: [..]}` — `watch_symbol`·보유 종목을 다시 읽어 실시간 구독을 즉시 맞춘다. 실패해도 게이트웨이가 10초 주기로 같은 일을 한다 |
 | `GET /api/health` | | `{instanceId, startedAt, contractVersion, kisCredentials, wsConnected, wsConnectedAt, liveSymbols, now}` |
 
 ## 멱등

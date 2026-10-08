@@ -1,11 +1,14 @@
 package com.quantlog.watchlist
 
 import com.quantlog.broker.Market
+import com.quantlog.gatewayclient.WatchSymbolRow
+import com.quantlog.gatewayclient.WatchSymbolRowRepository
 import com.quantlog.strategy.MartingaleProperties
 import com.quantlog.strategy.StrategyProperties
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito
+import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -13,7 +16,12 @@ import kotlin.test.assertTrue
 
 class SymbolStrategyServiceTest {
     private val repository = Mockito.mock(SymbolStrategyRepository::class.java)
-    private val service = SymbolStrategyService(repository, StrategyProperties(), MartingaleProperties())
+    private val watchSymbols =
+        Mockito.mock(WatchSymbolRowRepository::class.java).also { repo ->
+            Mockito.`when`(repo.save(Mockito.any(WatchSymbolRow::class.java))).thenAnswer { it.arguments[0] }
+        }
+    private val events = Mockito.mock(ApplicationEventPublisher::class.java)
+    private val service = SymbolStrategyService(repository, watchSymbols, StrategyProperties(), MartingaleProperties(), events)
 
     @Test
     fun `없는 종목 행만 기본값으로 만들고 코스닥150레버리지만 매수와 마틴게일을 켠다`() {
@@ -133,6 +141,37 @@ class SymbolStrategyServiceTest {
         assertEquals("0000D0", saved.symbol)
         assertEquals("테스트", saved.displayName)
         assertTrue(!saved.martingale && !saved.supportBounceEntry && !saved.periodicRebuy)
+        // 종목 원본(watch_symbol)이 함께 만들어져 연결되고, 게이트웨이가 따라가도록 변경 신호가 나간다.
+        assertEquals("0000D0", saved.watchSymbol?.symbol)
+        Mockito.verify(watchSymbols).save(saved.watchSymbol!!)
+        Mockito.verify(events).publishEvent(WatchSymbolsChanged)
+    }
+
+    @Test
+    fun `종목을 삭제하면 설정과 watch_symbol 을 함께 지우고 변경 신호를 보낸다`() {
+        val existing = symbolStrategy(Market.KR, "005930").also { it.watchSymbol = WatchSymbolRow("KR", "005930", false) }
+        Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, "005930")).thenReturn(existing)
+
+        service.remove(Market.KR, "005930")
+
+        Mockito.verify(repository).delete(existing)
+        Mockito.verify(watchSymbols).delete(existing.watchSymbol!!)
+        Mockito.verify(events).publishEvent(WatchSymbolsChanged)
+        assertFailsWith<IllegalArgumentException> { service.remove(Market.KR, "000000") }
+    }
+
+    @Test
+    fun `연결 없는 기존 행은 같은 종목의 watch_symbol 을 쓰고 없으면 옛 ETF 값으로 만든다`() {
+        val withRow = symbolStrategy(Market.KR, "005930")
+        val withoutRow = symbolStrategy(Market.KR, "091160").also { it.legacyEtf = true }
+        val old = WatchSymbolRow("KR", "005930", false)
+        Mockito.`when`(repository.findAll()).thenReturn(listOf(withRow, withoutRow))
+        Mockito.`when`(watchSymbols.findByMarketAndSymbol("KR", "005930")).thenReturn(old)
+
+        service.linkWatchSymbols()
+
+        assertEquals(old, withRow.watchSymbol)
+        assertTrue(withoutRow.etf && withoutRow.watchSymbol?.symbol == "091160")
     }
 
     @Test
