@@ -61,9 +61,17 @@ class TradeService(
         }
     }
 
-    /** 원장의 접수 통보(체결 아님): 증권사가 주문을 받았다 — 아직 체결 전이면 "미체결(증권사 확인)"으로 표시한다. 거부 통보는 건너뛴다. */
+    /**
+     * 원장의 체결 아닌 통보. 거부 통보는 건너뛴다.
+     * - 취소 확정 통보: 취소된 원주문의 매매 기록을 취소로 바꿔 대기열에서 뺀다(이미 취소로 기록된 주문이면 건드리지 않는다).
+     * - 접수 통보: 증권사가 주문을 받았다 — 아직 체결 전이면 "미체결(증권사 확인)"으로 표시한다.
+     */
     fun onOrderNotice(notice: FillNotice) {
         if (notice.isFill || (notice.refuseFlag.isNotBlank() && notice.refuseFlag != NOT_REFUSED)) return
+        if (notice.isCancel) {
+            repository.findFirstByMarketAndOrderNo(Market.KR, notice.originalOrderNo)?.takeIf { !it.canceled }?.let(::markCanceled)
+            return
+        }
         val trade = repository.findFirstByMarketAndOrderNo(Market.KR, notice.orderNo) ?: return
         if (trade.apply(OrderStatus.Open)) {
             repository.save(trade)
