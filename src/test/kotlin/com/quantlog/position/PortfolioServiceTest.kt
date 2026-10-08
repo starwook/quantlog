@@ -13,7 +13,8 @@ import kotlin.test.assertTrue
 class PortfolioServiceTest {
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
     private val accountHoldingRepository = Mockito.mock(AccountHoldingRepository::class.java)
-    private val service = PortfolioService(tradeRepository, accountHoldingRepository)
+    private val tradeFillRepository = Mockito.mock(TradeFillRepository::class.java)
+    private val service = PortfolioService(tradeRepository, accountHoldingRepository, tradeFillRepository)
 
     private fun holdingRow(
         quantity: Int,

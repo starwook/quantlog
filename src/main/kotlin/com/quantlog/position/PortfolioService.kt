@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.math.MathContext
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.util.ArrayDeque
 
@@ -78,13 +79,20 @@ private class RealizedAcc {
 class PortfolioService(
     private val tradeRepository: TradeRepository,
     private val accountHoldingRepository: AccountHoldingRepository,
+    private val tradeFillRepository: TradeFillRepository,
 ) {
     fun snapshot(): PortfolioSnapshot = buildSnapshot()
 
     private fun buildSnapshot(): PortfolioSnapshot {
-        val trades = tradeRepository.findAll().filterNot { it.canceled }.sortedBy { it.executedAt }
+        val allTrades = tradeRepository.findAll()
+        val trades = allTrades.filterNot { it.canceled }.sortedBy { it.executedAt }
+        // 체결 원장이 있는 주문은 원장으로 손익을 확정하고, 없는 옛 주문만 FIFO 로 계산한다. 원장이 있는 주문은 일부만 체결된 뒤
+        // 취소됐어도 체결된 몫은 실제 거래라 계산에 넣는다.
+        val fillsByOrder = tradeFillRepository.findAll().groupBy { it.market to it.orderNo }
+        val hasFills = { trade: Trade -> (trade.market to trade.orderNo) in fillsByOrder }
         // 체결가를 못 구한 주문(미체결이거나 확인 전)은 손익·횟수 계산에서 뺀다. 기록 화면에는 그대로 보인다.
-        val filledTrades = trades.filter { it.filledPrice != null }
+        val filledTrades =
+            allTrades.filter { (!it.canceled && it.filledPrice != null) || hasFills(it) }.sortedBy { it.executedAt }
         val today = Instant.now().atZone(KST).toLocalDate()
 
         val lotsByKey = mutableMapOf<Pair<Market, String>, ArrayDeque<Lot>>()
@@ -96,12 +104,16 @@ class PortfolioService(
         filledTrades.forEach { trade ->
             val key = trade.market to trade.symbol
             val lots = lotsByKey.getOrPut(key) { ArrayDeque() }
-            // 실제 체결가가 있으면 그걸 쓴다 — 지정가와 다를 수 있다 (2026-09-29: 국내는 지정가·체결가가 꽤 벌어진 적 있었음).
-            val price = trade.filledPrice!!
             if (trade.executedAt.atZone(KST).toLocalDate() == today) {
                 val counts = if (trade.side == Side.BUY) buyCountTodayByCurrency else sellCountTodayByCurrency
                 counts.merge(trade.market.currency, 1, Int::plus)
             }
+            fillsByOrder[trade.market to trade.orderNo]?.let { fills ->
+                if (trade.side == Side.SELL) realizedFromLedger(fills)?.let { record(trade, it, realizedByCurrency, pnlByTradeId, today) }
+                return@forEach
+            }
+            // 실제 체결가가 있으면 그걸 쓴다 — 지정가와 다를 수 있다 (2026-09-29: 국내는 지정가·체결가가 꽤 벌어진 적 있었음).
+            val price = trade.filledPrice!!
             when (trade.side) {
                 Side.BUY -> lots.addLast(Lot(trade.quantity, price))
                 Side.SELL -> {
@@ -118,20 +130,8 @@ class PortfolioService(
                         if (lot.quantity == 0) lots.removeFirst()
                     }
                     if (matchedQty > 0) {
-                        val proceeds = price.multiply(BigDecimal(matchedQty))
-                        val amount = proceeds.subtract(cost)
-                        val percent = percentOf(amount, cost)
-                        val avgBuyPrice = cost.divide(BigDecimal(matchedQty), MathContext.DECIMAL64)
-                        trade.id?.let { pnlByTradeId[it] = RealizedPnl(amount, percent, avgBuyPrice, matchedQty) }
-
-                        val acc = realizedByCurrency.getOrPut(trade.market.currency) { RealizedAcc() }
-                        acc.totalAmount = acc.totalAmount.add(amount)
-                        acc.totalCost = acc.totalCost.add(cost)
-                        if (trade.executedAt.atZone(KST).toLocalDate() == today) {
-                            acc.todayAmount = acc.todayAmount.add(amount)
-                            acc.todayCost = acc.todayCost.add(cost)
-                            if (amount > BigDecimal.ZERO) acc.winToday++ else acc.lossToday++
-                        }
+                        val amount = price.multiply(BigDecimal(matchedQty)).subtract(cost)
+                        record(trade, Realized(amount, cost, matchedQty), realizedByCurrency, pnlByTradeId, today)
                     }
                 }
             }
@@ -168,6 +168,42 @@ class PortfolioService(
             }
 
         return PortfolioSnapshot(trades, pnlByTradeId, summaryByCurrency)
+    }
+
+    private class Realized(val amount: BigDecimal, val cost: BigDecimal, val quantity: Int)
+
+    /**
+     * 체결 원장으로 이 매도 주문의 손익을 확정한다. 각 체결은 체결 직전 평단 기준이다([TradeFill.avgCostBefore]).
+     * 평단을 모르는 체결(보유 사본에 종목이 없었던 매도)은 뺀다 — 짐작으로 채우지 않는다. 계산할 체결이 없으면 null.
+     */
+    private fun realizedFromLedger(fills: List<TradeFill>): Realized? {
+        val known = fills.filter { it.avgCostBefore != null }
+        if (known.isEmpty()) return null
+        val quantity = known.sumOf { it.quantity }
+        val cost = known.sumOf { it.avgCostBefore!!.multiply(BigDecimal(it.quantity)) }
+        val proceeds = known.sumOf { it.price.multiply(BigDecimal(it.quantity)) }
+        return Realized(proceeds.subtract(cost), cost, quantity)
+    }
+
+    private fun record(
+        trade: Trade,
+        realized: Realized,
+        realizedByCurrency: MutableMap<String, RealizedAcc>,
+        pnlByTradeId: MutableMap<Long, RealizedPnl>,
+        today: LocalDate,
+    ) {
+        val percent = percentOf(realized.amount, realized.cost)
+        val avgBuyPrice = realized.cost.divide(BigDecimal(realized.quantity), MathContext.DECIMAL64)
+        trade.id?.let { pnlByTradeId[it] = RealizedPnl(realized.amount, percent, avgBuyPrice, realized.quantity) }
+
+        val acc = realizedByCurrency.getOrPut(trade.market.currency) { RealizedAcc() }
+        acc.totalAmount = acc.totalAmount.add(realized.amount)
+        acc.totalCost = acc.totalCost.add(realized.cost)
+        if (trade.executedAt.atZone(KST).toLocalDate() == today) {
+            acc.todayAmount = acc.todayAmount.add(realized.amount)
+            acc.todayCost = acc.todayCost.add(realized.cost)
+            if (realized.amount > BigDecimal.ZERO) acc.winToday++ else acc.lossToday++
+        }
     }
 
     private fun holdingViews(): Map<String, List<HoldingView>> =
