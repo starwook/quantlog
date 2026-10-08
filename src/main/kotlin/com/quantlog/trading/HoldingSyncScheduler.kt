@@ -25,6 +25,8 @@ data class HoldingSyncProperties(
  * KIS 잔고를 주기적으로 DB(account_holding)에 그대로 맞춘다. 증권사 앱에서 직접 거래한 물량도 잔고에 있으므로 따라온다.
  * 현재가도 같이 저장돼 화면은 KIS를 부르지 않는다. 화면을 열어야만 동기화되면 안 된다
  * (2026-09-30 사용자 지적: 화면을 켜두고 앱에서 사면 어긋남).
+ *
+ * 동기화 불일치 보고 불필요: KIS 잔고와 DB 를 비교하는 건 [HoldingSyncService.sync] 이고, 불일치 보고도 거기서 한다. 여기는 주기와 스레드만 맡는다.
  */
 @Component
 class HoldingSyncScheduler(
