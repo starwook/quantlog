@@ -36,6 +36,19 @@ class SymbolStrategyController(
         return "redirect:/settings"
     }
 
+    @PostMapping("/settings/{market}/{symbol}/delete")
+    fun remove(
+        @PathVariable market: Market,
+        @PathVariable symbol: String,
+        redirect: RedirectAttributes,
+    ): String {
+        val name = service.displayName(market, symbol)
+        runCatching { service.remove(market, symbol) }
+            .onSuccess { redirect.addFlashAttribute("message", "$name 종목을 삭제했어요.") }
+            .onFailure { redirect.addFlashAttribute("error", "$name 삭제 실패: ${it.message}") }
+        return "redirect:/settings"
+    }
+
     @PostMapping("/settings/{market}/{symbol}")
     fun save(
         @PathVariable market: Market,
