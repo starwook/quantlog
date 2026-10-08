@@ -10,7 +10,7 @@ import jakarta.persistence.UniqueConstraint
 import org.springframework.data.jpa.repository.JpaRepository
 
 /**
- * 앱이 써 주는 "구독·수집할 종목" 계약 테이블(docs/contracts/watch_symbol.md). **컬럼은 일부러 최소**다 — 앱의 `symbol_strategy` 는 전략 옵션이
+ * 앱이 써 주는 "구독·수집할 종목" 계약 테이블(docs/contracts/README.md). **컬럼은 일부러 최소**다 — 앱의 `symbol_strategy` 는 전략 옵션이
  * 자주 늘어나서 게이트웨이가 그걸 직접 읽으면 앱 기능 추가가 게이트웨이 재배포로 번진다. 게이트웨이는 이 테이블만 읽고 쓰지 않는다.
  */
 @Entity

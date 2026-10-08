@@ -17,7 +17,7 @@ import java.time.Instant
 // 앱도 ddl-auto 라서 앱이 먼저 뜨면 이 선언으로 테이블이 만들어진다 — 게이트웨이가 IDENTITY 로 insert 하는 테이블은 여기서도 id 를 IDENTITY 로 선언해
 // AUTO_INCREMENT 가 빠지지 않게 한다(빠지면 게이트웨이 insert 가 "Field 'id' doesn't have a default value" 로 실패한다).
 
-/** 체결통보 원장(`kis_broker_fill`) 한 줄 — 한투 체결통보 원문(`^` 구분 한 건, 계좌 식별 칸은 비움). docs/contracts/tables.md. */
+/** 체결통보 원장(`kis_broker_fill`) 한 줄 — 한투 체결통보 원문(`^` 구분 한 건, 계좌 식별 칸은 비움). docs/contracts/README.md. */
 @Entity
 @Immutable
 @Table(name = "kis_broker_fill")
@@ -99,7 +99,7 @@ class HeldSymbolRow(
 
 interface HeldSymbolRowRepository : JpaRepository<HeldSymbolRow, Long>
 
-/** 게이트웨이 인스턴스 하트비트(`gateway_instance`, 1행) — docs/contracts/gateway_instance.md. */
+/** 게이트웨이 인스턴스 하트비트(`gateway_instance`, 1행) — docs/contracts/README.md. */
 @Entity
 @Immutable
 @Table(name = "gateway_instance")
@@ -124,7 +124,7 @@ class GatewayInstanceRow(
 
 interface GatewayInstanceRowRepository : JpaRepository<GatewayInstanceRow, Long>
 
-/** 앱이 쓰는 계약 테이블(`watch_symbol`) — 게이트웨이가 구독·수집할 종목. docs/contracts/watch_symbol.md. */
+/** 앱이 쓰는 계약 테이블(`watch_symbol`) — 게이트웨이가 구독·수집할 종목. docs/contracts/README.md. */
 @Entity
 @Table(name = "watch_symbol", uniqueConstraints = [UniqueConstraint(columnNames = ["market", "symbol"])])
 class WatchSymbolRow(

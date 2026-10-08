@@ -12,7 +12,7 @@ import java.time.Instant
 /**
  * 증권사가 실시간으로 밀어 준 체결통보(접수·체결·정정·취소·거부)를 **원문 그대로** 한 건씩 쌓는 원장(append-only).
  * [body] 는 복호화한 `^` 구분 필드 한 건이다 — 게이트웨이는 해석하지 않고, 앱이 한투 공식 문서대로 읽는다.
- * 계좌 식별 필드(고객 ID·계좌번호·계좌명)만 비워서 저장한다. 앱이 읽는 계약이다(docs/contracts/tables.md) — 컬럼은 추가만 한다.
+ * 계좌 식별 필드(고객 ID·계좌번호·계좌명)만 비워서 저장한다. 앱이 읽는 계약이다(docs/contracts/README.md) — 컬럼은 추가만 한다.
  */
 @Entity
 @Table(name = "kis_broker_fill")
