@@ -95,5 +95,5 @@ quantlog:
     enabled: ${QUANTLOG_HOLDING_SYNC_ENABLED:true}
     interval-millis: 10000
   risk:
-    # 1회 주문 상한은 폐지 (2026-09-30). 시장별 자본 배분(국내 1000만원)·하루 손실 -3%가 한도를 맡는다.
+    # 1회 주문 상한은 폐지 (2026-09-30). 시장별 자본 배분(국내 1000만원)이 한도를 맡는다. 하루 손실 한도는 2026-10-08 폐지.
     market-allocation-krw: 10000000
