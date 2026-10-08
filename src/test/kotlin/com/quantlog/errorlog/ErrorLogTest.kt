@@ -42,9 +42,9 @@ class ErrorLogClassifierTest {
 
     @Test
     fun `종목이나 예외 종류가 다르면 다른 종류다`() {
-        val soxl = record("[청산 감시] 실패: KR 005930")
-        assertNotEquals(ErrorLogClassifier.fingerprint(soxl), ErrorLogClassifier.fingerprint(record("[청산 감시] 실패: KR 삼성")))
-        assertNotEquals(ErrorLogClassifier.fingerprint(soxl), ErrorLogClassifier.fingerprint(soxl.copy(exceptionClass = "KisApiException")))
+        val base = record("[청산 감시] 실패: KR 005930")
+        assertNotEquals(ErrorLogClassifier.fingerprint(base), ErrorLogClassifier.fingerprint(record("[청산 감시] 실패: KR 삼성")))
+        assertNotEquals(ErrorLogClassifier.fingerprint(base), ErrorLogClassifier.fingerprint(base.copy(exceptionClass = "KisApiException")))
     }
 }
 

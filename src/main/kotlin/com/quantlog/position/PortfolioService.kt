@@ -32,7 +32,7 @@ data class HoldingView(
     val unrealizedPnlPercent: BigDecimal,
 )
 
-/** 통화 하나 기준의 계좌 요약. 통화가 다르면 절대 합산하지 않는다 (원화·달러 섞지 않기). */
+/** 통화 하나 기준의 계좌 요약. 통화가 다르면 절대 합산하지 않는다. */
 data class PortfolioSummary(
     val currency: String,
     val holdings: List<HoldingView>,
@@ -141,7 +141,7 @@ class PortfolioService(
 
         val currencies =
             (holdingsByCurrency.keys + realizedByCurrency.keys + buyCountTodayByCurrency.keys + sellCountTodayByCurrency.keys)
-                .ifEmpty { setOf("USD") }
+                .ifEmpty { setOf("KRW") }
         val summaryByCurrency =
             currencies.associateWith { currency ->
                 val holdings = holdingsByCurrency[currency].orEmpty()

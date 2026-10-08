@@ -9,33 +9,33 @@ class FixedPercentExitRuleTest {
     private val avg = BigDecimal("100")
     private val rule = FixedPercentExitRule(BigDecimal("1"), BigDecimal("1"))
 
-    private fun usd(price: String) = Quote(BigDecimal(price), BigDecimal("0.01"))
+    private fun quote(price: String) = Quote(BigDecimal(price), BigDecimal("0.01"))
 
     @Test
     fun `초기값 +1퍼센트 이상이면 익절`() {
-        assertEquals(ExitSignal.TAKE_PROFIT, rule.evaluate(avg, usd("101")))
-        assertEquals(ExitSignal.TAKE_PROFIT, rule.evaluate(avg, usd("110")))
+        assertEquals(ExitSignal.TAKE_PROFIT, rule.evaluate(avg, quote("101")))
+        assertEquals(ExitSignal.TAKE_PROFIT, rule.evaluate(avg, quote("110")))
     }
 
     @Test
     fun `초기값 -1퍼센트 이하이면 손절`() {
-        assertEquals(ExitSignal.STOP_LOSS, rule.evaluate(avg, usd("99")))
-        assertEquals(ExitSignal.STOP_LOSS, rule.evaluate(avg, usd("90")))
+        assertEquals(ExitSignal.STOP_LOSS, rule.evaluate(avg, quote("99")))
+        assertEquals(ExitSignal.STOP_LOSS, rule.evaluate(avg, quote("90")))
     }
 
     @Test
     fun `범위 안이면 보유`() {
-        assertEquals(ExitSignal.HOLD, rule.evaluate(avg, usd("100.99")))
-        assertEquals(ExitSignal.HOLD, rule.evaluate(avg, usd("99.01")))
-        assertEquals(ExitSignal.HOLD, rule.evaluate(avg, usd("100")))
+        assertEquals(ExitSignal.HOLD, rule.evaluate(avg, quote("100.99")))
+        assertEquals(ExitSignal.HOLD, rule.evaluate(avg, quote("99.01")))
+        assertEquals(ExitSignal.HOLD, rule.evaluate(avg, quote("100")))
     }
 
     @Test
     fun `익절과 손절 폭을 따로 지정할 수 있다`() {
         val custom = FixedPercentExitRule(takeProfitPercent = BigDecimal("3"), stopLossPercent = BigDecimal("2"))
-        assertEquals(ExitSignal.HOLD, custom.evaluate(avg, usd("102.99")))
-        assertEquals(ExitSignal.TAKE_PROFIT, custom.evaluate(avg, usd("103")))
-        assertEquals(ExitSignal.STOP_LOSS, custom.evaluate(avg, usd("98")))
+        assertEquals(ExitSignal.HOLD, custom.evaluate(avg, quote("102.99")))
+        assertEquals(ExitSignal.TAKE_PROFIT, custom.evaluate(avg, quote("103")))
+        assertEquals(ExitSignal.STOP_LOSS, custom.evaluate(avg, quote("98")))
     }
 
     @Test
@@ -49,9 +49,9 @@ class FixedPercentExitRuleTest {
     @Test
     fun `손절을 보류하면 얼마나 떨어져도 보유한다`() {
         val noStop = FixedPercentExitRule(takeProfitPercent = BigDecimal("1"), stopLossPercent = null)
-        assertEquals(ExitSignal.HOLD, noStop.evaluate(avg, usd("50")))
-        assertEquals(ExitSignal.TAKE_PROFIT, noStop.evaluate(avg, usd("101")))
-        assertEquals(null, noStop.targets(avg, usd("100")).stopLossPrice)
+        assertEquals(ExitSignal.HOLD, noStop.evaluate(avg, quote("50")))
+        assertEquals(ExitSignal.TAKE_PROFIT, noStop.evaluate(avg, quote("101")))
+        assertEquals(null, noStop.targets(avg, quote("100")).stopLossPrice)
     }
 
     @Test
