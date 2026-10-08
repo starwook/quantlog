@@ -13,6 +13,12 @@ spring:
     username: root
     password: ""
     driver-class-name: com.mysql.cj.jdbc.Driver
+  task:
+    scheduling:
+      # 기본은 스레드 1개를 모든 @Scheduled 가 나눠 써서, 느린 KIS 호출 하나가 진입·청산·마틴게일까지 막는다
+      # (2026-10-08: 체결 재확인 배치가 10분간 진입을 막아 주기 재매수가 늦음). 같은 작업은 이전 회차가 끝나야 다시 돈다.
+      pool:
+        size: 4
   jpa:
     open-in-view: false
     hibernate:
