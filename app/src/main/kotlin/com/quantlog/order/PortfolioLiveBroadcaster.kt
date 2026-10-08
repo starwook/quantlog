@@ -8,13 +8,13 @@ import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.FillAppliedEvent
 import com.quantlog.position.HoldingsChangedEvent
+import com.quantlog.position.OrderFills
 import com.quantlog.position.OrderState
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.RealizedPnl
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeChangedEvent
-import com.quantlog.position.TradeFillRepository
 import com.quantlog.watchlist.SymbolStrategyService
 import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
@@ -47,7 +47,7 @@ private val log = KotlinLogging.logger {}
 class PortfolioLiveBroadcaster(
     private val portfolioService: PortfolioService,
     private val accountHoldingRepository: AccountHoldingRepository,
-    private val tradeFillRepository: TradeFillRepository,
+    private val orderFills: OrderFills,
     private val symbolStrategyService: SymbolStrategyService,
     private val objectMapper: ObjectMapper,
 ) {
@@ -88,7 +88,7 @@ class PortfolioLiveBroadcaster(
     fun onTradeChanged(event: TradeChangedEvent) {
         if (sessions.isEmpty()) return
         val trade = event.trade
-        // 실현손익은 체결된 매도에만 있고, 매매 기록 전체를 FIFO 로 다시 계산해야 해서 그때만 구한다.
+        // 실현손익은 체결된 매도에만 있고 요약 전체를 다시 계산해야 해서 그때만 구한다.
         if (trade.side == Side.SELL && trade.state == OrderState.FILLED) {
             val snapshot = portfolioService.snapshot()
             broadcast(
@@ -186,25 +186,18 @@ class PortfolioLiveBroadcaster(
         }
     }
 
-    /**
-     * 체결 내역 = 원장 줄(체결통보 1건) + 원장이 없는 옛 체결 주문(주문 한 건을 한 줄로). 최근 순으로 [HISTORY_LIMIT] 건.
-     */
-    private fun recentFills(snapshot: PortfolioSnapshot): List<FillLiveView> {
-        val ledger = tradeFillRepository.findAll()
-        val ledgerOrders = ledger.map { it.market to it.orderNo }.toSet()
-        val fromLedger = ledger.map { FillLiveView.of(it, symbolStrategyService.displayName(it.market, it.symbol)) }
-        val legacy =
-            snapshot.trades
-                .filter { it.state == OrderState.FILLED && (it.market to it.orderNo) !in ledgerOrders }
-                .map {
-                    FillLiveView.ofLegacy(
-                        it,
-                        symbolStrategyService.displayName(it.market, it.symbol),
-                        snapshot.realizedPnlByTradeId[it.id],
-                    )
-                }
-        return (fromLedger + legacy).sortedByDescending { it.placedAtEpochMs }.take(HISTORY_LIMIT)
-    }
+    /** 체결 내역 = 원장(`broker_fill`) 줄, 최근 순으로 [HISTORY_LIMIT] 건. 손익은 그 주문의 체결 직전 평단([com.quantlog.position.Trade.avgCostBefore]) 기준이다. */
+    private fun recentFills(snapshot: PortfolioSnapshot): List<FillLiveView> =
+        orderFills.projectedAll()
+            .sortedByDescending { it.id }
+            .take(HISTORY_LIMIT)
+            .map {
+                FillLiveView.of(
+                    it,
+                    snapshot.avgCostBeforeByOrder[it.market to it.orderNo],
+                    symbolStrategyService.displayName(it.market, it.symbol),
+                )
+            }
 
     private fun Trade.toView(pnl: RealizedPnl?) = OrderLiveView.of(this, symbolStrategyService.displayName(market, symbol), pnl)
 

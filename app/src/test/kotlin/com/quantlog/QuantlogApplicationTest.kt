@@ -10,7 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest
 // 청산 스케줄러·체결가 재확인 배치는 꺼서, 테스트 중에 증권사 호출·주문이 나가지 않게 한다.
 @SpringBootTest(
     properties = [
-        "spring.profiles.active=test", "quantlog.exit.enabled=false", "quantlog.reconcile.enabled=false",
+        "spring.profiles.active=test", "quantlog.exit.enabled=false",
         "quantlog.stockmaster.enabled=false", "quantlog.error-log.enabled=false",
     ],
 )

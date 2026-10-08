@@ -19,17 +19,15 @@ import java.util.concurrent.ConcurrentHashMap
 private val log = KotlinLogging.logger {}
 
 /**
- * KIS 잔고를 [AccountHolding] 테이블에 그대로 맞춘다 (KIS 가 정답, DB 는 사본). 새 종목은 추가, 있는 종목은 수량·평단·현재가 갱신,
- * KIS 잔고에서 사라진 종목은 삭제한다. 호출은 [com.quantlog.trading.HoldingSyncScheduler] 가 주기적으로 한다.
- *
- * 체결통보(WebSocket)가 오면 [applyFill] 이 그 체결만큼 수량·평단을 바로 계산해 반영한다 — KIS 잔고 REST 는 한 번에 3~8초 걸려서
- * 주기 동기화만으로는 체결 뒤 DB 가 십수 초 낡았다(2026-10-07 실측). 이 계산값은 임시일 뿐이고 다음 KIS 잔고 동기화가 정답으로 덮어쓴다.
+ * 보유 현황([AccountHolding]) = 앱이 기억하는 현재 수량·평단. 두 가지로 갱신한다.
+ * - [applyFill]: 게이트웨이 원장(`broker_fill`)의 체결 줄을 [com.quantlog.gatewayclient.FillProjector] 가 순서대로 넘겨 주면 그만큼 수량·평단을 계산해 반영한다.
+ * - [sync]: 게이트웨이의 잔고 스냅샷(증권사 값)으로 덮어쓴다(증권사가 정답). 어긋난 곳은 `[동기화 불일치]` 로 보고한다.
  */
 @Service
 class HoldingSyncService(
     private val accountHoldingRepository: AccountHoldingRepository,
     private val tradeRepository: TradeRepository,
-    private val tradeFills: TradeFillRepository,
+    private val orderFills: OrderFills,
     private val symbolNames: SymbolStrategyService,
     private val events: ApplicationEventPublisher,
 ) : FillProgress {
@@ -37,7 +35,7 @@ class HoldingSyncService(
     @Volatile
     private var lastSyncedAt: Instant? = null
 
-    /** 종목별로 체결통보를 마지막으로 반영한 시각. 그보다 먼저 시작한 KIS 잔고 조회 결과로는 그 종목을 덮어쓰지 않는다. */
+    /** 종목별로 체결을 마지막으로 반영한 시각. 그보다 먼저 시작한 잔고 조회 결과로는 그 종목을 덮어쓰지 않는다. */
     private val fillAppliedAt = ConcurrentHashMap<Pair<Market, String>, Instant>()
 
     /**
@@ -50,40 +48,48 @@ class HoldingSyncService(
     ): Boolean {
         val synced = lastSyncedAt ?: return true
         val last = tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(market, symbol) ?: return false
-        // 체결통보로 이미 다 반영한 주문이면 동기화를 기다릴 필요가 없다.
+        // 체결을 이미 다 반영한 주문이면 동기화를 기다릴 필요가 없다.
         if (isOrderFilled(last.orderNo)) return false
         return last.executedAt.isAfter(synced)
     }
 
-    /** 이 주문을 원장([TradeFill])에 주문수량만큼 다 반영했는가. 마틴게일의 "단계 진행 중"이 풀리는 기준이다. 메모리가 아니라 원장에서 구해 재시작해도 같다. */
+    /**
+     * 이 주문의 체결을 주문수량만큼 다 반영했는가. 마틴게일의 "단계 진행 중"이 풀리는 기준이다. 원장(`broker_fill`) 중 앱이 반영을 끝낸 줄로 구해
+     * 재시작해도 같고, 보유 현황에 아직 안 들어간 체결로 대기를 먼저 풀지 않는다.
+     */
     override fun isOrderFilled(orderNo: String): Boolean {
         val trade = tradeRepository.findFirstByMarketAndOrderNo(Market.KR, orderNo) ?: return false
-        return tradeFills.filledSoFar(Market.KR, orderNo).quantity >= trade.quantity
+        return orderFills.projected(orderNo).total().quantity >= trade.quantity
     }
 
     /**
-     * 체결통보 한 건을 보유 현황에 반영한다. 체결 통보만 처리하고 접수 통보는 건너뛴다.
+     * 원장(`broker_fill`)의 체결 통보 한 줄([brokerFillId])을 보유 현황에 반영한다. 체결 통보만 처리하고 접수 통보는 건너뛴다.
      * 매수는 수량 가중평균으로 평단을 다시 계산하고, 매도는 수량만 줄인다(0이 되면 행 삭제). 바뀐 내용 설명을 돌려준다(건너뛰면 null).
      * 부분체결 통보의 체결수량은 건별이다(2026-10-07 실측: 100주 매도가 44주 + 56주로 왔다). 그대로 더하고 빼되, 같은 통보가 중복 와도 주문수량을 넘기지 않게만 막는다.
+     * [receivedAt] 은 게이트웨이가 통보를 받은 시각이다 — 앱이 늦게 반영해도 체결 시각은 이것이다.
      */
     @Transactional
     fun applyFill(
         notice: FillNotice,
+        brokerFillId: Long,
+        receivedAt: Instant,
         now: Instant = Instant.now(),
     ): String? {
         if (!notice.isFill) return null
         val side = notice.side ?: return null
         val price = notice.filledPrice ?: return null
         val reported = notice.filledQuantity?.toInt() ?: return null
-        val quantity = reserveFillQuantity(notice.orderNo, reported, orderQuantityOf(notice))
+        val quantity = reserveFillQuantity(notice.orderNo, brokerFillId, reported, orderQuantityOf(notice))
         if (quantity <= 0) return null
 
         val market = Market.KR
         val name = symbolNames.displayName(market, notice.symbol)
         val row = accountHoldingRepository.findByMarketAndSymbol(market, notice.symbol)
-        // 체결 원장 기록(FillLedger). 사본을 바꾸기 전의 평단을 실어 보내야 한다 — 이 체결의 손익은 그 평단 기준으로 확정한다.
-        // 사본에 종목이 없는 매도(row == null)도 체결은 실제로 일어났으니 기록한다(평단은 null).
-        events.publishEvent(FillAppliedEvent(market, notice.symbol, side, notice.orderNo, quantity, price, row?.avgCost, now))
+        // 매매 기록(TradeService)·화면에 알린다. 사본을 바꾸기 전의 평단을 실어 보내야 한다 — 매도 손익은 그 평단 기준으로 확정한다.
+        // 사본에 종목이 없는 매도(row == null)도 체결은 실제로 일어났으니 알린다(평단은 null).
+        events.publishEvent(
+            FillAppliedEvent(market, notice.symbol, side, notice.orderNo, quantity, price, row?.avgCost, receivedAt, brokerFillId),
+        )
         val change =
             when (side) {
                 Side.BUY -> {
@@ -143,12 +149,16 @@ class HoldingSyncService(
         return tradeRepository.findFirstByMarketAndOrderNo(Market.KR, notice.orderNo)?.quantity ?: Int.MAX_VALUE
     }
 
-    /** 이 주문에서 이번 통보로 더 반영할 수량. 이미 원장에 주문수량만큼 있으면 0 — 같은 통보가 다시 와도, 체결수량이 누적으로 와도 주문수량을 넘겨 더하지 않는다. */
+    /**
+     * 이 주문에서 이번 줄로 더 반영할 수량. 원장에서 이 줄 앞의 체결 합계가 이미 주문수량만큼이면 0 — 같은 통보가 중복 기록돼도,
+     * 체결수량이 누적으로 와도 주문수량을 넘겨 더하지 않는다.
+     */
     private fun reserveFillQuantity(
         orderNo: String,
+        brokerFillId: Long,
         reported: Int,
         orderQuantity: Int,
-    ): Int = minOf(reported, orderQuantity - tradeFills.filledSoFar(Market.KR, orderNo).quantity).coerceAtLeast(0)
+    ): Int = minOf(reported, orderQuantity - orderFills.upTo(orderNo, brokerFillId - 1).total().quantity).coerceAtLeast(0)
 
     /**
      * [kis] 는 [fetchedAt] 시점에 받은 잔고 전체. 바뀐 내용 설명 목록을 돌려준다(변화가 없으면 빈 목록).
@@ -174,7 +184,7 @@ class HoldingSyncService(
         // 수량이 그대로여도 현재가가 바뀌면 화면(평가손익)이 갱신돼야 한다.
         var priceChanged = false
 
-        // 이 조회를 시작한 뒤에 체결통보로 반영한 종목은 조회 결과가 체결 이전 값일 수 있어 이번 회차엔 건드리지 않는다(다음 회차가 맞춘다).
+        // 이 조회를 시작한 뒤에 체결을 반영한 종목은 조회 결과가 체결 이전 값일 수 있어 이번 회차엔 건드리지 않는다(다음 회차가 맞춘다).
         fun reflectedAfterFetch(key: Pair<Market, String>) = fillAppliedAt[key]?.isAfter(fetchedAt) == true
 
         actual.filterKeys { !reflectedAfterFetch(it) }.forEach { (key, holding) ->

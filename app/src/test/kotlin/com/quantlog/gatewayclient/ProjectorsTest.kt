@@ -37,16 +37,20 @@ class ProjectorsTest {
     private val tradeService = Mockito.mock(TradeService::class.java)
     private val projector = FillProjector(fills, cursors, holdingSync, tradeService, tx)
 
-    private fun row(id: Long) =
-        BrokerFillRow(
-            id = id, receivedAt = Instant.now(), symbol = "005930", orderNo = "O$id", sellBuyCode = "02", filledFlag = "2",
-            filledQuantity =
-                BigDecimal(
-                    "2",
-                ),
-            filledPrice = BigDecimal("70100"), orderQuantity = BigDecimal("2"), orderPrice = BigDecimal("70200"),
-            noticeTime = "093000",
-        )
+    private val receivedAt = Instant.parse("2026-10-08T01:00:00Z")
+
+    private fun row(
+        id: Long,
+        filledFlag: String = "2",
+    ) = BrokerFillRow(
+        id = id, receivedAt = receivedAt, symbol = "005930", orderNo = "O$id", sellBuyCode = "02", filledFlag = filledFlag,
+        filledQuantity =
+            BigDecimal(
+                "2",
+            ),
+        filledPrice = BigDecimal("70100"), orderQuantity = BigDecimal("2"), orderPrice = BigDecimal("70200"),
+        noticeTime = "093000",
+    )
 
     @Test
     fun `커서가 없으면 지금 마지막 ID 로 시작하고 이전 체결은 다시 처리하지 않는다`() {
@@ -57,24 +61,24 @@ class ProjectorsTest {
         Mockito.verifyNoInteractions(holdingSync)
     }
 
-    private val applied = mutableListOf<FillNotice>()
-    private val traded = mutableListOf<FillNotice>()
+    private val applied = mutableListOf<Triple<FillNotice, Long, Instant>>()
+    private val accepted = mutableListOf<FillNotice>()
 
     private fun recordApplies(failOrderNo: String? = null) {
         Mockito.doAnswer {
             val notice = it.getArgument<FillNotice>(0)
             if (notice.orderNo == failOrderNo) throw RuntimeException("boom")
-            applied += notice
+            applied += Triple(notice, it.getArgument(1), it.getArgument(2))
             null
-        }.`when`(holdingSync).applyFill(anyNonNull(), anyNonNull())
+        }.`when`(holdingSync).applyFill(anyNonNull(), Mockito.anyLong(), anyNonNull(), anyNonNull())
         Mockito.doAnswer {
-            traded += it.getArgument<FillNotice>(0)
+            accepted += it.getArgument<FillNotice>(0)
             null
-        }.`when`(tradeService).onFillNotice(anyNonNull())
+        }.`when`(tradeService).onOrderNotice(anyNonNull())
     }
 
     @Test
-    fun `커서 다음 행을 순서대로 보유 현황과 매매 기록에 반영하고 커서를 옮긴다`() {
+    fun `커서 다음 행을 순서대로 보유 현황에 반영하고 커서를 옮긴다`() {
         cursorStore["fill"] = 10
         Mockito.`when`(fills.findTop100ByIdGreaterThanOrderByIdAsc(10)).thenReturn(listOf(row(11), row(12)))
         Mockito.`when`(fills.findTop100ByIdGreaterThanOrderByIdAsc(12)).thenReturn(emptyList())
@@ -82,10 +86,25 @@ class ProjectorsTest {
 
         assertEquals(2, projector.project())
 
-        assertEquals(listOf("O11", "O12"), applied.map { it.orderNo })
-        assertEquals(listOf("O11", "O12"), traded.map { it.orderNo })
-        assertEquals("02", applied.first().sellBuyCode)
+        assertEquals(listOf("O11", "O12"), applied.map { it.first.orderNo })
+        assertEquals("02", applied.first().first.sellBuyCode)
+        // 원장 줄 ID 와 게이트웨이가 받은 시각을 그대로 넘긴다(앱이 반영한 시각이 아니다).
+        assertEquals(listOf(11L, 12L), applied.map { it.second })
+        assertEquals(receivedAt, applied.first().third)
         assertEquals(12L, cursorStore["fill"])
+    }
+
+    @Test
+    fun `접수 통보는 보유 현황이 아니라 매매 기록의 미체결 확인으로 보낸다`() {
+        cursorStore["fill"] = 0
+        Mockito.`when`(fills.findTop100ByIdGreaterThanOrderByIdAsc(0)).thenReturn(listOf(row(1, filledFlag = "1")))
+        Mockito.`when`(fills.findTop100ByIdGreaterThanOrderByIdAsc(1)).thenReturn(emptyList())
+        recordApplies()
+
+        projector.project()
+
+        assertEquals(listOf("O1"), accepted.map { it.orderNo })
+        assertEquals(0, applied.size)
     }
 
     @Test
@@ -96,7 +115,7 @@ class ProjectorsTest {
         recordApplies(failOrderNo = "O1")
 
         assertEquals(2, projector.project())
-        assertEquals(listOf("O2"), applied.map { it.orderNo })
+        assertEquals(listOf("O2"), applied.map { it.first.orderNo })
         assertEquals(2L, cursorStore["fill"])
     }
 

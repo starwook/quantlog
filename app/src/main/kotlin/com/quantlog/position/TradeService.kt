@@ -16,10 +16,13 @@ import java.math.BigDecimal
 @Service
 class TradeService(
     private val repository: TradeRepository,
-    private val tradeFills: TradeFillRepository,
+    private val orderFills: OrderFills,
     private val notifier: Notifier,
     private val events: ApplicationEventPublisher,
 ) {
+    /** 매매 기록이 저장되기 전에 반영된 매도 체결의 체결 직전 평단(주문번호 → 평단). [record] 가 꺼내 쓴다. 재시작하면 사라진다(그 매도는 손익 "모름"). */
+    private val sellAvgCostBeforeRecord = boundedMap<BigDecimal>()
+
     /** 이 종목의 체결된 매매 기록(체결 시각 오름차순). 취소·미체결 주문은 뺀다. 마틴게일 사이클 계산에 쓴다. */
     fun trades(
         market: Market,
@@ -37,20 +40,32 @@ class TradeService(
     ): Trade? = repository.findFirstByMarketAndOrderNo(market, orderNo)
 
     /**
-     * 국내 체결 통보가 오면, 이미 저장된 매매 기록이 있으면 원장([TradeFill])의 주문별 누적으로 체결가·체결수량을 채운다. 기록이 아직 없으면 [record] 가 저장할 때 원장에서 구해 채운다.
-     * [TradeFilledEvent] 는 일부러 내지 않는다 — 그 이벤트는 REST 잔고 동기화를 돌리는데, 이 메서드는 WebSocket 수신 스레드에서 불리므로
-     * 수 초 걸리는 REST 호출로 틱 수신을 막으면 안 된다(보유 수량은 [HoldingSyncService.applyFill] 이 이미 반영한다).
+     * 체결 한 줄이 보유 현황에 반영되면([HoldingSyncService.applyFill] 과 같은 트랜잭션) 그 주문의 매매 기록을 따라 갱신한다.
+     * - 체결가·체결수량: 원장(`broker_fill`)에서 이 줄까지의 주문별 누적으로 채운다(부분체결은 누적해서 반영 — 2026-10-08).
+     * - 매도면 체결 직전 평단을 적어 둔다([Trade.avgCostBefore], 손익 기준). 매도는 평단을 바꾸지 않으므로 첫 체결의 값 하나면 된다.
+     * 매매 기록이 아직 없으면(주문 응답보다 체결이 먼저 반영됨) [record] 가 저장할 때 원장에서 채운다. 평단은 그때 알 수 없어 잠깐 들고 있는다.
      */
     @EventListener
-    fun onFillNotice(notice: FillNotice) {
-        if (!notice.isFill) return
-        // 누적은 메모리가 아니라 원장에서 구한다 — 이 통보는 호출 직전 [HoldingSyncService.applyFill] 이 같은 트랜잭션에서 원장에 적었다.
-        val total = tradeFills.filledSoFar(Market.KR, notice.orderNo)
-        val average = total.averagePrice ?: return
-        val cumulative = total.quantity
+    fun onFillApplied(event: FillAppliedEvent) {
+        val trade = repository.findFirstByMarketAndOrderNo(event.market, event.orderNo)
+        if (trade == null) {
+            if (event.side == Side.SELL && event.avgCostBefore != null) sellAvgCostBeforeRecord[event.orderNo] = event.avgCostBefore
+            return
+        }
+        var changed = event.side == Side.SELL && event.avgCostBefore != null && trade.recordAvgCostBefore(event.avgCostBefore)
+        val total = orderFills.upTo(event.orderNo, event.brokerFillId).total()
+        total.averagePrice?.let { if (trade.applyFill(it, total.quantity)) changed = true }
+        if (changed) {
+            repository.save(trade)
+            events.publishEvent(TradeChangedEvent(trade))
+        }
+    }
+
+    /** 원장의 접수 통보(체결 아님): 증권사가 주문을 받았다 — 아직 체결 전이면 "미체결(증권사 확인)"으로 표시한다. 거부 통보는 건너뛴다. */
+    fun onOrderNotice(notice: FillNotice) {
+        if (notice.isFill || (notice.refuseFlag.isNotBlank() && notice.refuseFlag != NOT_REFUSED)) return
         val trade = repository.findFirstByMarketAndOrderNo(Market.KR, notice.orderNo) ?: return
-        // 통보는 건별 체결이라 누적해서 반영한다 — 첫 통보로 "전량 체결"이 되면 부분체결 주문이 체결로 보인다(2026-10-08).
-        if (trade.applyFill(average, cumulative)) {
+        if (trade.apply(OrderStatus.Open)) {
             repository.save(trade)
             events.publishEvent(TradeChangedEvent(trade))
         }
@@ -58,7 +73,7 @@ class TradeService(
 
     fun find(id: Long): Trade = repository.findById(id).orElseThrow { IllegalStateException("주문 기록이 없습니다: $id") }
 
-    /** 증권사 조회 결과를 이 주문에 반영해 저장한다. 체결로 바뀌면 잔고 동기화가 돌도록 알린다. */
+    /** 증권사 조회 결과를 이 주문에 반영해 저장한다. */
     fun applyStatus(
         trade: Trade,
         status: OrderStatus,
@@ -68,7 +83,6 @@ class TradeService(
         if (status is OrderStatus.Filled) reportFillCorrection(trade, dbBefore, status)
         repository.save(trade)
         events.publishEvent(TradeChangedEvent(trade))
-        if (status is OrderStatus.Filled) events.publishEvent(TradeFilledEvent(trade.market, trade.symbol))
     }
 
     fun markCanceled(trade: Trade) {
@@ -77,7 +91,10 @@ class TradeService(
         events.publishEvent(TradeChangedEvent(trade))
     }
 
-    /** filledPrice: 실제 체결가(호출부가 조회해서 넘긴다). 못 구했으면 null로 둔다 — 지어내지 않는다. */
+    /**
+     * 주문 응답 직후 매매 기록을 저장한다. 그사이 원장에 이미 반영된 체결·접수 통보가 있으면 그것으로 체결가·수량·미체결 확인을 채운다.
+     * filledPrice: 호출부가 따로 조회한 실제 체결가(점검용 실행기만 쓴다). 못 구했으면 null로 둔다 — 지어내지 않는다.
+     */
     fun record(
         order: OrderRequest,
         receipt: OrderReceipt,
@@ -85,7 +102,7 @@ class TradeService(
         filledPrice: BigDecimal? = null,
         openConfirmed: Boolean = false,
     ): Trade {
-        val noticed = if (filledPrice == null) tradeFills.filledSoFar(order.market, receipt.orderNo) else null
+        val noticed = if (filledPrice == null) orderFills.projected(receipt.orderNo).total() else null
         val knownFilledPrice = filledPrice ?: noticed?.averagePrice
         // 호출부가 체결가를 넘겼으면 전량 체결로 본다. 통보에서 온 값이면 지금까지 체결된 수량만큼만이다.
         val knownFilledQuantity =
@@ -109,8 +126,9 @@ class TradeService(
                     branchNo = receipt.branchNo.ifBlank { null },
                     reason = reason,
                     initialFilledPrice = knownFilledPrice,
-                    initialOpenConfirmed = openConfirmed,
+                    initialOpenConfirmed = openConfirmed || (knownFilledPrice == null && orderFills.accepted(receipt.orderNo)),
                     initialFilledQuantity = knownFilledQuantity,
+                    initialAvgCostBefore = sellAvgCostBeforeRecord.remove(receipt.orderNo).takeIf { order.side == Side.SELL },
                 ),
             )
         notifier.send(
@@ -119,7 +137,11 @@ class TradeService(
                 "주문번호=${receipt.orderNo}\n사유: $reason",
         )
         events.publishEvent(TradeChangedEvent(trade))
-        if (knownFilledPrice != null) events.publishEvent(TradeFilledEvent(order.market, order.symbol))
         return trade
+    }
+
+    private companion object {
+        /** RFUS_YN: 정상 접수면 "0". */
+        const val NOT_REFUSED = "0"
     }
 }

@@ -4,12 +4,11 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.Side
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.FillAppliedEvent
-import com.quantlog.position.FillSource
+import com.quantlog.position.OrderFill
 import com.quantlog.position.OrderState
 import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.RealizedPnl
 import com.quantlog.position.Trade
-import com.quantlog.position.TradeFill
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
@@ -127,8 +126,8 @@ data class HoldingLiveView(
 }
 
 /**
- * 체결 내역 한 줄 — 체결통보 1건(원장 한 줄)이다. 주문 단위가 아니라서 부분체결이 쪼개진 그대로 보인다.
- * [orderNo] 로 화면이 같은 주문의 사유(reason)를 찾아 붙인다. 옛 기록(원장 없는 주문)은 주문 한 건을 한 줄로 보여준다.
+ * 체결 내역 한 줄 — 체결통보 1건(게이트웨이 원장 `broker_fill` 한 줄)이다. 주문 단위가 아니라서 부분체결이 쪼개진 그대로 보인다.
+ * [orderNo] 로 화면이 같은 주문의 사유(reason)를 찾아 붙인다.
  */
 data class FillLiveView(
     val key: String,
@@ -139,8 +138,6 @@ data class FillLiveView(
     val side: String,
     val quantity: Int,
     val priceText: String,
-    /** 체결통보를 놓쳐 KIS 조회로 나중에 채운 줄이면 true (체결 시각은 채운 시각). */
-    val backfilled: Boolean,
     val placedAtEpochMs: Long,
     val timeText: String,
     /** 매도이고 체결 직전 평단을 알 때만 채운다. */
@@ -149,8 +146,10 @@ data class FillLiveView(
     val pnlCss: String,
 ) {
     companion object {
+        /** 원장 한 줄. [avgCostBefore] 는 그 주문의 체결 직전 평단(매도만, 모르면 null). */
         fun of(
-            fill: TradeFill,
+            fill: OrderFill,
+            avgCostBefore: BigDecimal?,
             symbolName: String,
         ): FillLiveView =
             build(
@@ -161,15 +160,14 @@ data class FillLiveView(
                     orderNo = fill.orderNo,
                     quantity = fill.quantity,
                     price = fill.price,
-                    avgCostBefore = fill.avgCostBefore,
+                    avgCostBefore = avgCostBefore,
                     filledAt = fill.filledAt,
-                    backfilled = fill.source == FillSource.REST_BACKFILL,
                 ),
-                key = "fill:${fill.id}",
+                key = ledgerKey(fill.id),
                 symbolName = symbolName,
             )
 
-        /** 방금 반영된 체결통보(DB 저장 전이라 id 가 없어 주문번호·시각·수량으로 키를 만든다). */
+        /** 방금 반영된 원장 한 줄. 키는 DB 에서 읽은 같은 줄([of])과 같다. */
         fun of(
             event: FillAppliedEvent,
             symbolName: String,
@@ -184,37 +182,12 @@ data class FillLiveView(
                     price = event.price,
                     avgCostBefore = event.avgCostBefore,
                     filledAt = event.filledAt,
-                    backfilled = false,
                 ),
-                key = "fill:${event.orderNo}:${event.filledAt.toEpochMilli()}:${event.quantity}",
+                key = ledgerKey(event.brokerFillId),
                 symbolName = symbolName,
             )
 
-        /** 원장이 없는 옛 체결 주문 한 건. 손익은 옛 FIFO 계산값. */
-        fun ofLegacy(
-            trade: Trade,
-            symbolName: String,
-            pnl: RealizedPnl?,
-        ): FillLiveView {
-            val currency = trade.market.currency
-            val price = (trade.filledPrice ?: trade.orderPrice).money(currency)
-            return FillLiveView(
-                key = "order:${trade.market}:${trade.orderNo}",
-                orderNo = trade.orderNo,
-                market = trade.market.name,
-                symbol = trade.symbol,
-                symbolName = symbolName,
-                side = trade.side.name,
-                quantity = trade.quantity,
-                priceText = price,
-                backfilled = false,
-                placedAtEpochMs = trade.executedAt.toEpochMilli(),
-                timeText = DATE_TIME_FORMAT.format(trade.executedAt.atZone(KST)),
-                pnlText = pnl?.let { signedMoneyAndPercent(it.amount, it.percent, currency) },
-                pnlDetailText = pnl?.let { "매수 평단 ${it.avgBuyPrice.money(currency)} → 체결 $price · ${it.matchedQuantity}주" },
-                pnlCss = pnl?.let { pnlCss(it.amount) } ?: "muted",
-            )
-        }
+        private fun ledgerKey(brokerFillId: Long) = "bf:$brokerFillId"
 
         private class Facts(
             val market: Market,
@@ -225,7 +198,6 @@ data class FillLiveView(
             val price: BigDecimal,
             val avgCostBefore: BigDecimal?,
             val filledAt: Instant,
-            val backfilled: Boolean,
         )
 
         private fun build(
@@ -246,7 +218,6 @@ data class FillLiveView(
                 side = f.side.name,
                 quantity = f.quantity,
                 priceText = f.price.money(currency),
-                backfilled = f.backfilled,
                 placedAtEpochMs = f.filledAt.toEpochMilli(),
                 timeText = DATE_TIME_FORMAT.format(f.filledAt.atZone(KST)),
                 pnlText = if (amount != null && percent != null) signedMoneyAndPercent(amount, percent, currency) else null,

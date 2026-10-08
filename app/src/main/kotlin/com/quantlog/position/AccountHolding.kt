@@ -15,7 +15,7 @@ import java.time.Instant
 
 /**
  * KIS 계좌 잔고의 사본 (종목당 1행). 수량·평단·현재가는 [HoldingSyncService] 가 KIS 잔고를 받을 때마다 그대로 덮어쓴다.
- * 보유 현황의 기준은 매매 기록(Trade) FIFO 계산이 아니라 이 테이블이다 — 증권사 앱에서 직접 거래한 물량도 잔고에는 있기 때문이다.
+ * 보유 현황의 기준은 매매 기록(Trade)이 아니라 이 테이블이다 — 증권사 앱에서 직접 거래한 물량도 잔고에는 있기 때문이다.
  */
 @Entity
 @Table(name = "account_holding", uniqueConstraints = [UniqueConstraint(columnNames = ["market", "symbol"])])

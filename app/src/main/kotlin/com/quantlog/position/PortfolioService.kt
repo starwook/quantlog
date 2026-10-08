@@ -8,7 +8,6 @@ import java.math.MathContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.ArrayDeque
 
 private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 private val HUNDRED: BigDecimal = BigDecimal(100)
@@ -16,9 +15,9 @@ private val HUNDRED: BigDecimal = BigDecimal(100)
 data class RealizedPnl(
     val amount: BigDecimal,
     val percent: BigDecimal,
-    /** 이 매도와 FIFO 로 짝지어진 매수분의 평균 매수가. */
+    /** 이 매도의 체결 직전 평단(매수 평단). */
     val avgBuyPrice: BigDecimal,
-    /** 매수분과 실제로 짝지어진 수량(매도 수량보다 적을 수 있다). */
+    /** 손익을 확정한 수량(체결된 수량. 일부 체결 뒤 취소됐으면 주문 수량보다 적다). */
     val matchedQuantity: Int,
 )
 
@@ -57,9 +56,9 @@ data class PortfolioSnapshot(
     val trades: List<Trade>,
     val realizedPnlByTradeId: Map<Long, RealizedPnl>,
     val summaryByCurrency: Map<String, PortfolioSummary>,
+    /** 매도 주문별 체결 직전 평단(취소된 주문 포함 — 일부 체결 뒤 취소돼도 체결된 몫의 손익이 있다). 체결 내역 줄의 손익 계산에 쓴다. */
+    val avgCostBeforeByOrder: Map<Pair<Market, String>, BigDecimal> = emptyMap(),
 )
-
-private class Lot(var quantity: Int, val price: BigDecimal)
 
 private class RealizedAcc {
     var totalAmount: BigDecimal = BigDecimal.ZERO
@@ -71,70 +70,37 @@ private class RealizedAcc {
 }
 
 /**
- * 보유 현황은 잔고 테이블([AccountHolding], KIS 잔고 사본)을 그대로 쓰고, 실현손익은 원시 매매 기록(Trade)으로 FIFO 계산한다.
- * 파생값은 저장하지 않고 매번 다시 계산한다 — 기록 건수가 적어 성능 문제가 없고, 저장된 값이
- * 원본 기록과 어긋날 일도 없다. KIS 를 직접 부르지 않는다(동기화는 [HoldingSyncService] 가 주기적으로).
+ * 보유 현황은 잔고 테이블([AccountHolding])을 그대로 쓴다. 매도 손익은 매매 기록에 적어 둔 체결 직전 평단([Trade.avgCostBefore])으로
+ * 확정한다. KIS 를 직접 부르지 않는다.
  */
 @Service
 class PortfolioService(
     private val tradeRepository: TradeRepository,
     private val accountHoldingRepository: AccountHoldingRepository,
-    private val tradeFillRepository: TradeFillRepository,
+    private val orderFills: OrderFills,
 ) {
     fun snapshot(): PortfolioSnapshot = buildSnapshot()
 
     private fun buildSnapshot(): PortfolioSnapshot {
         val allTrades = tradeRepository.findAll()
         val trades = allTrades.filterNot { it.canceled }.sortedBy { it.executedAt }
-        // 체결 원장이 있는 주문은 원장으로 손익을 확정하고, 없는 옛 주문만 FIFO 로 계산한다. 원장이 있는 주문은 일부만 체결된 뒤
-        // 취소됐어도 체결된 몫은 실제 거래라 계산에 넣는다.
-        val fillsByOrder = tradeFillRepository.findAll().groupBy { it.market to it.orderNo }
-        val hasFills = { trade: Trade -> (trade.market to trade.orderNo) in fillsByOrder }
-        // 체결가를 못 구한 주문(미체결이거나 확인 전)은 손익·횟수 계산에서 뺀다. 기록 화면에는 그대로 보인다.
-        val filledTrades =
-            allTrades.filter { (!it.canceled && it.filledPrice != null) || hasFills(it) }.sortedBy { it.executedAt }
+        // 체결 원장(broker_fill)에 체결이 반영된 주문만 손익·횟수에 넣는다. 일부만 체결된 뒤 취소됐어도 체결된 몫은 실제 거래라 넣는다.
+        // 매도 손익은 그 매도의 체결 직전 평단으로 확정한다([realizedOf]). 미체결·확인 전 주문은 기록 화면에만 보인다.
+        val ledgerOrders = orderFills.projectedAll().map { it.market to it.orderNo }.toSet()
+        val filledTrades = allTrades.filter { (it.market to it.orderNo) in ledgerOrders }.sortedBy { it.executedAt }
         val today = Instant.now().atZone(KST).toLocalDate()
 
-        val lotsByKey = mutableMapOf<Pair<Market, String>, ArrayDeque<Lot>>()
         val realizedByCurrency = mutableMapOf<String, RealizedAcc>()
         val pnlByTradeId = mutableMapOf<Long, RealizedPnl>()
         val buyCountTodayByCurrency = mutableMapOf<String, Int>()
         val sellCountTodayByCurrency = mutableMapOf<String, Int>()
 
         filledTrades.forEach { trade ->
-            val key = trade.market to trade.symbol
-            val lots = lotsByKey.getOrPut(key) { ArrayDeque() }
             if (trade.executedAt.atZone(KST).toLocalDate() == today) {
                 val counts = if (trade.side == Side.BUY) buyCountTodayByCurrency else sellCountTodayByCurrency
                 counts.merge(trade.market.currency, 1, Int::plus)
             }
-            fillsByOrder[trade.market to trade.orderNo]?.let { fills ->
-                if (trade.side == Side.SELL) realizedFromLedger(fills)?.let { record(trade, it, realizedByCurrency, pnlByTradeId, today) }
-                return@forEach
-            }
-            // 실제 체결가가 있으면 그걸 쓴다 — 지정가와 다를 수 있다 (2026-09-29: 국내는 지정가·체결가가 꽤 벌어진 적 있었음).
-            val price = trade.filledPrice!!
-            when (trade.side) {
-                Side.BUY -> lots.addLast(Lot(trade.quantity, price))
-                Side.SELL -> {
-                    var remaining = trade.quantity
-                    var cost = BigDecimal.ZERO
-                    var matchedQty = 0
-                    while (remaining > 0 && lots.isNotEmpty()) {
-                        val lot = lots.first()
-                        val take = minOf(remaining, lot.quantity)
-                        cost = cost.add(lot.price.multiply(BigDecimal(take)))
-                        matchedQty += take
-                        lot.quantity -= take
-                        remaining -= take
-                        if (lot.quantity == 0) lots.removeFirst()
-                    }
-                    if (matchedQty > 0) {
-                        val amount = price.multiply(BigDecimal(matchedQty)).subtract(cost)
-                        record(trade, Realized(amount, cost, matchedQty), realizedByCurrency, pnlByTradeId, today)
-                    }
-                }
-            }
+            if (trade.side == Side.SELL) realizedOf(trade)?.let { record(trade, it, realizedByCurrency, pnlByTradeId, today) }
         }
 
         val holdingsByCurrency = holdingViews()
@@ -167,22 +133,21 @@ class PortfolioService(
                 )
             }
 
-        return PortfolioSnapshot(trades, pnlByTradeId, summaryByCurrency)
+        val avgCostBeforeByOrder =
+            allTrades.mapNotNull { trade -> trade.avgCostBefore?.let { (trade.market to trade.orderNo) to it } }.toMap()
+        return PortfolioSnapshot(trades, pnlByTradeId, summaryByCurrency, avgCostBeforeByOrder)
     }
 
     private class Realized(val amount: BigDecimal, val cost: BigDecimal, val quantity: Int)
 
-    /**
-     * 체결 원장으로 이 매도 주문의 손익을 확정한다. 각 체결은 체결 직전 평단 기준이다([TradeFill.avgCostBefore]).
-     * 평단을 모르는 체결(보유 사본에 종목이 없었던 매도)은 뺀다 — 짐작으로 채우지 않는다. 계산할 체결이 없으면 null.
-     */
-    private fun realizedFromLedger(fills: List<TradeFill>): Realized? {
-        val known = fills.filter { it.avgCostBefore != null }
-        if (known.isEmpty()) return null
-        val quantity = known.sumOf { it.quantity }
-        val cost = known.sumOf { it.avgCostBefore!!.multiply(BigDecimal(it.quantity)) }
-        val proceeds = known.sumOf { it.price.multiply(BigDecimal(it.quantity)) }
-        return Realized(proceeds.subtract(cost), cost, quantity)
+    /** 매도 주문의 손익 = (평균 체결가 − 체결 직전 평단) × 체결수량. 평단이나 체결가를 모르면 null — 짐작으로 채우지 않는다. */
+    private fun realizedOf(trade: Trade): Realized? {
+        val average = trade.avgCostBefore ?: return null
+        val price = trade.filledPrice ?: return null
+        val quantity = trade.filledQuantity ?: trade.quantity
+        if (quantity <= 0) return null
+        val cost = average.multiply(BigDecimal(quantity))
+        return Realized(price.multiply(BigDecimal(quantity)).subtract(cost), cost, quantity)
     }
 
     private fun record(

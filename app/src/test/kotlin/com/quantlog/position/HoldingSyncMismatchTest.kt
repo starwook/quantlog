@@ -17,9 +17,9 @@ class HoldingSyncMismatchTest {
     private val symbol = "005930"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
-    private val ledger = InMemoryTradeFills()
+    private val ledger = InMemoryBrokerFills()
     private val service =
-        HoldingSyncService(repository, tradeRepository, ledger.repository, symbolStrategyServiceOf(), ledger.publisher())
+        HoldingSyncService(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher())
     private val now = Instant.parse("2026-10-08T01:00:00Z")
 
     private fun kis(
@@ -122,7 +122,7 @@ class HoldingSyncMismatchTest {
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(null)
 
         MismatchLog().use { captured ->
-            val change = service.applyFill(sellNotice(3), now)
+            val change = service.applyRecorded(ledger, sellNotice(3), now)
 
             assertEquals(null, change)
             val message = captured.messages.single()
@@ -136,7 +136,7 @@ class HoldingSyncMismatchTest {
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(existing)
 
         MismatchLog().use { captured ->
-            service.applyFill(sellNotice(5), now)
+            service.applyRecorded(ledger, sellNotice(5), now)
 
             val message = captured.messages.single()
             assertTrue("DB=2주 보유" in message && "5주 매도 체결" in message, message)
@@ -149,7 +149,7 @@ class HoldingSyncMismatchTest {
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(row(5, "70000"))
 
         MismatchLog().use { captured ->
-            service.applyFill(sellNotice(3), now)
+            service.applyRecorded(ledger, sellNotice(3), now)
 
             assertTrue(captured.messages.isEmpty(), captured.messages.toString())
         }
