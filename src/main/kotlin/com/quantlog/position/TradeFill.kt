@@ -52,8 +52,10 @@ class TradeFill(
     val avgCostBefore: BigDecimal?,
     @Column(name = "filled_at", nullable = false)
     val filledAt: Instant,
+    // 컬럼을 varchar 로 고정한다. MySQL 에서 enum 컬럼은 `ddl-auto: update` 가 값 추가를 반영하지 않아, enum 에 값을 더하면 서버 DB 에서
+    // "Data truncated" 로 저장이 실패한다(2026-10-08 REST_BACKFILL 추가 때 겪음).
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 20, columnDefinition = "varchar(20)")
     val source: FillSource = FillSource.NOTICE,
 ) {
     @Id
