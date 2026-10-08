@@ -19,10 +19,10 @@ const val APP_CONTRACT_VERSION = 1
 /**
  * 게이트웨이 하트비트(`gateway_instance`)를 주기적으로 읽어 세 가지를 한다.
  * 1. 게이트웨이가 멈췄는지 감시한다 — 하트비트가 [STALE] 보다 오래되면 `[게이트웨이 끊김]` ERROR(→ `/errors`·웹훅). 매매는 계속 시도하지만 주문 HTTP 가 실패할 것이다.
- * 2. 게이트웨이의 증권사 웹소켓이 새로 붙었거나(재연결) 게이트웨이가 새로 떴으면 그동안 놓친 체결을 보충한다([FillBackfillService]).
+ * 2. 게이트웨이의 증권사 웹소켓이 새로 붙었거나(재연결) 게이트웨이가 새로 떴으면 그동안 게이트웨이가 놓친 체결이 있는지 KIS 와 대조한다([FillBackfillService]).
  * 3. [RealtimePriceFeed] 를 구현한다 — 게이트웨이가 지금 실시간으로 보고 있는 종목이면 폴링 쪽이 건너뛴다.
  *
- * 동기화 불일치 보고 불필요: 증권사와 DB 의 내용을 비교하지 않는다. 하트비트 상태만 보고 보충을 시작시킨다(비교·보고는 [FillBackfillService] 가 한다).
+ * 동기화 불일치 보고 불필요: 증권사와 DB 의 내용을 비교하지 않는다. 하트비트 상태만 보고 대조를 시작시킨다(비교·보고는 [FillBackfillService] 가 한다).
  */
 @Component
 class GatewayWatcher(
@@ -79,8 +79,8 @@ class GatewayWatcher(
         val previous = lastKey
         lastKey = key
         if (row.wsConnectedAt != null && key != previous) {
-            log.info { "[게이트웨이 감시] 게이트웨이 실시간 연결 시작/재연결 감지 — 놓친 체결을 보충한다 (인스턴스=${row.instanceId})" }
-            executor.execute { runCatching { backfill.backfill() }.onFailure { log.warn(it) { "[체결 보충] 재연결 후 보충 실패: ${it.message}" } } }
+            log.info { "[게이트웨이 감시] 게이트웨이 실시간 연결 시작/재연결 감지 — 놓친 체결이 있는지 대조한다 (인스턴스=${row.instanceId})" }
+            executor.execute { runCatching { backfill.backfill() }.onFailure { log.warn(it) { "[체결 대조] 재연결 후 대조 실패: ${it.message}" } } }
         }
     }
 

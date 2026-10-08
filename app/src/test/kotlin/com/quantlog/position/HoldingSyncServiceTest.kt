@@ -19,9 +19,9 @@ class HoldingSyncServiceTest {
     private val symbol = "005930"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
-    private val ledger = InMemoryTradeFills()
+    private val ledger = InMemoryBrokerFills()
     private val service =
-        HoldingSyncService(repository, tradeRepository, ledger.repository, symbolStrategyServiceOf(), ledger.publisher())
+        HoldingSyncService(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher())
     private val now = Instant.parse("2026-09-30T05:00:00Z")
 
     private fun kis(

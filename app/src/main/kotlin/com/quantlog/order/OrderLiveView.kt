@@ -5,6 +5,7 @@ import com.quantlog.broker.Side
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.FillAppliedEvent
 import com.quantlog.position.FillSource
+import com.quantlog.position.OrderFill
 import com.quantlog.position.OrderState
 import com.quantlog.position.PortfolioSummary
 import com.quantlog.position.RealizedPnl
@@ -127,8 +128,8 @@ data class HoldingLiveView(
 }
 
 /**
- * 체결 내역 한 줄 — 체결통보 1건(원장 한 줄)이다. 주문 단위가 아니라서 부분체결이 쪼개진 그대로 보인다.
- * [orderNo] 로 화면이 같은 주문의 사유(reason)를 찾아 붙인다. 옛 기록(원장 없는 주문)은 주문 한 건을 한 줄로 보여준다.
+ * 체결 내역 한 줄 — 체결통보 1건(게이트웨이 원장 `broker_fill` 한 줄)이다. 주문 단위가 아니라서 부분체결이 쪼개진 그대로 보인다.
+ * [orderNo] 로 화면이 같은 주문의 사유(reason)를 찾아 붙인다. 옛 기록은 옛 원장(`trade_fill`) 줄, 그것도 없으면 주문 한 건을 한 줄로 보여준다.
  */
 data class FillLiveView(
     val key: String,
@@ -149,7 +150,30 @@ data class FillLiveView(
     val pnlCss: String,
 ) {
     companion object {
+        /** 원장 한 줄. [avgCostBefore] 는 그 주문의 체결 직전 평단(매도만, 모르면 null). */
         fun of(
+            fill: OrderFill,
+            avgCostBefore: BigDecimal?,
+            symbolName: String,
+        ): FillLiveView =
+            build(
+                Facts(
+                    market = fill.market,
+                    symbol = fill.symbol,
+                    side = fill.side,
+                    orderNo = fill.orderNo,
+                    quantity = fill.quantity,
+                    price = fill.price,
+                    avgCostBefore = avgCostBefore,
+                    filledAt = fill.filledAt,
+                    backfilled = false,
+                ),
+                key = ledgerKey(fill.id),
+                symbolName = symbolName,
+            )
+
+        /** 옛 원장(`trade_fill`) 한 줄. */
+        fun ofLegacyLedger(
             fill: TradeFill,
             symbolName: String,
         ): FillLiveView =
@@ -169,7 +193,7 @@ data class FillLiveView(
                 symbolName = symbolName,
             )
 
-        /** 방금 반영된 체결통보(DB 저장 전이라 id 가 없어 주문번호·시각·수량으로 키를 만든다). */
+        /** 방금 반영된 원장 한 줄. 키는 DB 에서 읽은 같은 줄([of])과 같다. */
         fun of(
             event: FillAppliedEvent,
             symbolName: String,
@@ -186,9 +210,11 @@ data class FillLiveView(
                     filledAt = event.filledAt,
                     backfilled = false,
                 ),
-                key = "fill:${event.orderNo}:${event.filledAt.toEpochMilli()}:${event.quantity}",
+                key = ledgerKey(event.brokerFillId),
                 symbolName = symbolName,
             )
+
+        private fun ledgerKey(brokerFillId: Long) = "bf:$brokerFillId"
 
         /** 원장이 없는 옛 체결 주문 한 건. 손익은 옛 FIFO 계산값. */
         fun ofLegacy(

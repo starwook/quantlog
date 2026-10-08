@@ -199,7 +199,7 @@ class EntryScheduler(
         reason: String,
         widePrice: Boolean = false,
     ) {
-        // 주문 흐름 전체(시세→주문→체결가 조회)는 스케줄러의 일반 호출보다 먼저 나간다(broker/CallPriority.kt).
+        // 주문 흐름 전체(시세→주문)는 스케줄러의 일반 호출보다 먼저 나간다(broker/CallPriority.kt).
         CallPriority.urgent {
             val quote = broker.quote(watched.market, watched.symbol)
             // 저점 판단 진입만 넉넉하게(현재가 +0.5%) 걸고, 나머지 매수는 한 호가 위(수동·청산과 같은 방식)다.
@@ -212,12 +212,8 @@ class EntryScheduler(
             val request = OrderRequest(watched.market, watched.symbol, Side.BUY, quantity, limitPrice)
             riskGuard.checkBuy(request)
             val receipt = broker.placeOrder(request)
-            Thread.sleep(FILL_CHECK_WAIT_MILLIS)
-            val filledPrice =
-                runCatching { broker.filledPrice(request.market, receipt.orderNo) }
-                    .onFailure { log.warn(it) { "[체결가 조회 실패] ${request.market} ${receipt.orderNo} — 지정가로 표시됨" } }
-                    .getOrNull()
-            tradeService.record(request, receipt, reason, filledPrice)
+            // 체결가 조회를 기다리지 않는다(청산·마틴게일·수동 주문과 같다) — 체결가·수량은 체결 원장(broker_fill)이 반영될 때 채워진다.
+            tradeService.record(request, receipt, reason)
             log.info {
                 "[진입] ${request.market} ${request.symbol} x${request.quantity} @ ${request.limitPrice} " +
                     "주문번호=${receipt.orderNo} — $reason"
@@ -226,8 +222,6 @@ class EntryScheduler(
     }
 
     companion object {
-        private const val FILL_CHECK_WAIT_MILLIS = 2000L
-
         /** 저점 판단 진입의 매수 지정가를 현재가보다 이만큼 높여 낸다. 다른 매수는 한 호가 위다. */
         internal val BUY_OFFSET: BigDecimal = BigDecimal("0.005")
     }

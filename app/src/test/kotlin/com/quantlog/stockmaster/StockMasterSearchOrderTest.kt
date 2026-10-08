@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 // spring.profiles.active 를 명시해 application-local.yml(시크릿 파일)을 읽지 않게 한다 — QuantlogApplicationTest 와 같은 이유.
 @SpringBootTest(
     properties = [
-        "spring.profiles.active=test", "quantlog.exit.enabled=false", "quantlog.reconcile.enabled=false",
+        "spring.profiles.active=test", "quantlog.exit.enabled=false",
         "quantlog.stockmaster.enabled=false",
     ],
 )

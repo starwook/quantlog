@@ -10,7 +10,7 @@ private val FILL_REPORT_GRACE: Duration = Duration.ofSeconds(30)
 
 /**
  * 증권사 체결 조회가 "체결"인데 DB 에는 체결 정보가 없거나 일부뿐이어서 DB 를 고쳤을 때, 그 사실을 동기화 불일치로 보고한다.
- * [dbBefore] 는 고치기 **전** DB 상태([Trade.fillStateText]). 체결 조회로 DB 를 고치는 곳(TradeService.applyStatus, TradeReconciler)이 함께 쓴다.
+ * [dbBefore] 는 고치기 **전** DB 상태([Trade.fillStateText]). 체결 조회로 DB 를 고치는 곳(TradeService.applyStatus)이 쓴다.
  */
 fun reportFillCorrection(
     trade: Trade,

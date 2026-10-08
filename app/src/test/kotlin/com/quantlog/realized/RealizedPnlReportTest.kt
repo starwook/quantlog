@@ -3,6 +3,7 @@ package com.quantlog.realized
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
 import com.quantlog.position.AccountHoldingRepository
+import com.quantlog.position.InMemoryBrokerFills
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeFillRepository
@@ -42,7 +43,7 @@ class RealizedPnlReportTest {
         val tradeRepository = Mockito.mock(TradeRepository::class.java)
         val holdings = Mockito.mock(AccountHoldingRepository::class.java)
         Mockito.`when`(tradeRepository.findAll()).thenReturn(trades.toList())
-        return PortfolioService(tradeRepository, holdings, Mockito.mock(TradeFillRepository::class.java)).snapshot()
+        return PortfolioService(tradeRepository, holdings, Mockito.mock(TradeFillRepository::class.java), InMemoryBrokerFills()).snapshot()
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.FillAppliedEvent
 import com.quantlog.position.HoldingsChangedEvent
+import com.quantlog.position.OrderFills
 import com.quantlog.position.OrderState
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
@@ -48,6 +49,7 @@ class PortfolioLiveBroadcaster(
     private val portfolioService: PortfolioService,
     private val accountHoldingRepository: AccountHoldingRepository,
     private val tradeFillRepository: TradeFillRepository,
+    private val orderFills: OrderFills,
     private val symbolStrategyService: SymbolStrategyService,
     private val objectMapper: ObjectMapper,
 ) {
@@ -187,15 +189,32 @@ class PortfolioLiveBroadcaster(
     }
 
     /**
-     * 체결 내역 = 원장 줄(체결통보 1건) + 원장이 없는 옛 체결 주문(주문 한 건을 한 줄로). 최근 순으로 [HISTORY_LIMIT] 건.
+     * 체결 내역 = 원장(`broker_fill`) 줄 + 옛 원장(`trade_fill`) 줄 중 `broker_fill` 에 없는 주문 + 둘 다 없는 옛 체결 주문(주문 한 건을 한 줄로).
+     * 최근 순으로 [HISTORY_LIMIT] 건. 원장 줄의 손익은 그 주문의 체결 직전 평단([com.quantlog.position.Trade.avgCostBefore]) 기준이다.
      */
     private fun recentFills(snapshot: PortfolioSnapshot): List<FillLiveView> {
-        val ledger = tradeFillRepository.findAll()
+        val ledger = orderFills.projectedAll()
         val ledgerOrders = ledger.map { it.market to it.orderNo }.toSet()
-        val fromLedger = ledger.map { FillLiveView.of(it, symbolStrategyService.displayName(it.market, it.symbol)) }
+        val fromLedger =
+            ledger.map {
+                FillLiveView.of(
+                    it,
+                    snapshot.avgCostBeforeByOrder[it.market to it.orderNo],
+                    symbolStrategyService.displayName(it.market, it.symbol),
+                )
+            }
+        val legacyLedger = tradeFillRepository.findAll().filter { (it.market to it.orderNo) !in ledgerOrders }
+        val legacyLedgerOrders = legacyLedger.map { it.market to it.orderNo }.toSet()
+        val fromLegacyLedger = legacyLedger.map { FillLiveView.ofLegacyLedger(it, symbolStrategyService.displayName(it.market, it.symbol)) }
         val legacy =
             snapshot.trades
-                .filter { it.state == OrderState.FILLED && (it.market to it.orderNo) !in ledgerOrders }
+                .filter {
+                    it.state == OrderState.FILLED &&
+                        (it.market to it.orderNo).let {
+                                key ->
+                            key !in ledgerOrders && key !in legacyLedgerOrders
+                        }
+                }
                 .map {
                     FillLiveView.ofLegacy(
                         it,
@@ -203,7 +222,7 @@ class PortfolioLiveBroadcaster(
                         snapshot.realizedPnlByTradeId[it.id],
                     )
                 }
-        return (fromLedger + legacy).sortedByDescending { it.placedAtEpochMs }.take(HISTORY_LIMIT)
+        return (fromLedger + fromLegacyLedger + legacy).sortedByDescending { it.placedAtEpochMs }.take(HISTORY_LIMIT)
     }
 
     private fun Trade.toView(pnl: RealizedPnl?) = OrderLiveView.of(this, symbolStrategyService.displayName(market, symbol), pnl)

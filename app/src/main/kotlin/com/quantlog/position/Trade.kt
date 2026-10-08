@@ -15,9 +15,8 @@ import java.math.BigDecimal
 import java.time.Instant
 
 /**
- * 브로커에 접수된 주문 1건의 기록 (매수/매도). `orderPrice`는 제출한 지정가, `filledPrice`는 실제 체결가(
- * KIS 체결내역 조회로 채움 — 2026-09-29 도입, 이전엔 지정가를 체결가처럼 화면에 보여준 적이 있었다).
- * 실현손익은 저장하지 않는다 — FIFO로 그때그때 계산한다 (PortfolioService).
+ * 브로커에 접수된 주문 1건의 기록 (매수/매도). `orderPrice`는 제출한 지정가, `filledPrice`는 실제 체결가(평균)로 체결 원장(`broker_fill`)에서 채운다.
+ * 매도 손익은 [avgCostBefore](체결 직전 평단) 기준으로 확정한다(PortfolioService). 그 값이 없는 옛 주문만 FIFO 로 다시 계산한다.
  */
 @Entity
 @Table(name = "trade")
@@ -51,6 +50,7 @@ class Trade(
     val branchNo: String? = null,
     initialOpenConfirmed: Boolean = false,
     initialFilledQuantity: Int? = null,
+    initialAvgCostBefore: BigDecimal? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -58,11 +58,8 @@ class Trade(
         protected set
 
     /**
-     * 실제 체결가(평균). KIS 체결내역 조회로 채움. 못 구했으면 null, [orderPrice] 로 대체.
+     * 실제 체결가(평균). 체결 원장(`broker_fill`)의 이 주문 체결 누적으로 채운다([applyFill]). 아직 체결 전이면 null, [orderPrice] 로 대체.
      * 2026-09-29 실측: 지정가와 체결가가 꽤 다를 수 있었다(삼성전자 273,000 지정 → 272,000 체결).
-     * 실현손익·평단 계산은 이 값을 우선한다 (PortfolioService). 주문 직후 한 번 조회해서 못 구했으면
-     * null 로 남는데, [TradeReconciler] 가 KIS 를 다시 물어봐서 나중에 채운다 — KIS 가 "정답"이고
-     * 우리 DB는 그걸 따라가는 사본일 뿐이다.
      */
     @Column(name = "filled_price", precision = 19, scale = 6)
     var filledPrice: BigDecimal? = initialFilledPrice
@@ -75,6 +72,21 @@ class Trade(
     @Column(name = "filled_quantity")
     var filledQuantity: Int? = initialFilledQuantity
         private set
+
+    /**
+     * 매도 주문의 체결 직전 보유 평단. 이 매도의 손익은 (체결가 − 이 값) × 체결수량으로 확정한다. 매도는 평단을 바꾸지 않아 이 주문의 체결
+     * 모두에 같은 값이다. 매수 주문, 체결 전, 보유 사본에 종목이 없던 매도, 옛 기록은 null(손익을 짐작하지 않는다).
+     */
+    @Column(name = "avg_cost_before", precision = 19, scale = 6)
+    var avgCostBefore: BigDecimal? = initialAvgCostBefore
+        private set
+
+    /** 체결 직전 평단을 처음 한 번만 적는다. 적었으면 true. */
+    fun recordAvgCostBefore(average: BigDecimal): Boolean {
+        if (avgCostBefore != null) return false
+        avgCostBefore = average
+        return true
+    }
 
     /** 체결이 시작됐지만 주문수량만큼은 아직 안 찬 상태. */
     val partiallyFilled: Boolean

@@ -40,7 +40,7 @@ data class TradeMarker(
     val side: String,
     val price: BigDecimal,
     val quantity: Int,
-    /** FILLED 체결됨 / OPEN 증권사가 확인한 미체결 / UNCONFIRMED 체결조회에 아직 안 잡혀 모름([com.quantlog.trading.TradeReconciler] 가 곧 확인). */
+    /** FILLED 체결됨 / OPEN 증권사가 확인한 미체결 / UNCONFIRMED 아직 접수·체결 통보가 반영되지 않아 모름. */
     val status: String,
 )
 

@@ -57,6 +57,13 @@ class BrokerFillRow(
 interface BrokerFillRowRepository : JpaRepository<BrokerFillRow, Long> {
     fun findTop100ByIdGreaterThanOrderByIdAsc(id: Long): List<BrokerFillRow>
 
+    fun findAllByOrderNoAndIdLessThanEqualOrderByIdAsc(
+        orderNo: String,
+        id: Long,
+    ): List<BrokerFillRow>
+
+    fun findAllByIdLessThanEqualOrderByIdAsc(id: Long): List<BrokerFillRow>
+
     @Query("select max(f.id) from BrokerFillRow f")
     fun maxId(): Long?
 }

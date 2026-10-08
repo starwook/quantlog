@@ -11,9 +11,9 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Index
 import jakarta.persistence.Table
+import org.hibernate.annotations.Immutable
 import org.springframework.data.jpa.repository.JpaRepository
 import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.Instant
 
 /** 체결 원장 한 줄이 어디서 왔는지. */
@@ -26,10 +26,11 @@ enum class FillSource {
 }
 
 /**
- * 체결 원장 — 체결통보 1건 = 1줄 (docs/체결-원장-설계.md). 주문 기록([Trade])은 주문 단위라 부분체결을 못 담고,
- * 실현손익을 FIFO 로 다시 계산하면 짝 없는 옛 매수 기록 때문에 틀어졌다(2026-10-08). 그래서 체결이 일어난 그 순간의
- * 평단([avgCostBefore])을 같이 박아 두고, 손익은 여기서 확정한다 — 다시 계산하지 않는다.
+ * **옛 체결 원장 — 더 이상 쓰지 않고 과거 기록 표시용으로 읽기만 한다**(2026-10-08). 체결 내역은 게이트웨이 원장(`broker_fill`)
+ * 하나뿐이고([OrderFills]), 매도 손익 기준인 체결 직전 평단은 매매 기록([Trade.avgCostBefore])에 둔다. 이 테이블에는 서버 분리 전
+ * (앱이 체결통보를 직접 받던 때)와 분리 직후 앱이 `broker_fill` 을 옮겨 적은 줄이 남아 있다 — `broker_fill` 에 같은 주문이 있으면 그쪽을 쓴다.
  */
+@Immutable
 @Entity
 @Table(name = "trade_fill", indexes = [Index(name = "idx_trade_fill_order", columnList = "market,order_no")])
 class TradeFill(
@@ -65,26 +66,5 @@ class TradeFill(
         protected set
 }
 
-interface TradeFillRepository : JpaRepository<TradeFill, Long> {
-    fun findAllByMarketAndOrderNo(
-        market: Market,
-        orderNo: String,
-    ): List<TradeFill>
-}
-
-/** 한 주문이 지금까지 체결된 합계. 원장([TradeFill])에서 매번 구하므로 앱이 재시작돼도 같은 값이다. */
-data class FilledSoFar(val quantity: Int, val amount: BigDecimal) {
-    val averagePrice: BigDecimal? get() = if (quantity > 0) amount.divide(BigDecimal(quantity), PRICE_SCALE, RoundingMode.HALF_UP) else null
-
-    private companion object {
-        const val PRICE_SCALE = 6
-    }
-}
-
-fun TradeFillRepository.filledSoFar(
-    market: Market,
-    orderNo: String,
-): FilledSoFar {
-    val fills = findAllByMarketAndOrderNo(market, orderNo)
-    return FilledSoFar(fills.sumOf { it.quantity }, fills.fold(BigDecimal.ZERO) { sum, f -> sum + f.price * BigDecimal(f.quantity) })
-}
+/** 옛 원장 읽기 전용. 새로 쓰지 않는다. */
+interface TradeFillRepository : JpaRepository<TradeFill, Long>

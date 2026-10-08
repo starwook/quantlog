@@ -19,14 +19,14 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** 체결통보로 보유 수량·평단을 바로 고치는 부분 ([HoldingSyncService.applyFill]). */
+/** 원장(`broker_fill`)의 체결 줄로 보유 수량·평단을 고치는 부분 ([HoldingSyncService.applyFill]). */
 class HoldingSyncServiceFillTest {
     private val symbol = "005930"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
-    private val ledger = InMemoryTradeFills()
+    private val ledger = InMemoryBrokerFills()
     private val service =
-        HoldingSyncService(repository, tradeRepository, ledger.repository, symbolStrategyServiceOf(), ledger.publisher())
+        HoldingSyncService(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher())
     private val now = Instant.parse("2026-10-07T00:24:00Z")
 
     private fun row(
@@ -60,7 +60,7 @@ class HoldingSyncServiceFillTest {
     fun `보유가 없던 종목을 사면 체결가를 평단으로 새 행을 만든다`() {
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(null)
 
-        assertNotNull(service.applyFill(notice(Side.BUY, 2, "277500"), now))
+        assertNotNull(service.applyRecorded(ledger, notice(Side.BUY, 2, "277500"), now))
 
         val saved = ArgumentCaptor.forClass(AccountHolding::class.java)
         verify(repository).save(saved.capture() ?: row(0, "0"))
@@ -73,7 +73,7 @@ class HoldingSyncServiceFillTest {
         val existing = row(2, "9000")
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(existing)
 
-        service.applyFill(notice(Side.BUY, 3, "8800"), now)
+        service.applyRecorded(ledger, notice(Side.BUY, 3, "8800"), now)
 
         // (2×9000 + 3×8800) / 5 = 8880
         assertEquals(5, existing.quantity)
@@ -86,18 +86,18 @@ class HoldingSyncServiceFillTest {
         val existing = row(5, "8900")
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(existing)
 
-        service.applyFill(notice(Side.SELL, 2, "9000", orderNo = "1"), now)
+        service.applyRecorded(ledger, notice(Side.SELL, 2, "9000", orderNo = "1"), now)
         assertEquals(3, existing.quantity)
         assertEquals(0, BigDecimal("8900").compareTo(existing.avgCost))
         verify(repository, never()).delete(any(AccountHolding::class.java))
 
-        service.applyFill(notice(Side.SELL, 3, "9000", orderNo = "2"), now)
+        service.applyRecorded(ledger, notice(Side.SELL, 3, "9000", orderNo = "2"), now)
         verify(repository).delete(existing)
     }
 
     @Test
     fun `접수 통보는 건드리지 않는다`() {
-        assertNull(service.applyFill(notice(Side.BUY, 1, "277500", fill = false), now))
+        assertNull(service.applyRecorded(ledger, notice(Side.BUY, 1, "277500", fill = false), now))
 
         verify(repository, never()).save(any(AccountHolding::class.java))
     }
@@ -108,11 +108,11 @@ class HoldingSyncServiceFillTest {
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(existing)
 
         // 주문수량 5: 3주 체결 뒤 같은 3주 통보가 다시 오면(또는 누적 3→5가 건별처럼 보이면) 남은 2주까지만 더한다
-        service.applyFill(notice(Side.BUY, 3, "9000", orderQuantity = 5), now)
-        service.applyFill(notice(Side.BUY, 3, "9000", orderQuantity = 5), now)
+        service.applyRecorded(ledger, notice(Side.BUY, 3, "9000", orderQuantity = 5), now)
+        service.applyRecorded(ledger, notice(Side.BUY, 3, "9000", orderQuantity = 5), now)
         assertEquals(15, existing.quantity)
 
-        assertNull(service.applyFill(notice(Side.BUY, 5, "9000", orderQuantity = 5), now))
+        assertNull(service.applyRecorded(ledger, notice(Side.BUY, 5, "9000", orderQuantity = 5), now))
         assertEquals(15, existing.quantity)
     }
 
@@ -124,9 +124,9 @@ class HoldingSyncServiceFillTest {
         Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "0000027523")).thenReturn(trade)
 
         // 실측: 44주 + 56주로 쪼개져 오고 둘 다 주문수량 0
-        service.applyFill(notice(Side.SELL, 44, "8335", orderNo = "0000027523", orderQuantity = 0), now)
+        service.applyRecorded(ledger, notice(Side.SELL, 44, "8335", orderNo = "0000027523", orderQuantity = 0), now)
         assertEquals(56, existing.quantity)
-        service.applyFill(notice(Side.SELL, 56, "8335", orderNo = "0000027523", orderQuantity = 0), now)
+        service.applyRecorded(ledger, notice(Side.SELL, 56, "8335", orderNo = "0000027523", orderQuantity = 0), now)
         verify(repository).delete(existing)
         assertTrue(service.isOrderFilled("0000027523"))
     }
@@ -136,7 +136,7 @@ class HoldingSyncServiceFillTest {
         val existing = row(3, "9000")
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(existing)
         Mockito.`when`(repository.findAll()).thenReturn(listOf(existing))
-        service.applyFill(notice(Side.BUY, 2, "9000"), now)
+        service.applyRecorded(ledger, notice(Side.BUY, 2, "9000"), now)
         assertEquals(5, existing.quantity)
         val staleKis = listOf(Holding(Market.KR, symbol, "삼성전자", BigDecimal(3), BigDecimal("9000"), BigDecimal("9000")))
 
@@ -153,7 +153,7 @@ class HoldingSyncServiceFillTest {
     fun `체결통보로 방금 만든 행을 체결 전 잔고 조회가 삭제하지 못한다`() {
         val created = row(1, "277500")
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(null)
-        service.applyFill(notice(Side.BUY, 1, "277500"), now)
+        service.applyRecorded(ledger, notice(Side.BUY, 1, "277500"), now)
         Mockito.`when`(repository.findAll()).thenReturn(listOf(created))
 
         service.sync(emptyList(), now.minusSeconds(1))
@@ -167,10 +167,10 @@ class HoldingSyncServiceFillTest {
         val trade = Trade(Market.KR, symbol, Side.BUY, 5, BigDecimal("9000"), "P1", "ok")
         Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "P1")).thenReturn(trade)
 
-        service.applyFill(notice(Side.BUY, 3, "9000", orderNo = "P1", orderQuantity = 5), now)
+        service.applyRecorded(ledger, notice(Side.BUY, 3, "9000", orderNo = "P1", orderQuantity = 5), now)
         assertFalse(service.isOrderFilled("P1"))
 
-        service.applyFill(notice(Side.BUY, 2, "9000", orderNo = "P1", orderQuantity = 5), now)
+        service.applyRecorded(ledger, notice(Side.BUY, 2, "9000", orderNo = "P1", orderQuantity = 5), now)
         assertTrue(service.isOrderFilled("P1"))
         assertFalse(service.isOrderFilled("없는 주문"))
     }
@@ -186,8 +186,21 @@ class HoldingSyncServiceFillTest {
 
         assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
 
-        service.applyFill(notice(Side.BUY, 1, "277500", orderNo = "0000008775"), now)
+        service.applyRecorded(ledger, notice(Side.BUY, 1, "277500", orderNo = "0000008775"), now)
 
         assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
+    }
+
+    @Test
+    fun `원장에 기록됐어도 앱이 아직 반영하지 않은 체결로는 체결 완료로 보지 않는다`() {
+        val trade = Trade(Market.KR, symbol, Side.BUY, 2, BigDecimal("9000"), "P2", "ok")
+        Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "P2")).thenReturn(trade)
+        val id = ledger.record(notice(Side.BUY, 2, "9000", orderNo = "P2"), now)
+
+        ledger.projectedUpTo = id - 1
+        assertFalse(service.isOrderFilled("P2"))
+
+        ledger.projectedUpTo = id
+        assertTrue(service.isOrderFilled("P2"))
     }
 }
