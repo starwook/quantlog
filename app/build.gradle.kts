@@ -22,6 +22,9 @@ dependencies {
 tasks.bootJar {
     destinationDirectory.set(rootProject.layout.buildDirectory.dir("libs"))
     archiveFileName.set("app.jar")
+    // 같은 소스면 같은 jar 가 나오게 한다 — 배포 스크립트가 jar 체크섬으로 "안 바뀐 서비스는 재배포하지 않음"을 판단한다(특히 게이트웨이).
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }
 
 // 정상 jar(-plain)는 필요 없다.
