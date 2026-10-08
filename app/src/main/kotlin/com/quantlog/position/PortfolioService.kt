@@ -74,13 +74,12 @@ private class RealizedAcc {
 
 /**
  * 보유 현황은 잔고 테이블([AccountHolding])을 그대로 쓴다. 매도 손익은 매매 기록에 적어 둔 체결 직전 평단([Trade.avgCostBefore])으로
- * 확정한다. 그 값이 없는 옛 주문만 옛 원장([TradeFill])이나 FIFO 로 계산한다. KIS 를 직접 부르지 않는다.
+ * 확정한다. 그 값이 없는 옛 주문만 FIFO 로 계산한다. KIS 를 직접 부르지 않는다.
  */
 @Service
 class PortfolioService(
     private val tradeRepository: TradeRepository,
     private val accountHoldingRepository: AccountHoldingRepository,
-    private val tradeFillRepository: TradeFillRepository,
     private val orderFills: OrderFills,
 ) {
     fun snapshot(): PortfolioSnapshot = buildSnapshot()
@@ -88,11 +87,10 @@ class PortfolioService(
     private fun buildSnapshot(): PortfolioSnapshot {
         val allTrades = tradeRepository.findAll()
         val trades = allTrades.filterNot { it.canceled }.sortedBy { it.executedAt }
-        // 체결 원장(broker_fill)에 체결이 있는 주문은 매매 기록의 체결 직전 평단으로 손익을 확정한다. 그 전의 옛 주문은 옛 원장(trade_fill),
-        // 그것도 없으면 FIFO 로 계산한다. 원장에 체결이 있는 주문은 일부만 체결된 뒤 취소됐어도 체결된 몫은 실제 거래라 계산에 넣는다.
+        // 원장(broker_fill)에 체결이 있거나 체결 직전 평단을 아는 주문은 그 평단으로 손익을 확정한다. 그 밖의 옛 주문만 FIFO 로 계산한다.
+        // 원장에 체결이 있는 주문은 일부만 체결된 뒤 취소됐어도 체결된 몫은 실제 거래라 계산에 넣는다.
         val ledgerOrders = orderFills.projectedAll().map { it.market to it.orderNo }.toSet()
-        val legacyFillsByOrder = tradeFillRepository.findAll().groupBy { it.market to it.orderNo }
-        val hasFills = { trade: Trade -> (trade.market to trade.orderNo).let { it in ledgerOrders || it in legacyFillsByOrder } }
+        val hasFills = { trade: Trade -> (trade.market to trade.orderNo) in ledgerOrders || trade.avgCostBefore != null }
         // 체결가를 못 구한 주문(미체결이거나 확인 전)은 손익·횟수 계산에서 뺀다. 기록 화면에는 그대로 보인다.
         val filledTrades =
             allTrades.filter { (!it.canceled && it.filledPrice != null) || hasFills(it) }.sortedBy { it.executedAt }
@@ -111,11 +109,8 @@ class PortfolioService(
                 val counts = if (trade.side == Side.BUY) buyCountTodayByCurrency else sellCountTodayByCurrency
                 counts.merge(trade.market.currency, 1, Int::plus)
             }
-            val legacyFills = legacyFillsByOrder[trade.market to trade.orderNo]
-            if ((trade.market to trade.orderNo) in ledgerOrders || legacyFills != null) {
-                // 체결 직전 평단을 매매 기록에 적기 전(2026-10-08 오후 개편 전)의 주문은 옛 원장에 평단이 있다.
-                val realized = if (trade.side == Side.SELL) realizedOf(trade) ?: legacyFills?.let(::realizedFromLedger) else null
-                realized?.let { record(trade, it, realizedByCurrency, pnlByTradeId, today) }
+            if (hasFills(trade)) {
+                if (trade.side == Side.SELL) realizedOf(trade)?.let { record(trade, it, realizedByCurrency, pnlByTradeId, today) }
                 return@forEach
             }
             // 실제 체결가가 있으면 그걸 쓴다 — 지정가와 다를 수 있다 (2026-09-29: 국내는 지정가·체결가가 꽤 벌어진 적 있었음).
@@ -174,10 +169,7 @@ class PortfolioService(
             }
 
         val avgCostBeforeByOrder =
-            allTrades.filter { it.side == Side.SELL }.mapNotNull { trade ->
-                val key = trade.market to trade.orderNo
-                (trade.avgCostBefore ?: legacyFillsByOrder[key]?.firstNotNullOfOrNull { it.avgCostBefore })?.let { key to it }
-            }.toMap()
+            allTrades.mapNotNull { trade -> trade.avgCostBefore?.let { (trade.market to trade.orderNo) to it } }.toMap()
         return PortfolioSnapshot(trades, pnlByTradeId, summaryByCurrency, avgCostBeforeByOrder)
     }
 
@@ -191,19 +183,6 @@ class PortfolioService(
         if (quantity <= 0) return null
         val cost = average.multiply(BigDecimal(quantity))
         return Realized(price.multiply(BigDecimal(quantity)).subtract(cost), cost, quantity)
-    }
-
-    /**
-     * 옛 체결 원장으로 이 매도 주문의 손익을 확정한다. 각 체결은 체결 직전 평단 기준이다([TradeFill.avgCostBefore]).
-     * 평단을 모르는 체결(보유 사본에 종목이 없었던 매도)은 뺀다 — 짐작으로 채우지 않는다. 계산할 체결이 없으면 null.
-     */
-    private fun realizedFromLedger(fills: List<TradeFill>): Realized? {
-        val known = fills.filter { it.avgCostBefore != null }
-        if (known.isEmpty()) return null
-        val quantity = known.sumOf { it.quantity }
-        val cost = known.sumOf { it.avgCostBefore!!.multiply(BigDecimal(it.quantity)) }
-        val proceeds = known.sumOf { it.price.multiply(BigDecimal(it.quantity)) }
-        return Realized(proceeds.subtract(cost), cost, quantity)
     }
 
     private fun record(

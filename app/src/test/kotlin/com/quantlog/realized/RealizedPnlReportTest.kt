@@ -6,7 +6,6 @@ import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.InMemoryBrokerFills
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.Trade
-import com.quantlog.position.TradeFillRepository
 import com.quantlog.position.TradeRepository
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -43,7 +42,7 @@ class RealizedPnlReportTest {
         val tradeRepository = Mockito.mock(TradeRepository::class.java)
         val holdings = Mockito.mock(AccountHoldingRepository::class.java)
         Mockito.`when`(tradeRepository.findAll()).thenReturn(trades.toList())
-        return PortfolioService(tradeRepository, holdings, Mockito.mock(TradeFillRepository::class.java), InMemoryBrokerFills()).snapshot()
+        return PortfolioService(tradeRepository, holdings, InMemoryBrokerFills()).snapshot()
     }
 
     @Test
