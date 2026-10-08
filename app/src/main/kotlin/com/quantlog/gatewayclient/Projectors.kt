@@ -29,9 +29,6 @@ class FillProjector(
 ) {
     private val tx = TransactionTemplate(transactionManager)
 
-    /** 행 ID 별 연속 실패 횟수. */
-    private val failures = mutableMapOf<Long, Int>()
-
     /** 처리한 행 수를 돌려준다. */
     @Synchronized
     fun project(): Int {
@@ -46,30 +43,20 @@ class FillProjector(
         while (true) {
             val rows = fills.findTop100ByIdGreaterThanOrderByIdAsc(last!!)
             if (rows.isEmpty()) return processed
-            for (row in rows) {
+            rows.forEach { row ->
                 val notice = row.toNotice()
-                val failure =
-                    runCatching {
-                        tx.executeWithoutResult {
-                            holdingSync.applyFill(notice)
-                            tradeService.onFillNotice(notice)
-                            cursors.save(ProjectionCursor(CURSOR, row.id!!))
-                        }
-                    }.exceptionOrNull()
-                if (failure != null) {
-                    // 원장은 유실이 없으니 실패한 행을 건너뛰지 않는다 — 커서를 그 행 앞에 둔 채 멈추고 다음 회차에 같은 행부터 다시 한다(대개 DB 일시 오류).
-                    // 같은 행이 계속 실패하면(데이터 문제 등) 뒤 체결이 영영 막히지 않게 마지막에 한 번 크게 알리고 건너뛴다.
-                    val attempts = failures.merge(row.id!!, 1, Int::plus)!!
-                    if (attempts < MAX_ATTEMPTS) {
-                        log.warn(failure) { "[체결 반영] 실패 — 다음 회차에 이 행부터 다시 한다($attempts/$MAX_ATTEMPTS): id=${row.id} ${notice.summary()}" }
-                        return processed
+                // 한 행이 실패해도 다음 행을 막지 않는다 — 틀린 부분은 다음 잔고 스냅샷 반영이 바로잡는다.
+                runCatching {
+                    tx.executeWithoutResult {
+                        holdingSync.applyFill(notice)
+                        tradeService.onFillNotice(notice)
+                        cursors.save(ProjectionCursor(CURSOR, row.id!!))
                     }
-                    log.error(
-                        failure,
-                    ) { "[체결 반영] ${MAX_ATTEMPTS}번 실패해 건너뛴다 — 보유·체결 기록을 확인할 것(다음 잔고 반영이 보유는 바로잡는다): id=${row.id} ${notice.summary()}" }
+                }.onFailure {
+                    // 건너뛴 체결을 나중에 찾아볼 수 있게 ERROR 로 남긴다(/errors·웹훅). 원장 행 ID(broker_fill.id)와 주문번호로 그 행을 특정한다.
+                    log.error(it) { "[체결 반영 실패] 건너뛴다(다음 잔고 반영이 보유를 바로잡는다): broker_fill.id=${row.id} ${notice.summary()}" }
                     cursors.save(ProjectionCursor(CURSOR, row.id!!))
                 }
-                failures.remove(row.id!!)
                 last = row.id
                 processed++
             }
@@ -94,7 +81,6 @@ class FillProjector(
 
     private companion object {
         const val CURSOR = "fill"
-        const val MAX_ATTEMPTS = 30
     }
 }
 

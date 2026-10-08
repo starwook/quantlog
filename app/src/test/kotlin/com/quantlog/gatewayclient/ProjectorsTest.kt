@@ -89,30 +89,12 @@ class ProjectorsTest {
     }
 
     @Test
-    fun `한 행 반영이 실패하면 건너뛰지 않고 멈췄다가 다음 회차에 같은 행부터 다시 한다`() {
+    fun `한 행 반영이 실패해도 건너뛰고 다음 행을 이어서 처리한다`() {
         cursorStore["fill"] = 0
         Mockito.`when`(fills.findTop100ByIdGreaterThanOrderByIdAsc(0)).thenReturn(listOf(row(1), row(2)))
         Mockito.`when`(fills.findTop100ByIdGreaterThanOrderByIdAsc(2)).thenReturn(emptyList())
         recordApplies(failOrderNo = "O1")
 
-        assertEquals(0, projector.project())
-        assertEquals(0L, cursorStore["fill"])
-        assertEquals(emptyList<String>(), applied.map { it.orderNo })
-
-        recordApplies(failOrderNo = null) // 일시 오류가 풀렸다
-        assertEquals(2, projector.project())
-        assertEquals(listOf("O1", "O2"), applied.map { it.orderNo })
-        assertEquals(2L, cursorStore["fill"])
-    }
-
-    @Test
-    fun `같은 행이 계속 실패하면 여러 번 재시도한 뒤 건너뛰고 다음 행을 이어서 처리한다`() {
-        cursorStore["fill"] = 0
-        Mockito.`when`(fills.findTop100ByIdGreaterThanOrderByIdAsc(0)).thenReturn(listOf(row(1), row(2)))
-        Mockito.`when`(fills.findTop100ByIdGreaterThanOrderByIdAsc(2)).thenReturn(emptyList())
-        recordApplies(failOrderNo = "O1")
-
-        repeat(29) { assertEquals(0, projector.project()) }
         assertEquals(2, projector.project())
         assertEquals(listOf("O2"), applied.map { it.orderNo })
         assertEquals(2L, cursorStore["fill"])
