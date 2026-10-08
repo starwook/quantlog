@@ -18,7 +18,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 | 청산 감시 (국내: 실시간 WebSocket 틱마다(구독 종목은 DB의 보유 종목에서 자동, 상한 `realtime-max-subscriptions`) 그 종목만 판정 / 실시간 끊김: 1초 폴링 → 잔고 사본 DB(체결통보로 즉시 갱신, KIS 잔고 10초 주기 보정) 기준 익절/손절 목표가에 닿으면 한 호가 낮게 전량 매도, `quantlog.exit.enabled`). | `trading/ExitService.kt`(판정·매도), `ExitScheduler.kt`(폴링), `ExitTickListener.kt`(틱) |
 | Oracle Cloud 배포 (로컬 수동 `deploy/deploy.sh` / GitHub push 자동 `.github/workflows/deploy.yml`) | `deploy/` (절차는 `deploy/DEPLOY.md`) |
 | 국내 분봉 수집 (KIS 당일·최근 30건 → `minute_candle` 테이블에 누적) | `marketdata/` |
-| 매매 기록 저장·조회, 체결 원장(게이트웨이 `broker_fill`) 반영·실현손익 계산(체결 직전 평단 기준, 평단을 모르는 옛 주문만 FIFO) | `position/` (MySQL, DB명 `quantlog`, 로컬 root/무비밀번호) |
+| 매매 기록 저장·조회, 체결 원장(게이트웨이 `broker_fill`) 반영·실현손익 계산(체결 직전 평단 기준) | `position/` (MySQL, DB명 `quantlog`, 로컬 root/무비밀번호) |
 | 웹 대시보드 (8080) | `position/TradeController.kt` + `resources/templates/trades.html` |
 
 **아직 없는 것**: 자동 매수(진입 판단 규칙 미정), 타임스톱·체결 확인·휴장일 판단, 진입 판단(AI 필요 여부 재검토 중, `docs/기획서.md` 7장), 일일 손실 한도(킬스위치) 코드.

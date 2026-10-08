@@ -7,6 +7,7 @@ import com.quantlog.position.InMemoryBrokerFills
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeRepository
+import com.quantlog.position.fillNotice
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import java.math.BigDecimal
@@ -16,6 +17,7 @@ import java.time.ZoneId
 import kotlin.test.assertEquals
 
 class RealizedPnlReportTest {
+    private val ledger = InMemoryBrokerFills()
     private val kst = ZoneId.of("Asia/Seoul")
     private var nextId = 1L
 
@@ -25,6 +27,7 @@ class RealizedPnlReportTest {
         date: LocalDate,
         hour: Int,
         price: String,
+        avg: String? = null,
         quantity: Int = 10,
     ) = Trade(
         market = Market.KR,
@@ -36,13 +39,18 @@ class RealizedPnlReportTest {
         message = "ok",
         initialFilledPrice = BigDecimal(price),
         executedAt = date.atTime(hour, 0).atZone(kst).toInstant(),
-    ).also { Trade::class.java.getDeclaredField("id").apply { isAccessible = true }.set(it, nextId) }
+        initialFilledQuantity = quantity,
+        initialAvgCostBefore = avg?.let(::BigDecimal),
+    ).also {
+        Trade::class.java.getDeclaredField("id").apply { isAccessible = true }.set(it, nextId)
+        ledger.record(fillNotice(side, quantity, price, it.orderNo, symbol = symbol))
+    }
 
     private fun snapshot(vararg trades: Trade): com.quantlog.position.PortfolioSnapshot {
         val tradeRepository = Mockito.mock(TradeRepository::class.java)
         val holdings = Mockito.mock(AccountHoldingRepository::class.java)
         Mockito.`when`(tradeRepository.findAll()).thenReturn(trades.toList())
-        return PortfolioService(tradeRepository, holdings, InMemoryBrokerFills()).snapshot()
+        return PortfolioService(tradeRepository, holdings, ledger).snapshot()
     }
 
     @Test
@@ -53,12 +61,12 @@ class RealizedPnlReportTest {
             snapshot(
                 trade("A", Side.BUY, d1, 9, "100"),
                 trade("B", Side.BUY, d1, 9, "200"),
-                trade("A", Side.SELL, d1, 10, "110"),
-                trade("B", Side.SELL, d2, 10, "190"),
+                trade("A", Side.SELL, d1, 10, "110", avg = "100"),
+                trade("B", Side.SELL, d2, 10, "190", avg = "200"),
                 trade("A", Side.BUY, d2, 11, "100"),
-                trade("A", Side.SELL, d2, 12, "120"),
+                trade("A", Side.SELL, d2, 12, "120", avg = "100"),
                 trade("C", Side.BUY, LocalDate.of(2026, 9, 30), 9, "100"),
-                trade("C", Side.SELL, LocalDate.of(2026, 9, 30), 10, "150"),
+                trade("C", Side.SELL, LocalDate.of(2026, 9, 30), 10, "150", avg = "100"),
             )
 
         val report = RealizedPnlReport.of(snapshot, YearMonth.of(2026, 10)).single()

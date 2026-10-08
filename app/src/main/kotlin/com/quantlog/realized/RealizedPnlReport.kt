@@ -41,7 +41,7 @@ data class CurrencyRealizedReport(
 object RealizedPnlReport {
     private data class Entry(val date: LocalDate, val market: Market, val symbol: String, val sum: PnlSum)
 
-    /** FIFO 로 이미 계산된 매도별 실현손익([PortfolioSnapshot.realizedPnlByTradeId])을 [month](KST) 안에서 일별·종목별로 묶는다. */
+    /** 이미 확정된 매도별 실현손익([PortfolioSnapshot.realizedPnlByTradeId])을 [month](KST) 안에서 일별·종목별로 묶는다. */
     fun of(
         snapshot: PortfolioSnapshot,
         month: YearMonth,

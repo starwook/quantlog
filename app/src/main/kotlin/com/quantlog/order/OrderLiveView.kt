@@ -127,7 +127,7 @@ data class HoldingLiveView(
 
 /**
  * 체결 내역 한 줄 — 체결통보 1건(게이트웨이 원장 `broker_fill` 한 줄)이다. 주문 단위가 아니라서 부분체결이 쪼개진 그대로 보인다.
- * [orderNo] 로 화면이 같은 주문의 사유(reason)를 찾아 붙인다. 원장에 없는 옛 기록은 주문 한 건을 한 줄로 보여준다.
+ * [orderNo] 로 화면이 같은 주문의 사유(reason)를 찾아 붙인다.
  */
 data class FillLiveView(
     val key: String,
@@ -188,31 +188,6 @@ data class FillLiveView(
             )
 
         private fun ledgerKey(brokerFillId: Long) = "bf:$brokerFillId"
-
-        /** 원장이 없는 옛 체결 주문 한 건. 손익은 옛 FIFO 계산값. */
-        fun ofLegacy(
-            trade: Trade,
-            symbolName: String,
-            pnl: RealizedPnl?,
-        ): FillLiveView {
-            val currency = trade.market.currency
-            val price = (trade.filledPrice ?: trade.orderPrice).money(currency)
-            return FillLiveView(
-                key = "order:${trade.market}:${trade.orderNo}",
-                orderNo = trade.orderNo,
-                market = trade.market.name,
-                symbol = trade.symbol,
-                symbolName = symbolName,
-                side = trade.side.name,
-                quantity = trade.quantity,
-                priceText = price,
-                placedAtEpochMs = trade.executedAt.toEpochMilli(),
-                timeText = DATE_TIME_FORMAT.format(trade.executedAt.atZone(KST)),
-                pnlText = pnl?.let { signedMoneyAndPercent(it.amount, it.percent, currency) },
-                pnlDetailText = pnl?.let { "매수 평단 ${it.avgBuyPrice.money(currency)} → 체결 $price · ${it.matchedQuantity}주" },
-                pnlCss = pnl?.let { pnlCss(it.amount) } ?: "muted",
-            )
-        }
 
         private class Facts(
             val market: Market,

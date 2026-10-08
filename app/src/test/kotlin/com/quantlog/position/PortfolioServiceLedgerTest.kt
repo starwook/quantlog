@@ -9,7 +9,7 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** 매도 손익을 매매 기록의 체결 직전 평단([Trade.avgCostBefore])으로 확정하는 부분(docs/체결-원장-설계.md). 평단을 모르는 옛 주문만 FIFO. */
+/** 매도 손익을 매매 기록의 체결 직전 평단([Trade.avgCostBefore])으로 확정하는 부분(docs/체결-원장-설계.md). */
 class PortfolioServiceLedgerTest {
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
     private val holdingRepository = Mockito.mock(AccountHoldingRepository::class.java)
@@ -49,7 +49,7 @@ class PortfolioServiceLedgerTest {
 
     @Test
     fun `원장에 체결이 있는 매도는 매매 기록의 체결 직전 평단으로 손익을 확정한다`() {
-        // 2026-10-08 사고: 옛 매수 100주 @7,894 가 FIFO 에 남아 있어 +2,500원 익절이 -3,400원 손실로 표시됐다.
+        // 2026-10-08 사고: 옛 매수 100주 @7,894 와 FIFO 로 짝지어 +2,500원 익절이 -3,400원 손실로 표시됐다. 원장에 없는 기록은 손익에 끼지 않는다.
         val legacyBuy = trade(Side.BUY, "OLD", 100, "7894", now.minusSeconds(3600))
         val buy = trade(Side.BUY, "B1", 100, "7835", now.minusSeconds(1))
         val sell = trade(Side.SELL, "S1", 100, "7860", avgCostBefore = "7835", filledQuantity = 100)
@@ -85,24 +85,5 @@ class PortfolioServiceLedgerTest {
         recordFill(Side.SELL, "S1", 100, "7860")
 
         assertNull(pnlOf(sell))
-    }
-
-    @Test
-    fun `원장에 없어도 체결 직전 평단을 아는 옛 매도는 그 평단으로 손익을 낸다`() {
-        // 2026-10-08 개편 전 매도: 평단은 trade_fill 에서 trade.avg_cost_before 로 한 번 옮겨 둔다.
-        val buy = trade(Side.BUY, "B0", 100, "7000", now.minusSeconds(60))
-        val sell = trade(Side.SELL, "S1", 100, "7860", avgCostBefore = "7835", filledQuantity = 100)
-        Mockito.`when`(tradeRepository.findAll()).thenReturn(listOf(buy, sell))
-
-        assertEquals(0, BigDecimal("2500").compareTo(pnlOf(sell)!!.amount))
-    }
-
-    @Test
-    fun `원장이 없는 옛 매도는 예전처럼 FIFO 로 계산한다`() {
-        val buy = trade(Side.BUY, "OLD", 100, "7894", now.minusSeconds(60))
-        val sell = trade(Side.SELL, "OLD2", 100, "7860")
-        Mockito.`when`(tradeRepository.findAll()).thenReturn(listOf(buy, sell))
-
-        assertEquals(0, BigDecimal("-3400").compareTo(pnlOf(sell)!!.amount))
     }
 }

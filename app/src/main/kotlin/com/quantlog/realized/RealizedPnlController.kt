@@ -38,7 +38,7 @@ data class CurrencyReportView(
     val symbols: List<PnlLineView>,
 )
 
-/** 토스증권처럼 월별 실현손익을 일별·종목별 합계로 보여준다. 데이터는 [PortfolioService] 의 FIFO 계산 결과를 그대로 쓴다. */
+/** 토스증권처럼 월별 실현손익을 일별·종목별 합계로 보여준다. 데이터는 [PortfolioService] 가 확정한 매도별 손익을 그대로 쓴다. */
 @Controller
 class RealizedPnlController(
     private val portfolioService: PortfolioService,

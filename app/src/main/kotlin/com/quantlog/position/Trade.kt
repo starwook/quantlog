@@ -16,7 +16,7 @@ import java.time.Instant
 
 /**
  * 브로커에 접수된 주문 1건의 기록 (매수/매도). `orderPrice`는 제출한 지정가, `filledPrice`는 실제 체결가(평균)로 체결 원장(`broker_fill`)에서 채운다.
- * 매도 손익은 [avgCostBefore](체결 직전 평단) 기준으로 확정한다(PortfolioService). 그 값이 없는 옛 주문만 FIFO 로 다시 계산한다.
+ * 매도 손익은 [avgCostBefore](체결 직전 평단) 기준으로 확정한다(PortfolioService).
  */
 @Entity
 @Table(name = "trade")
