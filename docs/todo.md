@@ -16,6 +16,17 @@
 6. **모의 체결(`gateway` `paper/`)은 앱으로** — 한투 형식이 아니므로 앱의 `BrokerClient` 다른 구현으로 옮긴다(운영은 `kis-mock` 이라 영향 없음).
 7. 문서: `docs/contracts/` 축소, `docs/서버-분리.md`·CLAUDE.md 의 게이트웨이 설명을 "원문 통로"로 고친다.
 
+**놓치기 쉬운 것 (위 작업을 할 때 같이 챙길 것):**
+- **계좌번호는 앱이 모른다(시크릿은 게이트웨이에만).** REST 통로에서 계좌가 필요한 요청(잔고 VTTC8434R, 매수가능 VTTC8908R, 주문 VTTC0012U/0011U, 취소 VTTC0013U, 당일 체결조회 VTTC0081R)은 게이트웨이가 `CANO`·`ACNT_PRDT_CD` 를 **끼워 넣는다**(지금 `gateway` `kis/KisMockBroker.kt` 의 `accountParams()`). 응답에 계좌 식별 값이 있으면 체결통보처럼 비우고 돌려준다·저장한다.
+- **한투 오류 응답도 그대로** 돌려준다(`rt_cd`·`msg_cd`·`msg1`). 초당 호출 한도(EGW00201)·토큰 만료(EGW00215) 재시도와 토큰 발급은 게이트웨이(`kis/KisApiClient.kt`, `kis/KisTokenProvider.kt`)에 남는다 — 전달 방식이지 해석이 아니다.
+- **연속조회**: 한투의 `tr_cont`·`ctx_area_fk100`·`ctx_area_nk100` 을 앱이 넘기고 받을 수 있어야 한다(당일 체결조회 등 여러 쪽짜리 응답).
+- **현재가**: 지금 게이트웨이 `quote()` 는 실시간 시세가 5초 안이면 그 값을, 아니면 REST(FHKST01010100)를 쓰고 호가 단위(`aspr_unit`)를 기억해 둔다. 원문 전달로 바꾸면 이 판단(실시간 최신가·호가 단위 기억)은 앱이 한다. 전일 종가 캐시도 앱으로.
+- **`minute_candle` 은 지금 게이트웨이와 앱이 같이 쓴다**(양쪽에 같은 엔티티). 바꾼 뒤에는 게이트웨이는 `kis_minute_chart` 에만 쓰고 `minute_candle` 은 앱만 쓴다.
+- **모의 체결의 `paper_order` 테이블**도 `paper/` 와 함께 앱으로 옮긴다.
+- **구독은 그대로**: `watch_symbol`(앱이 씀)·`POST /api/watch/refresh`·`gateway_instance`(하트비트·`live_symbols`)·`/api/health`·`error_log` 는 한투 데이터가 아니라 바꿀 필요 없다. HTS ID 로 체결통보 구독하는 것도 게이트웨이에 남는다.
+- **스트림 알림 이름**: 지금 `fill`(=`kis_broker_fill` 새 행)·`balance`(=잔고 새 회차) 알림을 보낸다. `kis_balance` 로 바뀌면 `balance` 알림의 값도 그 행 ID 로 맞춘다.
+- **안 쓰게 되는 테이블**(데이터 초기화 때 DROP): `broker_fill`, `trade_fill`, 그리고 위 작업 뒤 `broker_balance`, `broker_balance_meta`, `broker_order`. 앱 반영 커서(`broker_projection_cursor`)의 옛 `fill` 행도.
+
 **배포:** 게이트웨이 변경은 장 마감 후 **한 번에** 묶어 낸다(위 1~6 과 이미 한 체결통보 원문 저장을 한 PR 로). 이름 규칙: 한투 원문을 담는 테이블은 `kis_` 로 시작한다.
 
 ## 서버 분리 — 게이트웨이/앱 (2026-10-08, 구현됨)
