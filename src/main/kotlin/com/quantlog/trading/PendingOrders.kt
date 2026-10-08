@@ -5,6 +5,7 @@ import com.quantlog.broker.CallPriority
 import com.quantlog.broker.CancelRequest
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.OrderStatus
 import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.TradeService
 import mu.KotlinLogging
@@ -19,7 +20,9 @@ private val log = KotlinLogging.logger {}
  * "주문을 냈으면 체결이 확인될 때까지 그 종목 판정을 미루고, [fillTimeout] 이 지나도 미체결이면 주문을 취소해서 다시 판정하게 한다"
  * 를 한곳에 모은 것. 마틴게일 매수·청산 매도처럼 틱마다 판정하는 주문 경로가 같이 쓴다. 종목 키는 `"$market:$symbol"`.
  * 체결 확인은 체결통보([HoldingSyncService.isOrderFilled])로 한다. 취소가 거부되면 이미 체결됐을 수 있어 통보를 계속 기다리되,
- * 첫 취소 시도 뒤 [GIVE_UP] 이 지나면 포기하고 판정을 다시 연다(보유는 다음 KIS 잔고 동기화가 바로잡는다).
+ * 첫 취소 시도 뒤 [GIVE_UP] 이 지나면 KIS 에 실제 상태를 물어, 체결됐으면 대기를 풀고 아직 호가창에 남아 있으면 취소를 계속 시도하며,
+ * 그것도 모르겠으면 포기하고 판정을 다시 연다(보유는 다음 KIS 잔고 동기화가 바로잡는다). 한 종목에 주문이 둘 겹치는 건 새 주문을 [isWaiting] 이
+ * 막아서 포기한 뒤에 남은 주문뿐인데, 위 상태 확인이 그 경우를 막는다.
  * [label] 은 로그에 찍을 이름(예: "마틴게일", "청산").
  */
 class PendingOrders(
@@ -71,22 +74,49 @@ class PendingOrders(
             }
             val age = Duration.between(order.placedAt, now.toInstant())
             if (age < fillTimeout) return@forEach
+            val lastTry = order.lastCancelTryAt
+            if (lastTry != null && Duration.between(lastTry, now.toInstant()) < CANCEL_RETRY) return@forEach
             // 포기는 취소를 시도해 보고도 안 될 때만 한다. 스케줄러가 느린 KIS 호출에 막혀 점검이 몇 분 늦게 돌면 주문한 지 2분이 훌쩍
             // 지나 있는데, 그때 취소도 안 해 보고 포기하면 호가창에 남은 주문이 나중에 체결된다(2026-10-08 226490 마틴게일 44주).
             val firstTry = order.firstCancelTryAt
-            if (firstTry != null && Duration.between(firstTry, now.toInstant()) > GIVE_UP || age > HARD_LIMIT) {
-                log.warn { "[$label] ${order.request.symbol} 주문 ${order.receipt.orderNo} 의 체결·취소를 확인하지 못해 포기한다" }
-                pending.remove(key)
+            val giveUpDue = firstTry != null && Duration.between(firstTry, now.toInstant()) > GIVE_UP
+            if (age > HARD_LIMIT) {
+                giveUp(key, order, "취소 시도 없이 ${HARD_LIMIT.toMinutes()}분 경과")
                 return@forEach
             }
-            val lastTry = order.lastCancelTryAt
-            if (lastTry != null && Duration.between(lastTry, now.toInstant()) < CANCEL_RETRY) return@forEach
+            if (giveUpDue) {
+                // 포기하기 전에 KIS 에 실제 상태를 묻는다 — 체결됐으면 끝, 아직 호가창에 남아 있으면 포기하지 말고 취소를 계속 시도한다.
+                when (val status = statusOf(order)) {
+                    is OrderStatus.Filled -> {
+                        log.info { "[$label] ${order.request.symbol} 주문 ${order.receipt.orderNo} 은 KIS 조회로 체결이 확인돼 대기를 푼다" }
+                        pending.remove(key)
+                        return@forEach
+                    }
+                    OrderStatus.Open -> Unit
+                    else -> {
+                        giveUp(key, order, "KIS 조회: ${status ?: "실패"}")
+                        return@forEach
+                    }
+                }
+            }
             withKeyLock(key) {
                 order.lastCancelTryAt = now.toInstant()
                 if (order.firstCancelTryAt == null) order.firstCancelTryAt = now.toInstant()
                 cancel(key, order)
             }
         }
+    }
+
+    private fun statusOf(order: Pending): OrderStatus? =
+        runCatching { broker.orderStatus(order.request.market, order.receipt.orderNo, order.request.quantity) }.getOrNull()
+
+    private fun giveUp(
+        key: String,
+        order: Pending,
+        detail: String,
+    ) {
+        log.warn { "[$label] ${order.request.symbol} 주문 ${order.receipt.orderNo} 의 체결·취소를 확인하지 못해 포기한다 ($detail)" }
+        pending.remove(key)
     }
 
     private fun cancel(

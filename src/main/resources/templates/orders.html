@@ -125,6 +125,8 @@
     // 포맷·색상 판정은 서버가 끝내서 보내므로 여기서는 찍기만 한다.
     const market = 'KR';
     const orders = new Map(); // key -> 주문
+    let fills = []; // 체결 내역(체결통보 1건 = 1줄), 최근 순
+    const MAX_FILLS = 100;
     let holdings = [];
     const STATE_TEXT = { CHECKING: '체결 확인중', OPEN: '미체결', PARTIAL: '일부 체결', FILLED: '체결' };
     const isWaiting = (o) => o.state === 'CHECKING' || o.state === 'OPEN' || o.state === 'PARTIAL';
@@ -165,6 +167,22 @@
         row.appendChild(line(left, el('span', 'name ' + h.unrealizedCss, h.unrealizedText)));
         row.appendChild(el('div', 'sub', h.quantity + '주 · 평단 ' + h.avgCostText + ' → 현재 ' + h.currentPriceText));
         row.appendChild(el('div', 'sub', '평가금액 ' + h.valueText));
+        return row;
+    }
+
+    // 체결 내역 한 줄. 사유는 같은 주문번호의 주문 기록(orders)에서 찾아 붙인다 — 체결통보가 주문 응답보다 먼저 오면 아직 없을 수 있다.
+    function renderFill(f, flashKey) {
+        const row = el('div', 'order' + (f.key === flashKey ? ' flash' : ''));
+        row.appendChild(line(sideAndName(f.side, f.market, f.symbolName, f.symbol), el('span', 'badge FILLED', f.backfilled ? '체결 (보충)' : '체결')));
+        row.appendChild(line(el('span', '', f.quantity + '주 @ ' + f.priceText), el('span', 'sub', f.timeText)));
+        if (f.pnlText) {
+            const box = el('div', 'pnl');
+            box.appendChild(el('div', 'amount ' + f.pnlCss, '실현손익 ' + f.pnlText));
+            box.appendChild(el('div', 'detail', f.pnlDetailText));
+            row.appendChild(box);
+        }
+        const reason = (orders.get(f.market + ':' + f.orderNo) || {}).reason;
+        if (reason) row.appendChild(el('div', 'reason', reason));
         return row;
     }
 
@@ -221,7 +239,8 @@
         document.getElementById('waitCount').textContent = waiting.length;
         renderHoldings();
         renderList(document.getElementById('waiting'), waiting, (o) => renderOrder(o, flashKey), '대기 중인 주문이 없습니다.');
-        renderList(document.getElementById('done'), mine.filter((o) => o.state === 'FILLED'), (o) => renderOrder(o, flashKey), '체결된 주문이 없습니다.');
+        const myFills = fills.filter((f) => f.market === market);
+        renderList(document.getElementById('done'), myFills, (f) => renderFill(f, flashKey), '체결 내역이 없습니다.');
         tick();
     }
 
@@ -246,6 +265,7 @@
             if (msg.type === 'snapshot') {
                 orders.clear();
                 msg.orders.forEach((o) => orders.set(o.key, o));
+                fills = msg.fills;
                 holdings = msg.holdings;
                 renderSummary(msg.summary, false);
                 render();
@@ -254,6 +274,10 @@
                 if (msg.order.state === 'CANCELED') orders.delete(msg.order.key); else orders.set(msg.order.key, msg.order);
                 renderSummary(msg.summary, true);
                 render(msg.order.key);
+            } else if (msg.type === 'fill') {
+                if (!fills.some((f) => f.key === msg.fill.key)) fills = [msg.fill, ...fills].slice(0, MAX_FILLS);
+                if (msg.summary) renderSummary(msg.summary, true);
+                render(msg.fill.key);
             } else if (msg.type === 'price') {
                 // 보유 종목 한 건의 실시간 틱: 그 종목 행과 요약 카드의 평가손익만 바꾼다.
                 holdings = holdings.map((h) => (h.market === msg.holding.market && h.symbol === msg.holding.symbol ? msg.holding : h));
