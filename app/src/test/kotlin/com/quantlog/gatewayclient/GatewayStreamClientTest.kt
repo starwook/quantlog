@@ -4,41 +4,80 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.quantlog.broker.CandleUpdated
 import com.quantlog.broker.Market
 import com.quantlog.broker.PriceTick
+import com.quantlog.marketdata.MinuteCandleEntity
+import com.quantlog.marketdata.MinuteCandleRepository
+import com.quantlog.marketdata.MinuteCandleStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito
 import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.LocalTime
 
 class GatewayStreamClientTest {
     private val published = mutableListOf<Any>()
+    private val saved = mutableListOf<MinuteCandleEntity>()
+    private val events = ApplicationEventPublisher { published += it }
+    private val repository =
+        Mockito.mock(MinuteCandleRepository::class.java).also { repo ->
+            Mockito.`when`(repo.save(Mockito.any(MinuteCandleEntity::class.java))).thenAnswer {
+                (it.arguments[0] as MinuteCandleEntity).also(saved::add)
+            }
+        }
+    private val store = MinuteCandleStore(repository)
     private val client =
         GatewayStreamClient(
             GatewayClientProperties(),
             jacksonObjectMapper().findAndRegisterModules(),
-            ApplicationEventPublisher { published += it },
+            events,
+            RealtimeCandleBuilder(store, events),
         )
 
-    @Test
-    fun `tick 은 PriceTick 이벤트로 다시 발행한다`() {
-        client.handle("""{"type":"tick","market":"KR","symbol":"005930","price":70100}""")
-
-        val tick = published.single() as PriceTick
-        assertEquals(Market.KR, tick.market)
-        assertEquals(0, BigDecimal("70100").compareTo(tick.price))
+    private fun raw(
+        time: String,
+        price: Int,
+        volume: Int,
+    ): String {
+        val fields = MutableList(46) { "0" }
+        fields[0] = "005930"
+        fields[1] = time
+        fields[2] = price.toString()
+        fields[12] = volume.toString()
+        return """{"type":"raw","data":"0|H0STCNT0|001|${fields.joinToString("^")}"}"""
     }
 
     @Test
-    fun `candle 은 CandleUpdated 이벤트로 다시 발행한다`() {
-        client.handle(
-            """{"type":"candle","market":"KR","symbol":"005930",""" +
-                """"candle":{"date":"2026-10-08","time":"09:01:00","open":1,"high":2,"low":1,"close":2,"volume":10}}""",
-        )
+    fun `raw 시세 원문은 PriceTick 과 CandleUpdated 로 해석해 발행한다`() {
+        client.handle(raw("090130", 70100, 5))
 
-        val update = published.single() as CandleUpdated
-        assertEquals(LocalTime.of(9, 1), update.candle.time)
-        assertEquals(10L, update.candle.volume)
+        val tick = published.filterIsInstance<PriceTick>().single()
+        assertEquals(Market.KR, tick.market)
+        assertEquals(0, BigDecimal("70100").compareTo(tick.price))
+        val candle = published.filterIsInstance<CandleUpdated>().single().candle
+        assertEquals(LocalTime.of(9, 1), candle.time)
+        assertEquals(5L, candle.volume)
+    }
+
+    @Test
+    fun `분이 바뀌면 같은 분 안의 틱을 합치고 끝난 분봉은 저장하되 중간부터 본 첫 분봉은 저장하지 않는다`() {
+        client.handle(raw("090130", 100, 5))
+        client.handle(raw("090145", 110, 3))
+        client.handle(raw("090200", 105, 1)) // 첫 분봉(앞부분 모름) 종료 — 저장 안 함
+        assertTrue(saved.isEmpty())
+
+        client.handle(raw("090300", 90, 2)) // 두 번째 분봉 종료 — 저장
+        val candle = saved.single()
+        assertEquals(LocalTime.of(9, 2), candle.tradeTime)
+        assertEquals(0, BigDecimal("105").compareTo(candle.close))
+        assertEquals(1L, candle.volume)
+    }
+
+    @Test
+    fun `시세가 아닌 raw 메시지는 무시한다`() {
+        client.handle("""{"type":"raw","data":"0|H0STCNI9|001|a^b"}""")
+
+        assertTrue(published.isEmpty())
     }
 
     @Test

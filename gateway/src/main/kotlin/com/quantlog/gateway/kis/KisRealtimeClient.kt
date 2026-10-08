@@ -1,13 +1,9 @@
 package com.quantlog.gateway.kis
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.quantlog.gateway.broker.CandleUpdated
 import com.quantlog.gateway.broker.Market
-import com.quantlog.gateway.broker.MinuteCandle
-import com.quantlog.gateway.broker.PriceTick
 import com.quantlog.gateway.broker.RealtimePriceFeed
 import com.quantlog.gateway.broker.RealtimeSymbolSource
-import com.quantlog.gateway.marketdata.MinuteCandleStore
 import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
 import org.springframework.boot.context.event.ApplicationReadyEvent
@@ -22,10 +18,6 @@ import java.net.http.WebSocket
 import java.nio.ByteBuffer
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.ConcurrentHashMap
@@ -33,24 +25,22 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val log = KotlinLogging.logger {}
-private val KST = ZoneId.of("Asia/Seoul")
 
 data class LivePrice(val price: BigDecimal, val at: Instant)
 
+/** 한투 실시간 시세 메시지 원문 한 건(`0|H0STCNT0|001|...`). StreamHub 가 앱으로 그대로 전달한다. */
+data class RawRealtimeMessage(val raw: String)
+
 /**
- * KIS 실시간 체결가(H0STCNT0) WebSocket 구독. 틱마다 세 가지를 한다:
- * (1) 최신가 캐시 갱신 — KisMockBroker.quote() 가 REST 대신 이걸 먼저 본다(RiskGuard.checkBuy/보유
- *     조회는 여전히 REST — 실시간은 가격만).
- * (2) 1분 단위로 묶어서 분봉 저장 — REST 수집(CandleCollector)과 saveIfNew 로 dedup 되어 공존 가능.
- * (3) 진행 중인 분봉 갱신을 [CandleUpdated] 이벤트로 발행 — 화면 중계(앱)가 듣는다.
- * (4) [PriceTick] 이벤트 발행 — 청산 감시 등이 틱에 바로 반응한다(수신 스레드에서는 가볍게 넘기기만 해야 한다).
+ * KIS 실시간 WebSocket 구독. 시세(H0STCNT0)는 받은 한투 메시지를 **해석하지 않고 원문 그대로** [RawRealtimeMessage] 이벤트로 내보낸다
+ * (StreamHub 가 앱에 전달 — 틱·분봉 해석은 앱이 한투 문서대로 한다). 예외는 하나: KisMockBroker.quote() 가 REST 대신 쓰는 최신가 캐시를
+ * 위해 종목·가격 칸만 읽는다(REST 조회를 한투 통로로 바꾸는 작업에서 앱으로 옮길 임시 해석).
  * KIS 키가 없으면 켜지 않고(연결 안 됨 → isLive=false) REST 폴링만으로 동작한다.
  */
 @Component
 class KisRealtimeClient(
     private val properties: KisProperties,
     private val tokenProvider: KisTokenProvider,
-    private val candleStore: MinuteCandleStore,
     private val objectMapper: ObjectMapper,
     private val eventPublisher: ApplicationEventPublisher,
     private val symbolSource: RealtimeSymbolSource,
@@ -58,7 +48,6 @@ class KisRealtimeClient(
 ) : RealtimePriceFeed {
     private val httpClient = HttpClient.newHttpClient()
     private val liveQuotes = ConcurrentHashMap<String, LivePrice>()
-    private val inProgress = ConcurrentHashMap<String, MutableCandle>()
     private var webSocket: WebSocket? = null
 
     @Volatile
@@ -192,50 +181,17 @@ class KisRealtimeClient(
         }
     }
 
-    /** 필드 순서는 H0STCNT0 실시간체결가 스펙(examples_llm/domestic_stock/ccnl_krx) 기준. */
+    /** 최신가 캐시용으로 종목·가격 칸만 읽고, 메시지는 원문 그대로 내보낸다. 칸 번호가 어긋나도 원문 전달은 영향이 없다. */
     private fun handleTick(raw: String) {
-        val parts = raw.split("|")
+        val parts = raw.split("|", limit = 4)
         if (parts.size < 4) return
         val fields = parts[3].split("^")
-        if (fields.size <= CNTG_VOL_INDEX) return
-
-        val symbol = fields[SYMBOL_INDEX]
-        val time = runCatching { LocalTime.parse(fields[TIME_INDEX], HOUR_FORMAT) }.getOrNull() ?: return
-        val price = fields[PRICE_INDEX].toBigDecimalOrNull() ?: return
-        val volume = fields[CNTG_VOL_INDEX].toLongOrNull() ?: 0L
-
-        liveQuotes[symbol] = LivePrice(price, Instant.now())
-        accumulate(symbol, time, price, volume)
-        eventPublisher.publishEvent(PriceTick(Market.KR, symbol, price))
+        if (fields.size > PRICE_INDEX) {
+            val price = fields[PRICE_INDEX].toBigDecimalOrNull()
+            if (price != null) liveQuotes[fields[SYMBOL_INDEX]] = LivePrice(price, Instant.now())
+        }
+        eventPublisher.publishEvent(RawRealtimeMessage(raw))
     }
-
-    private fun accumulate(
-        symbol: String,
-        time: LocalTime,
-        price: BigDecimal,
-        volume: Long,
-    ) {
-        var justFinished: MinuteCandle? = null
-        val minute = time.withSecond(0).withNano(0)
-        val current =
-            inProgress.compute(symbol) { _, existing ->
-                if (existing == null || existing.minute != minute) {
-                    if (existing != null) justFinished = existing.toCandle()
-                    MutableCandle(minute, price)
-                } else {
-                    existing.apply {
-                        high = high.max(price)
-                        low = low.min(price)
-                        close = price
-                        this.volume += volume
-                    }
-                }
-            }!!
-        justFinished?.let { candleStore.saveIfNew(Market.KR, symbol, it) }
-        eventPublisher.publishEvent(CandleUpdated(Market.KR, symbol, current.toCandle()))
-    }
-
-    private fun MutableCandle.toCandle() = MinuteCandle(LocalDate.now(KST), minute, open, high, low, close, volume)
 
     private inner class Listener : WebSocket.Listener {
         private val buffer = StringBuilder()
@@ -286,24 +242,13 @@ class KisRealtimeClient(
         }
     }
 
-    private class MutableCandle(val minute: LocalTime, price: BigDecimal) {
-        val open: BigDecimal = price
-        var high: BigDecimal = price
-        var low: BigDecimal = price
-        var close: BigDecimal = price
-        var volume: Long = 0
-    }
-
     private companion object {
         const val TR_ID = "H0STCNT0"
         const val SUBSCRIBE = "1"
         const val UNSUBSCRIBE = "2"
         const val REFRESH_INTERVAL_MILLIS = 10_000L
         const val SYMBOL_INDEX = 0
-        const val TIME_INDEX = 1
         const val PRICE_INDEX = 2
-        const val CNTG_VOL_INDEX = 12
         val RECONNECT_DELAY: Duration = Duration.ofSeconds(5)
-        val HOUR_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
     }
 }

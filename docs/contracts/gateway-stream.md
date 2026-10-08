@@ -7,7 +7,6 @@
 |---|---|---|
 | `hello` | `instanceId, startedAt, contractVersion` | 연결 직후 한 번 |
 | `ping` | `at` | 5초마다 |
-| `tick` | `market, symbol, price` | 종목별 최신 값만 50ms 간격(유실 무관) |
-| `candle` | `market, symbol, candle{date,time,open,high,low,close,volume}` | 분봉 갱신, 종목별 최신 값만 |
+| `raw` | `data` | 한투 실시간 시세 메시지 원문 한 건(`0|H0STCNT0|001|...`). 해석(틱·분봉 만들기)은 앱이 한투 문서대로. 묶지 않고 모두 보내되, 느린 앱이면 새 시세를 버린다(대기 5000건 초과) |
 | `fill` | `id` | `kis_broker_fill` 에 새 행(id) — 빠른 알림일 뿐 정본은 DB |
 | `balance` | `seq` | `broker_balance_meta.seq` 가 올랐다 — 위와 같음 |

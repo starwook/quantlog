@@ -1,10 +1,6 @@
 package com.quantlog.gatewayclient
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.quantlog.broker.CandleUpdated
-import com.quantlog.broker.Market
-import com.quantlog.broker.MinuteCandle
-import com.quantlog.broker.PriceTick
 import mu.KotlinLogging
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.scheduling.annotation.Scheduled
@@ -26,7 +22,7 @@ data class GatewayNotified(val kind: String)
 
 /**
  * 게이트웨이 → 앱 스트림(웹소켓) 수신. 형식은 docs/contracts/gateway-stream.md.
- * 시세(`tick`)·분봉(`candle`)은 기존처럼 [PriceTick]·[CandleUpdated] 이벤트로 다시 발행해 화면·청산·마틴게일이 그대로 쓴다.
+ * 시세(`raw`)는 한투 메시지 원문이라 [KisRealtimeTickParser] 로 해석하고, [RealtimeCandleBuilder] 가 PriceTick·CandleUpdated 이벤트를 낸다(화면·청산·마틴게일이 그대로 쓴다).
  * 체결(`fill`)·잔고(`balance`) 알림은 [GatewayNotified] 로 발행한다. 끊기면 3초마다 다시 붙고, 20초 넘게 아무 메시지(ping 포함)가 없어도 끊고 다시 붙는다.
  * 스트림이 끊겨 있어도 매매 흐름은 DB·HTTP 로 이어진다 — 시세만 폴링으로 돌아간다.
  */
@@ -35,6 +31,7 @@ class GatewayStreamClient(
     private val properties: GatewayClientProperties,
     private val objectMapper: ObjectMapper,
     private val events: ApplicationEventPublisher,
+    private val candles: RealtimeCandleBuilder,
 ) : TextWebSocketHandler() {
     @Volatile private var session: WebSocketSession? = null
 
@@ -110,22 +107,7 @@ class GatewayStreamClient(
     fun handle(json: String) {
         val node = objectMapper.readTree(json)
         when (node.path("type").asText()) {
-            "tick" ->
-                events.publishEvent(
-                    PriceTick(
-                        Market.valueOf(node.path("market").asText()),
-                        node.path("symbol").asText(),
-                        node.path("price").decimalValue(),
-                    ),
-                )
-            "candle" ->
-                events.publishEvent(
-                    CandleUpdated(
-                        Market.valueOf(node.path("market").asText()),
-                        node.path("symbol").asText(),
-                        objectMapper.treeToValue(node.path("candle"), MinuteCandle::class.java),
-                    ),
-                )
+            "raw" -> KisRealtimeTickParser.parse(node.path("data").asText()).forEach(candles::onTrade)
             "fill", "balance" -> events.publishEvent(GatewayNotified(node.path("type").asText()))
             "hello" -> log.info { "[게이트웨이 스트림] hello 인스턴스=${node.path("instanceId").asText()} 계약=${node.path("contractVersion").asText()}" }
             else -> Unit // ping 등
