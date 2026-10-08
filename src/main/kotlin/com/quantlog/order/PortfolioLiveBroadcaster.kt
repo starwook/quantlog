@@ -6,6 +6,7 @@ import com.quantlog.broker.PriceTick
 import com.quantlog.broker.Side
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
+import com.quantlog.position.FillAppliedEvent
 import com.quantlog.position.HoldingsChangedEvent
 import com.quantlog.position.OrderState
 import com.quantlog.position.PortfolioService
@@ -13,6 +14,7 @@ import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.RealizedPnl
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeChangedEvent
+import com.quantlog.position.TradeFillRepository
 import com.quantlog.watchlist.SymbolStrategyService
 import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
@@ -45,6 +47,7 @@ private val log = KotlinLogging.logger {}
 class PortfolioLiveBroadcaster(
     private val portfolioService: PortfolioService,
     private val accountHoldingRepository: AccountHoldingRepository,
+    private val tradeFillRepository: TradeFillRepository,
     private val symbolStrategyService: SymbolStrategyService,
     private val objectMapper: ObjectMapper,
 ) {
@@ -66,7 +69,15 @@ class PortfolioLiveBroadcaster(
         val filled = newestFirst.filter { it.state == OrderState.FILLED }.take(HISTORY_LIMIT)
         val waiting = newestFirst.filter { it.state != OrderState.FILLED && it.executedAt.isAfter(todayStart) }
         val orders = (waiting + filled).map { it.toView(snapshot.realizedPnlByTradeId[it.id]) }
-        send(session, mapOf("type" to "snapshot", "orders" to orders, "holdings" to holdingViews(), "summary" to summaryView(snapshot)))
+        val snapshotMessage =
+            mapOf(
+                "type" to "snapshot",
+                "orders" to orders,
+                "fills" to recentFills(snapshot),
+                "holdings" to holdingViews(),
+                "summary" to summaryView(snapshot),
+            )
+        send(session, snapshotMessage)
     }
 
     fun disconnect(session: WebSocketSession) {
@@ -90,6 +101,19 @@ class PortfolioLiveBroadcaster(
         } else {
             broadcast(mapOf("type" to "order", "order" to trade.toView(null)))
         }
+    }
+
+    /**
+     * 체결통보 한 건이 반영되면 체결 내역에 한 줄을 바로 밀어 준다(주문 단위가 아니라 체결 단위). 매도면 오늘 손익 요약도 같이 보낸다.
+     * 원장 저장이 커밋된 뒤에 불러야 요약에 그 체결이 들어간다.
+     */
+    @TransactionalEventListener(fallbackExecution = true)
+    fun onFillApplied(event: FillAppliedEvent) {
+        if (sessions.isEmpty()) return
+        val fill = FillLiveView.of(event, symbolStrategyService.displayName(event.market, event.symbol))
+        val message = mutableMapOf<String, Any?>("type" to "fill", "fill" to fill)
+        if (event.side == Side.SELL) message["summary"] = summaryView(portfolioService.snapshot())
+        broadcast(message)
     }
 
     /** 보유 종목이 바뀌면 전체 목록을 다시 보낸다(종목 수가 적다). 커밋된 뒤에 읽어야 해서 트랜잭션이 없으면 바로 실행한다. */
@@ -160,6 +184,26 @@ class PortfolioLiveBroadcaster(
                 if (it.market == Market.KR) livePrices[it.symbol] else null,
             )
         }
+    }
+
+    /**
+     * 체결 내역 = 원장 줄(체결통보 1건) + 원장이 없는 옛 체결 주문(주문 한 건을 한 줄로). 최근 순으로 [HISTORY_LIMIT] 건.
+     */
+    private fun recentFills(snapshot: PortfolioSnapshot): List<FillLiveView> {
+        val ledger = tradeFillRepository.findAll()
+        val ledgerOrders = ledger.map { it.market to it.orderNo }.toSet()
+        val fromLedger = ledger.map { FillLiveView.of(it, symbolStrategyService.displayName(it.market, it.symbol)) }
+        val legacy =
+            snapshot.trades
+                .filter { it.state == OrderState.FILLED && (it.market to it.orderNo) !in ledgerOrders }
+                .map {
+                    FillLiveView.ofLegacy(
+                        it,
+                        symbolStrategyService.displayName(it.market, it.symbol),
+                        snapshot.realizedPnlByTradeId[it.id],
+                    )
+                }
+        return (fromLedger + legacy).sortedByDescending { it.placedAtEpochMs }.take(HISTORY_LIMIT)
     }
 
     private fun Trade.toView(pnl: RealizedPnl?) = OrderLiveView.of(this, symbolStrategyService.displayName(market, symbol), pnl)
