@@ -2,7 +2,7 @@
 # 로컬 수동 배포와 GitHub Actions 가 같이 쓰는 스크립트. (서버 쪽 절차는 remote-deploy.sh)
 #   로컬: DEPLOY_KEY=<키 경로> DEPLOY_HOST=<IP> deploy/deploy.sh
 #   CI:   워크플로가 빌드를 먼저 하고 SKIP_BUILD=1 로 호출한다.
-# 게이트웨이는 재배포가 드물어야 한다: 내용(jar 체크섬)이 안 바뀌었으면 건드리지 않고, 바뀌었어도 장중(평일 08:30~16:00 KST)에는 미루고
+# 게이트웨이는 재배포가 드물어야 한다: 내용(jar 체크섬)이 안 바뀌었으면 건드리지 않고, 바뀌었어도 장중(평일 08:30~15:31 KST)에는 미루고
 # 앱만 배포한다. 장중에 꼭 올려야 하면 FORCE_GATEWAY=1.
 set -euo pipefail
 

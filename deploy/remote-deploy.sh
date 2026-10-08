@@ -18,11 +18,11 @@ wait_started() { # <container> <기동 로그>
   return 1
 }
 
-market_hours() { # 평일 08:30~16:00 KST
+market_hours() { # 평일 08:30~15:31 KST
   local dow hm
   dow=$(TZ=Asia/Seoul date +%u)
   hm=$(TZ=Asia/Seoul date +%H%M)
-  [ "$dow" -le 5 ] && [ "$hm" -ge 0830 ] && [ "$hm" -lt 1600 ]
+  [ "$dow" -le 5 ] && [ "$hm" -ge 0830 ] && [ "$hm" -lt 1531 ]
 }
 
 deploy_service() { # <서비스> <컨테이너> <jar 이름(확장자 제외)> <기동 로그>

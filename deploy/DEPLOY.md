@@ -9,7 +9,7 @@
 - 두 배포 방식은 같은 `deploy/deploy.sh`를 쓴다 (jar 둘을 올리고 서버에서 `remote-deploy.sh` 가 서비스별로 `docker compose up -d --build <서비스>`)
   1. GitHub push(main) → `.github/workflows/deploy.yml` (빌드·테스트 후 배포)
   2. 로컬 수동: `DEPLOY_KEY=<키 경로> DEPLOY_HOST=<IP> deploy/deploy.sh` (빌드·테스트 포함)
-- 순서는 **앱 → 게이트웨이**. **게이트웨이는 재배포가 드물어야 한다**: jar 내용(sha256)이 같으면 건드리지 않고, 바뀌었어도 장중(평일 08:30~16:00 KST)이면 미루고 앱만 배포한다. 장중에 꼭 올려야 하면 `FORCE_GATEWAY=1 deploy/deploy.sh` 또는 워크플로 수동 실행의 `force_gateway`. (게이트웨이를 다시 띄우면 증권사 웹소켓이 끊겨 체결통보를 놓칠 수 있다.)
+- 순서는 **앱 → 게이트웨이**. **게이트웨이는 재배포가 드물어야 한다**: jar 내용(sha256)이 같으면 건드리지 않고, 바뀌었어도 장중(평일 08:30~15:31 KST)이면 미루고 앱만 배포한다. 장중에 꼭 올려야 하면 `FORCE_GATEWAY=1 deploy/deploy.sh` 또는 워크플로 수동 실행의 `force_gateway`. (게이트웨이를 다시 띄우면 증권사 웹소켓이 끊겨 체결통보를 놓칠 수 있다.)
 - 서버 쪽은 `flock`으로 동시 배포를 막고, 서비스마다 기동 로그(`Started QuantlogApplicationKt` / `Started GatewayApplicationKt`)를 확인해 실패하면 그 서비스만 이전 jar로 롤백한다.
 - **처음 두 서비스로 넘어오는 배포**: 앱 단계에서 옛 한 덩어리 `quantlog` 컨테이너가 새 앱으로 교체되고(KIS 웹소켓은 옛 서버가 내려가며 풀린다), 이어서 게이트웨이가 새로 뜬다(없으면 장중이어도 배포). 앱이 게이트웨이를 못 찾는 잠깐 동안은 주문·시세가 실패한다 — 장 마감 후에 하는 것을 권한다. 롤백으로 옛 한 덩어리 jar가 되살아나면 게이트웨이와 KIS 세션이 겹치니 그때는 게이트웨이를 먼저 내린다.
 
