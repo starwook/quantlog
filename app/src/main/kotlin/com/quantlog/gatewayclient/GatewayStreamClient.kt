@@ -21,7 +21,7 @@ private val log = KotlinLogging.logger {}
 data class GatewayNotified(val kind: String)
 
 /**
- * 게이트웨이 → 앱 스트림(웹소켓) 수신. 형식은 docs/contracts/gateway-stream.md.
+ * 게이트웨이 → 앱 스트림(웹소켓) 수신. 형식은 docs/contracts/README.md.
  * 시세(`raw`)는 한투 메시지 원문이라 [KisRealtimeTickParser] 로 해석하고, [RealtimeCandleBuilder] 가 PriceTick·CandleUpdated 이벤트를 낸다(화면·청산·마틴게일이 그대로 쓴다).
  * 체결(`fill`)·잔고(`balance`) 알림은 [GatewayNotified] 로 발행한다. 끊기면 3초마다 다시 붙고, 20초 넘게 아무 메시지(ping 포함)가 없어도 끊고 다시 붙는다.
  * 스트림이 끊겨 있어도 매매 흐름은 DB·HTTP 로 이어진다 — 시세만 폴링으로 돌아간다.

@@ -14,7 +14,7 @@ import java.time.Instant
 /**
  * 게이트웨이 인스턴스 1행. 두 가지를 한다: (1) **단일 실행 잠금** — 증권사 웹소켓은 키당 1세션이라 게이트웨이가 둘 뜨면 서로 연결을 빼앗는다.
  * [leaseUntil] 이 안 지난 다른 인스턴스가 있으면 새 인스턴스는 뜨지 않는다. (2) **하트비트** — 앱이 이 행을 읽어 게이트웨이가 살아 있는지,
- * 웹소켓이 언제 다시 붙었는지(체결 보충을 돌릴 신호)를 안다. 앱이 읽는 계약이다(docs/contracts/gateway_instance.md).
+ * 웹소켓이 언제 다시 붙었는지(체결 보충을 돌릴 신호)를 안다. 앱이 읽는 계약이다(docs/contracts/README.md).
  */
 @Entity
 @Table(name = "gateway_instance")

@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 private val log = KotlinLogging.logger {}
 
 /**
- * 게이트웨이 → 앱 실시간 스트림(웹소켓 `/stream`, JSON). 메시지는 모두 `{"type": ..., ...}` 이고 형식은 docs/contracts/gateway-stream.md 가 기준이다.
+ * 게이트웨이 → 앱 실시간 스트림(웹소켓 `/stream`, JSON). 메시지는 모두 `{"type": ..., ...}` 이고 형식은 docs/contracts/README.md 가 기준이다.
  * - 시세(`raw`)는 한투 메시지 원문을 **해석 없이** 그대로 보낸다(틱·분봉 해석은 앱). 분봉 거래량 합산에 모든 틱이 필요해 묶지 않는다.
  *   느린 앱이 증권사 수신 스레드를 막지 못하게, 보내기 대기가 [RAW_BACKLOG_LIMIT] 건을 넘으면 새 시세는 버린다.
  * - 체결 알림(`fill`)·잔고 알림(`balance`)은 빠짐없이 보낸다. 다만 정본은 DB 원장이고 이 메시지는 "새 행이 생겼다"는 빠른 알림일 뿐이다
