@@ -2,6 +2,7 @@ package com.quantlog.position
 
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.Market
+import com.quantlog.sync.SyncMismatchReporter
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -31,7 +32,7 @@ data class BackfillResult(
  * - KIS 가 주는 건 주문별 체결 **누적**이라, 보충 줄은 "KIS 누적 − 원장 합계" 만큼을 평균가 기준 1줄로 만든다(`REST_BACKFILL`).
  *   체결 시각은 채운 시각이고, 체결 직전 평단을 몰라 그 몫은 실현손익에 넣지 않는다(짐작으로 채우지 않는다).
  * - 방금 체결통보가 온 주문은 건너뛴다([QUIET]) — 통보가 오는 중에 보충하면 같은 체결이 두 번 들어갈 수 있다.
- * - 원장 합계가 KIS 보다 많으면(중복 반영 의심) 고치지 않고 WARN 만 남긴다 — 오류 기록 화면에 모인다.
+ * - 원장 합계가 KIS 보다 많으면(중복 반영 의심) 고치지 않고 불일치만 보고한다. 보충한 때도 보고한다([SyncMismatchReporter], CLAUDE.md "동기화 불일치 보고").
  * - 우리 매매 기록(Trade)에 있는 주문만 본다. 증권사 앱에서 직접 낸 주문은 대상이 아니다.
  */
 @Service
@@ -78,13 +79,23 @@ class FillBackfillService(
                         TradeFill(Market.KR, trade.symbol, trade.side, trade.orderNo, missing, price, null, now, FillSource.REST_BACKFILL),
                     )
                     filled++
-                    log.info { "[체결 보충] 주문 ${trade.orderNo} ${trade.symbol} 체결통보로 못 받은 ${missing}주를 원장에 채웠다 (평균 $price)" }
+                    SyncMismatchReporter.report(
+                        area = "체결 보충",
+                        subject = "주문 ${trade.orderNo} ${trade.symbol}",
+                        db = "원장 ${ledgerQuantity}주",
+                        external = "KIS ${total.filledQuantity}주",
+                        action = "체결통보로 못 받은 ${missing}주를 원장에 채움 (평균 $price)",
+                    )
                 }
                 total.filledQuantity < ledgerQuantity -> {
                     mismatched++
-                    log.warn {
-                        "[체결 대조] 주문 ${trade.orderNo} ${trade.symbol} 원장 ${ledgerQuantity}주 > KIS ${total.filledQuantity}주 — 중복 반영 의심"
-                    }
+                    SyncMismatchReporter.report(
+                        area = "체결 대조",
+                        subject = "주문 ${trade.orderNo} ${trade.symbol}",
+                        db = "원장 ${ledgerQuantity}주",
+                        external = "KIS ${total.filledQuantity}주",
+                        action = "중복 반영이 의심돼 고치지 않음 — 확인 필요",
+                    )
                 }
             }
         }
