@@ -7,21 +7,21 @@ import java.util.Optional
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** 원장(`broker_notice`) 원문을 읽어 주문별 체결을 구하는 부분 ([BrokerNoticeOrderFills]). */
-class BrokerNoticeOrderFillsTest {
-    private val rows = mutableListOf<BrokerNoticeRow>()
+/** 원장(`kis_broker_fill`) 원문을 읽어 주문별 체결을 구하는 부분 ([KisBrokerFillOrderFills]). */
+class KisBrokerFillOrderFillsTest {
+    private val rows = mutableListOf<KisBrokerFillRow>()
     private var cursor = 0L
     private val repository =
-        Mockito.mock(BrokerNoticeRowRepository::class.java).also { repo ->
+        Mockito.mock(KisBrokerFillRowRepository::class.java).also { repo ->
             Mockito.`when`(repo.findTop100ByIdGreaterThanOrderByIdAsc(Mockito.anyLong())).thenAnswer { inv ->
                 rows.filter { it.id!! > inv.getArgument<Long>(0) }.take(100)
             }
         }
     private val cursors =
         Mockito.mock(ProjectionCursorRepository::class.java).also { repo ->
-            Mockito.`when`(repo.findById("notice")).thenAnswer { Optional.of(ProjectionCursor("notice", cursor)) }
+            Mockito.`when`(repo.findById("kis_broker_fill")).thenAnswer { Optional.of(ProjectionCursor("kis_broker_fill", cursor)) }
         }
-    private val fills = BrokerNoticeOrderFills(repository, cursors)
+    private val fills = KisBrokerFillOrderFills(repository, cursors)
 
     private fun add(
         orderNo: String,
@@ -37,7 +37,7 @@ class BrokerNoticeOrderFillsTest {
         f[12] = "0"
         f[13] = if (fill) "2" else "1"
         f[16] = "10"
-        rows += BrokerNoticeRow(id = rows.size + 1L, receivedAt = Instant.EPOCH, trId = "H0STCNI9", body = f.joinToString("^"))
+        rows += KisBrokerFillRow(id = rows.size + 1L, receivedAt = Instant.EPOCH, trId = "H0STCNI9", body = f.joinToString("^"))
     }
 
     @Test

@@ -57,7 +57,7 @@ class KisFillNoticeHandlerTest {
         return fields.joinToString("^")
     }
 
-    private fun bodies() = events.map { (it as BrokerNoticeReceived).body }
+    private fun bodies() = events.map { (it as KisFillNoticeReceived).body }
 
     @Test
     fun `암호화된 통보를 복호화해 필드를 해석하지 않고 원문 그대로 발행한다`() {
@@ -65,7 +65,7 @@ class KisFillNoticeHandlerTest {
 
         handler.onData("H0STCNI9", encrypted = true, recordCount = 1, payload = encrypt(domesticRow()))
 
-        val notice = events.single() as BrokerNoticeReceived
+        val notice = events.single() as KisFillNoticeReceived
         assertEquals("H0STCNI9", notice.trId)
         assertEquals(domesticRow(), notice.body)
     }

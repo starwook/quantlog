@@ -186,7 +186,7 @@ class PortfolioLiveBroadcaster(
         }
     }
 
-    /** 체결 내역 = 원장(`broker_notice`) 줄, 최근 순으로 [HISTORY_LIMIT] 건. 손익은 그 주문의 체결 직전 평단([com.quantlog.position.Trade.avgCostBefore]) 기준이다. */
+    /** 체결 내역 = 원장(`kis_broker_fill`) 줄, 최근 순으로 [HISTORY_LIMIT] 건. 손익은 그 주문의 체결 직전 평단([com.quantlog.position.Trade.avgCostBefore]) 기준이다. */
     private fun recentFills(snapshot: PortfolioSnapshot): List<FillLiveView> =
         orderFills.projectedAll()
             .sortedByDescending { it.id }

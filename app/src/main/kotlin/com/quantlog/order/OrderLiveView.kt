@@ -126,7 +126,7 @@ data class HoldingLiveView(
 }
 
 /**
- * 체결 내역 한 줄 — 체결통보 1건(게이트웨이 원장 `broker_notice` 한 줄)이다. 주문 단위가 아니라서 부분체결이 쪼개진 그대로 보인다.
+ * 체결 내역 한 줄 — 체결통보 1건(게이트웨이 원장 `kis_broker_fill` 한 줄)이다. 주문 단위가 아니라서 부분체결이 쪼개진 그대로 보인다.
  * [orderNo] 로 화면이 같은 주문의 사유(reason)를 찾아 붙인다.
  */
 data class FillLiveView(

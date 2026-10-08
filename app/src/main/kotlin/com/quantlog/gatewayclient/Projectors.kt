@@ -16,11 +16,11 @@ import java.time.Instant
 
 private val log = KotlinLogging.logger {}
 
-/** [FillProjector] 가 체결통보 원장(`broker_notice`)을 어디까지 반영했는지 적는 커서 이름(`broker_projection_cursor.name`). 옛 `broker_fill` 용 커서 "fill" 과 섞이지 않게 이름을 바꿨다. */
-private const val FILL_CURSOR = "notice"
+/** [FillProjector] 가 체결통보 원장(`kis_broker_fill`)을 어디까지 반영했는지 적는 커서 이름(`broker_projection_cursor.name`). 옛 `broker_fill` 용 커서 "fill" 과 섞이지 않게 이름을 바꿨다. */
+private const val FILL_CURSOR = "kis_broker_fill"
 
 /**
- * 게이트웨이가 원문 그대로 기록한 체결통보 원장(`broker_notice`)을 한투 문서대로 읽어([KisFillNoticeParser]) 앱의 보유 현황(`account_holding`)·
+ * 게이트웨이가 원문 그대로 기록한 체결통보 원장(`kis_broker_fill`)을 한투 문서대로 읽어([KisFillNoticeParser]) 앱의 보유 현황(`account_holding`)·
  * 매매 기록(`trade`)에 반영한다. 어디까지 처리했는지는 `broker_projection_cursor` 에 둔다 — 앱이 꺼져 있던 동안 쌓인 통보도 재시작 후 그다음 줄부터
  * 이어서 처리한다(같은 통보 중복은 [HoldingSyncService.applyFill] 이 막는다). 체결 내역 자체는 원장에만 있고 앱은 사본을 따로 쓰지 않는다([OrderFills]).
  * 커서가 없으면(처음 켠 때) 지금 있는 마지막 ID 부터 시작한다 — 그 이전 체결은 잔고 스냅샷이 맞춘다.
@@ -29,7 +29,7 @@ private const val FILL_CURSOR = "notice"
  */
 @Component
 class FillProjector(
-    private val notices: BrokerNoticeRowRepository,
+    private val notices: KisBrokerFillRowRepository,
     private val cursors: ProjectionCursorRepository,
     private val holdingSync: HoldingSyncService,
     private val tradeService: TradeService,
@@ -59,10 +59,10 @@ class FillProjector(
         }
     }
 
-    private fun project(row: BrokerNoticeRow) {
+    private fun project(row: KisBrokerFillRow) {
         val notice = KisFillNoticeParser.parse(row.trId, row.body)
         if (notice == null) {
-            log.error { "[체결통보 해석 실패] 건너뛴다(다음 잔고 반영이 보유를 바로잡는다): broker_notice.id=${row.id} ${row.trId} ${row.body}" }
+            log.error { "[체결통보 해석 실패] 건너뛴다(다음 잔고 반영이 보유를 바로잡는다): kis_broker_fill.id=${row.id} ${row.trId} ${row.body}" }
             cursors.save(ProjectionCursor(CURSOR, row.id!!))
             return
         }
@@ -74,8 +74,8 @@ class FillProjector(
                 cursors.save(ProjectionCursor(CURSOR, row.id!!))
             }
         }.onFailure {
-            // 건너뛴 체결을 나중에 찾아볼 수 있게 ERROR 로 남긴다(/errors·웹훅). 원장 행 ID(broker_notice.id)와 주문번호로 그 행을 특정한다.
-            log.error(it) { "[체결 반영 실패] 건너뛴다(다음 잔고 반영이 보유를 바로잡는다): broker_notice.id=${row.id} ${notice.summary()}" }
+            // 건너뛴 체결을 나중에 찾아볼 수 있게 ERROR 로 남긴다(/errors·웹훅). 원장 행 ID(kis_broker_fill.id)와 주문번호로 그 행을 특정한다.
+            log.error(it) { "[체결 반영 실패] 건너뛴다(다음 잔고 반영이 보유를 바로잡는다): kis_broker_fill.id=${row.id} ${notice.summary()}" }
             cursors.save(ProjectionCursor(CURSOR, row.id!!))
         }
     }
@@ -86,12 +86,12 @@ class FillProjector(
 }
 
 /**
- * [OrderFills] 를 게이트웨이 원장(`broker_notice`)에서 읽는다. "반영된" 줄은 [FillProjector] 의 커서까지다.
+ * [OrderFills] 를 게이트웨이 원장(`kis_broker_fill`)에서 읽는다. "반영된" 줄은 [FillProjector] 의 커서까지다.
  * 원장은 추가만 되고 바뀌지 않으므로, 한 번 읽어 해석한 줄은 메모리에 두고 새 줄만 더 읽는다(주문번호가 원문 안에 있어 DB 로 걸러 읽을 수 없다).
  */
 @Component
-class BrokerNoticeOrderFills(
-    private val notices: BrokerNoticeRowRepository,
+class KisBrokerFillOrderFills(
+    private val notices: KisBrokerFillRowRepository,
     private val cursors: ProjectionCursorRepository,
 ) : OrderFills {
     private class Parsed(val id: Long, val receivedAt: Instant, val notice: FillNotice)

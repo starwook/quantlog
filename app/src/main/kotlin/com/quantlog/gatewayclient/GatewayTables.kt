@@ -18,11 +18,11 @@ import java.time.Instant
 // 앱도 ddl-auto 라서 앱이 먼저 뜨면 이 선언으로 테이블이 만들어진다 — 게이트웨이가 IDENTITY 로 insert 하는 테이블은 여기서도 id 를 IDENTITY 로 선언해
 // AUTO_INCREMENT 가 빠지지 않게 한다(빠지면 게이트웨이 insert 가 "Field 'id' doesn't have a default value" 로 실패한다).
 
-/** 체결통보 원장(`broker_notice`) 한 줄 — 한투 체결통보 원문(`^` 구분 한 건, 계좌 식별 칸은 비움). docs/contracts/tables.md. */
+/** 체결통보 원장(`kis_broker_fill`) 한 줄 — 한투 체결통보 원문(`^` 구분 한 건, 계좌 식별 칸은 비움). docs/contracts/tables.md. */
 @Entity
 @Immutable
-@Table(name = "broker_notice")
-class BrokerNoticeRow(
+@Table(name = "kis_broker_fill")
+class KisBrokerFillRow(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
@@ -34,10 +34,10 @@ class BrokerNoticeRow(
     val body: String = "",
 )
 
-interface BrokerNoticeRowRepository : JpaRepository<BrokerNoticeRow, Long> {
-    fun findTop100ByIdGreaterThanOrderByIdAsc(id: Long): List<BrokerNoticeRow>
+interface KisBrokerFillRowRepository : JpaRepository<KisBrokerFillRow, Long> {
+    fun findTop100ByIdGreaterThanOrderByIdAsc(id: Long): List<KisBrokerFillRow>
 
-    @Query("select max(n.id) from BrokerNoticeRow n")
+    @Query("select max(n.id) from KisBrokerFillRow n")
     fun maxId(): Long?
 }
 

@@ -20,7 +20,7 @@ private val log = KotlinLogging.logger {}
 
 /**
  * 보유 현황([AccountHolding]) = 앱이 기억하는 현재 수량·평단. 두 가지로 갱신한다.
- * - [applyFill]: 게이트웨이 원장(`broker_notice`)의 체결 줄을 [com.quantlog.gatewayclient.FillProjector] 가 순서대로 넘겨 주면 그만큼 수량·평단을 계산해 반영한다.
+ * - [applyFill]: 게이트웨이 원장(`kis_broker_fill`)의 체결 줄을 [com.quantlog.gatewayclient.FillProjector] 가 순서대로 넘겨 주면 그만큼 수량·평단을 계산해 반영한다.
  * - [sync]: 게이트웨이의 잔고 스냅샷(증권사 값)으로 덮어쓴다(증권사가 정답). 어긋난 곳은 `[동기화 불일치]` 로 보고한다.
  */
 @Service
@@ -54,7 +54,7 @@ class HoldingSyncService(
     }
 
     /**
-     * 이 주문의 체결을 주문수량만큼 다 반영했는가. 마틴게일의 "단계 진행 중"이 풀리는 기준이다. 원장(`broker_notice`) 중 앱이 반영을 끝낸 줄로 구해
+     * 이 주문의 체결을 주문수량만큼 다 반영했는가. 마틴게일의 "단계 진행 중"이 풀리는 기준이다. 원장(`kis_broker_fill`) 중 앱이 반영을 끝낸 줄로 구해
      * 재시작해도 같고, 보유 현황에 아직 안 들어간 체결로 대기를 먼저 풀지 않는다.
      */
     override fun isOrderFilled(orderNo: String): Boolean {
@@ -63,7 +63,7 @@ class HoldingSyncService(
     }
 
     /**
-     * 원장(`broker_notice`)의 체결 통보 한 줄([noticeId])을 보유 현황에 반영한다. 체결 통보만 처리하고 접수 통보는 건너뛴다.
+     * 원장(`kis_broker_fill`)의 체결 통보 한 줄([noticeId])을 보유 현황에 반영한다. 체결 통보만 처리하고 접수 통보는 건너뛴다.
      * 매수는 수량 가중평균으로 평단을 다시 계산하고, 매도는 수량만 줄인다(0이 되면 행 삭제). 바뀐 내용 설명을 돌려준다(건너뛰면 null).
      * 부분체결 통보의 체결수량은 건별이다(2026-10-07 실측: 100주 매도가 44주 + 56주로 왔다). 그대로 더하고 빼되, 같은 통보가 중복 와도 주문수량을 넘기지 않게만 막는다.
      * [receivedAt] 은 게이트웨이가 통보를 받은 시각이다 — 앱이 늦게 반영해도 체결 시각은 이것이다.

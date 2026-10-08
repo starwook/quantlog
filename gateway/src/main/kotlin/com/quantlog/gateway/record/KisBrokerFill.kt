@@ -15,8 +15,8 @@ import java.time.Instant
  * 계좌 식별 필드(고객 ID·계좌번호·계좌명)만 비워서 저장한다. 앱이 읽는 계약이다(docs/contracts/tables.md) — 컬럼은 추가만 한다.
  */
 @Entity
-@Table(name = "broker_notice")
-class BrokerNotice(
+@Table(name = "kis_broker_fill")
+class KisBrokerFill(
     @Column(name = "received_at", nullable = false)
     val receivedAt: Instant,
     /** 실시간 TR ID 원문(국내 모의 H0STCNI9). 필드 순서가 TR 마다 다르다. */
@@ -31,4 +31,4 @@ class BrokerNotice(
         protected set
 }
 
-interface BrokerNoticeRepository : JpaRepository<BrokerNotice, Long>
+interface KisBrokerFillRepository : JpaRepository<KisBrokerFill, Long>

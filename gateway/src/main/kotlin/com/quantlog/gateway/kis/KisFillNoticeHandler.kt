@@ -13,11 +13,11 @@ import javax.crypto.spec.SecretKeySpec
 private val log = KotlinLogging.logger {}
 
 /** 증권사 체결통보(접수·체결·정정·취소·거부) 한 건의 원문. [body] 는 복호화한 `^` 구분 필드 그대로이고 계좌 식별 필드만 비워 둔다. */
-data class BrokerNoticeReceived(val trId: String, val body: String)
+data class KisFillNoticeReceived(val trId: String, val body: String)
 
 /**
  * KIS 실시간 체결통보(국내 H0STCNI9, 모의) 수신 처리. 연결·구독은 [KisRealtimeClient] 가 같은 WebSocket 연결로 하고,
- * 여기는 (1) 구독 응답에 실려 오는 AES 키·IV 보관 (2) 수신 데이터 복호화 (3) 메시지 헤더의 건수로 한 건씩 나눠 [BrokerNoticeReceived] 발행만 한다.
+ * 여기는 (1) 구독 응답에 실려 오는 AES 키·IV 보관 (2) 수신 데이터 복호화 (3) 메시지 헤더의 건수로 한 건씩 나눠 [KisFillNoticeReceived] 발행만 한다.
  * **필드를 해석하지 않는다** — 어느 칸이 종목·수량인지는 앱이 한투 공식 문서(docs/kis-api/field-reference.md 3절)대로 읽는다(2026-10-08).
  * 예외는 보안: 고객 ID·계좌번호·계좌명 칸은 저장·로그 전에 비운다([IDENTIFYING_FIELDS]).
  */
@@ -68,7 +68,7 @@ class KisFillNoticeHandler(
         fields.chunked(fields.size / recordCount).forEach { record ->
             val body = record.mapIndexed { index, value -> if (index in IDENTIFYING_FIELDS) "" else value }.joinToString("^")
             log.info { "[체결통보] $trId $body" }
-            eventPublisher.publishEvent(BrokerNoticeReceived(trId, body))
+            eventPublisher.publishEvent(KisFillNoticeReceived(trId, body))
         }
     }
 

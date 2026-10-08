@@ -18,7 +18,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** 원장(`broker_notice`) 줄이 반영될 때 매매 기록을 따라 갱신하는 부분 ([TradeService.onFillApplied]·[TradeService.onOrderNotice]·[TradeService.record]). */
+/** 원장(`kis_broker_fill`) 줄이 반영될 때 매매 기록을 따라 갱신하는 부분 ([TradeService.onFillApplied]·[TradeService.onOrderNotice]·[TradeService.record]). */
 class TradeServiceFillTest {
     private val repository = Mockito.mock(TradeRepository::class.java)
     private val notifier = Mockito.mock(Notifier::class.java)

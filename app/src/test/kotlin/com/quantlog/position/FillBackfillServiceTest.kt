@@ -14,7 +14,7 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** 게이트웨이 원장(`broker_notice`)이 체결통보를 놓쳤는지 KIS 체결내역과 대조하는 부분 ([FillBackfillService]). 원장에 쓰지는 않는다. */
+/** 게이트웨이 원장(`kis_broker_fill`)이 체결통보를 놓쳤는지 KIS 체결내역과 대조하는 부분 ([FillBackfillService]). 원장에 쓰지는 않는다. */
 class FillBackfillServiceTest {
     private val broker = Mockito.mock(BrokerClient::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)

@@ -1,15 +1,33 @@
 # TODO
 
+## 게이트웨이 = 한투 원문 통로 (사용자 결정 2026-10-08, 다음 세션에서 진행)
+**목표:** 게이트웨이는 한투(KIS)에서 받은 것을 **해석하지 않고 원문 그대로** 저장하거나 앱에 전달만 한다. 앱은 **한투 공식 문서만 보고** 해석한다(`docs/kis-api/`). 그러면 칸 번호·응답 형식이 바뀌어도 앱만 고치고 게이트웨이는 다시 띄우지 않는다. 앱↔게이트웨이 계약 문서(`docs/contracts/`)는 "통로 형식 + 내용은 한투 문서를 따른다" 정도로 줄인다. 데이터는 초기화하므로 테이블 형식은 바꿔도 된다.
+
+**이미 한 것 (브랜치 `claude/festive-ritchie-j5l99d`, 아직 PR·배포 전):**
+- 체결통보 원장 `kis_broker_fill`(`id, received_at, tr_id, body`) — **가장 중요한 테이블.** `body` 는 복호화한 `^` 구분 원문 한 건. 게이트웨이(`gateway` `kis/KisFillNoticeHandler.kt`, `record/NoticeRecorder.kt`, `record/KisBrokerFill.kt`)는 복호화·건수로 나누기·계좌 식별 칸(0 고객 ID·1 계좌번호·17 계좌명) 비우기만 한다.
+- 앱은 `app` `broker/KisFillNoticeParser.kt` 로 한투 문서대로 해석한다. `app` `gatewayclient/Projectors.kt` 의 `FillProjector`(커서 `kis_broker_fill`)·`KisBrokerFillOrderFills`(해석한 줄을 메모리에 두고 새 줄만 이어 읽음). 계약 버전 2. 옛 `broker_fill`·`trade_fill` 테이블은 안 쓴다(DB 에서 지울 것).
+
+**남은 것 (이 순서로):**
+1. **실시간 웹소켓 원문 전달** — 지금 `gateway` `kis/KisRealtimeClient.kt` 가 시세(H0STCNT0)를 해석해 `tick`·`candle` 로 바꿔 보낸다(`stream/StreamHub.kt`, `docs/contracts/gateway-stream.md`). 한투 메시지(`0|H0STCNT0|001|...`)를 그대로 앱에 보내고, 앱(`app` `gatewayclient/GatewayStreamClient.kt`)이 해석해 `PriceTick`·`CandleUpdated`(진행 중 분봉 만들기 포함)를 낸다. 체결통보는 복호화·계좌 칸 비운 원문을 보낸다. 느린 앱 보호(연결별 큐 상한)는 유지한다.
+2. **REST 조회 = 한투 통로** — 지금 `gateway` `api/BrokerApi.kt` 의 전용 API 10개가 응답을 해석해 자기 형식으로 준다(`kis/KisMockBroker.kt`). 앱이 TR ID·경로·파라미터를 보내면 게이트웨이는 토큰·호출 간격·우선순위(`CallPriority` 헤더)만 처리하고 **한투 응답 JSON(+연속조회 헤더)을 그대로** 돌려준다. 해석은 앱의 `BrokerClient` 한투 구현(`app` `gatewayclient/GatewayBrokerClient.kt` 를 대체)이 한다.
+3. **주문·취소도 같은 통로 + 멱등** — 게이트웨이는 요청 ID 와 요청·응답 원문을 `kis_order` 에 저장(호출 **전** "보내는 중" 기록은 유지). 같은 요청 ID 가 다시 오면 저장된 응답 원문을 돌려주고, "보내는 중"인 채면 409 로 앱이 당일 주문조회로 확정하게 한다. 지금의 `broker_order`·`record/OrderService.kt` 를 대체.
+4. **잔고 스냅샷 원문** — `gateway` `record/BalanceRecorder.kt` 가 잔고 조회 응답을 해석해 `broker_balance`(+meta)에 넣는다 → 응답 원문 JSON 을 회차마다 `kis_balance` 에 한 줄로. 앱 `BalanceProjector` 가 해석한다.
+5. **분봉 수집 원문** — `gateway` `record/CandleCollector.kt` 가 분봉 응답을 해석해 `minute_candle` 에 넣는다 → 응답 원문을 `kis_minute_chart` 에 저장하고 앱이 해석해 자기 `minute_candle` 에 넣는다.
+6. **모의 체결(`gateway` `paper/`)은 앱으로** — 한투 형식이 아니므로 앱의 `BrokerClient` 다른 구현으로 옮긴다(운영은 `kis-mock` 이라 영향 없음).
+7. 문서: `docs/contracts/` 축소, `docs/서버-분리.md`·CLAUDE.md 의 게이트웨이 설명을 "원문 통로"로 고친다.
+
+**배포:** 게이트웨이 변경은 장 마감 후 **한 번에** 묶어 낸다(위 1~6 과 이미 한 체결통보 원문 저장을 한 PR 로). 이름 규칙: 한투 원문을 담는 테이블은 `kis_` 로 시작한다.
+
 ## 서버 분리 — 게이트웨이/앱 (2026-10-08, 구현됨)
 외부 API 를 전담하고 거의 안 꺼지는 **게이트웨이**와, 자주 재배포하는 **앱**으로 나눴다(재배포 때 웹소켓이 끊겨 정합성이 어긋나던 문제). 구조·결정·계약은 [`서버-분리.md`](서버-분리.md), [`contracts/`](contracts/).
 - **완료:** 모듈 `gateway`/`app`(common 해체), 해석 로직(평단·수량 반영, 체결 보충·재확인)의 앱 이전, 게이트웨이 독립 실행(체결 원장·잔고 스냅샷 기록, 멱등 주문 HTTP, 앱으로의 웹소켓 스트림, 단일 실행 임대·하트비트), 앱 쪽 연결(`gatewayclient/`), 감시 종목 공유 테이블 `watch_symbol`(종목 추가·삭제 시 앱이 직접 쓰고 게이트웨이에 즉시 구독 요청), 배포 파이프라인 2서비스(게이트웨이는 변경됐을 때만·장 마감 후만).
 - **최우선 원칙(2026-10-08):** 게이트웨이는 장 마감 후라도 웬만하면 다시 띄우지 않는다 — 기록·전달·실행만 하고 해석은 앱, 공유는 코드가 아니라 계약뿐. 근거·규칙은 `서버-분리.md`, 지침은 CLAUDE.md.
-- **앱의 체결 사본 제거(2026-10-08):** 앱은 `broker_notice` 만 읽는다(커서 + `account_holding`). `trade_fill`·옛 FIFO 손익 계산(개편 전 데이터는 초기화)·`TradeReconciler`·저점 판단 진입의 2초 대기·체결가 조회 삭제, 체결 보충은 "보고만"(체결 대조)으로.
-- **남은 일:** 장 마감 직전(15:20 전) 미체결 전량 취소 + 마감 후 대조, 게이트웨이 시작·재연결 시 REST 백필(놓친 체결을 `broker_notice` 에 보충 줄로) + 증권사 웹소켓 무응답 감지 재연결(둘을 묶어 장 마감 후 한 번에), 게이트웨이 쪽 리스크 가드, 계약 파일 기반 자동 계약 테스트, **실서버 첫 배포 검증**(컨테이너 둘로 전환, `.env` 에 `QUANTLOG_GATEWAY_TOKEN` 추가).
+- **앱의 체결 사본 제거(2026-10-08):** 앱은 `kis_broker_fill` 만 읽는다(커서 + `account_holding`). `trade_fill`·옛 FIFO 손익 계산(개편 전 데이터는 초기화)·`TradeReconciler`·저점 판단 진입의 2초 대기·체결가 조회 삭제, 체결 보충은 "보고만"(체결 대조)으로.
+- **남은 일:** 장 마감 직전(15:20 전) 미체결 전량 취소 + 마감 후 대조, 게이트웨이 시작·재연결 시 REST 백필(놓친 체결을 `kis_broker_fill` 에 보충 줄로) + 증권사 웹소켓 무응답 감지 재연결(둘을 묶어 장 마감 후 한 번에), 게이트웨이 쪽 리스크 가드, 계약 파일 기반 자동 계약 테스트, **실서버 첫 배포 검증**(컨테이너 둘로 전환, `.env` 에 `QUANTLOG_GATEWAY_TOKEN` 추가).
 
 ## 하루 체결내역 ↔ 실현손익 대조 검증 (예정: 2026-10-12 월요일)
-게이트웨이를 하루 종일 재배포하지 않은 날(통보 유실이 없다는 전제가 지켜진 날) 하나를 골라, **그날의 모든 체결내역(원장 `broker_notice`)과 그날의 실현손익이 서로 맞는지** 비교한다.
-- 확인할 것: 그날 `broker_notice` 체결 수량·금액 합 = 매매 기록(`trade`)의 주문별 체결수량·체결가, 매도 주문마다 (체결가 − 체결 직전 평단 `trade.avg_cost_before`) × 체결수량의 합 = 화면의 그날 실현손익, KIS 당일 체결내역(주문별 체결 누적)과도 주문 단위로 일치하는지.
+게이트웨이를 하루 종일 재배포하지 않은 날(통보 유실이 없다는 전제가 지켜진 날) 하나를 골라, **그날의 모든 체결내역(원장 `kis_broker_fill`)과 그날의 실현손익이 서로 맞는지** 비교한다.
+- 확인할 것: 그날 `kis_broker_fill` 체결 수량·금액 합 = 매매 기록(`trade`)의 주문별 체결수량·체결가, 매도 주문마다 (체결가 − 체결 직전 평단 `trade.avg_cost_before`) × 체결수량의 합 = 화면의 그날 실현손익, KIS 당일 체결내역(주문별 체결 누적)과도 주문 단위로 일치하는지.
 - 어긋나면 `[체결 반영 실패]`·`[동기화 불일치]` 오류(`/errors`)와 체결 직전 평단이 비어 있는 매도가 있었는지부터 본다. 횟수가 많으면 그때 오류 묶음을 건별로 보이게 한다.
 - 그날 게이트웨이가 재배포되지 않았는지(`gateway_instance.started_at`)를 먼저 확인한다.
 

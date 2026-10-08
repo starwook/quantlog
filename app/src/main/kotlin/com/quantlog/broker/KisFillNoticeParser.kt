@@ -1,7 +1,7 @@
 package com.quantlog.broker
 
 /**
- * 게이트웨이가 원문 그대로 저장한 한투 실시간 체결통보(`broker_notice.body`, `^` 구분 한 건)를 [FillNotice] 로 읽는다.
+ * 게이트웨이가 원문 그대로 저장한 한투 실시간 체결통보(`kis_broker_fill.body`, `^` 구분 한 건)를 [FillNotice] 로 읽는다.
  * 필드 위치는 한투 공식 문서와 모의 실측을 따른다(docs/kis-api/field-reference.md 3절) — 바뀌면 여기만 고치면 되고 게이트웨이는 다시 띄우지 않는다.
  * 고객 ID·계좌번호·계좌명 칸은 게이트웨이가 비워서 저장한다.
  */
