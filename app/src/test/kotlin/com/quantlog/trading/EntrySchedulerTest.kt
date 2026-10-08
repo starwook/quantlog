@@ -11,7 +11,6 @@ import com.quantlog.broker.Quote
 import com.quantlog.broker.RealtimePriceFeed
 import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
-import com.quantlog.marketdata.MinuteCandleCollector
 import com.quantlog.position.FillProgress
 import com.quantlog.position.HoldingView
 import com.quantlog.position.PortfolioService
@@ -125,7 +124,6 @@ class EntrySchedulerTest {
         watched: List<SeedSymbol> = listOf(SeedSymbol.SAMSUNG),
         portfolioService: PortfolioService = noopPortfolioService(),
         marketDataService: MarketDataService = marketDataServiceStub(),
-        candleCollector: MinuteCandleCollector = Mockito.mock(MinuteCandleCollector::class.java),
         tradeService: TradeService = Mockito.mock(TradeService::class.java),
         configs: List<SymbolStrategy> = defaultConfigs,
         holdingSync: FillProgress = Mockito.mock(FillProgress::class.java),
@@ -139,7 +137,6 @@ class EntrySchedulerTest {
             Mockito.`when`(service.all()).thenReturn(configs.filter { c -> watched.any { it.market == c.market && it.symbol == c.symbol } })
         },
         marketDataService,
-        candleCollector,
         tradeService,
         portfolioService,
         holdingSync,
@@ -455,14 +452,11 @@ class EntrySchedulerTest {
     }
 
     @Test
-    fun `자동매매 대상이 아니면 분봉은 모으되 사지는 않는다`() {
+    fun `자동매매 대상이 아니면 사지 않는다`() {
         val broker = FakeBroker()
-        val candleCollector = Mockito.mock(MinuteCandleCollector::class.java)
-        scheduler(broker, EntrySignal.BUY, watched = listOf(SeedSymbol.SK_HYNIX), candleCollector = candleCollector)
-            .checkEntries(krOpen)
+        scheduler(broker, EntrySignal.BUY, watched = listOf(SeedSymbol.SK_HYNIX)).checkEntries(krOpen)
 
         assertTrue(broker.orders.isEmpty())
-        Mockito.verify(candleCollector).fetchAndStoreRecentMinutes(eqNonNull(Market.KR), eqNonNull("000660"), anyNonNull())
     }
 
     @Test

@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      force_gateway:
+        description: "장중에도 게이트웨이를 배포한다 (실시간 연결·체결 기록이 잠깐 끊김)"
+        type: boolean
+        default: false
 
 # 동시에 두 배포가 돌지 않게 한다 (서버 쪽에도 flock 이 있다)
 concurrency:
@@ -42,6 +47,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SKIP_BUILD: "1"
+          FORCE_GATEWAY: ${{ inputs.force_gateway && '1' || '' }}
         run: |
           install -m 600 /dev/null "$RUNNER_TEMP/deploy_key"
           printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/deploy_key"

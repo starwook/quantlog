@@ -13,6 +13,9 @@ spring:
     username: root
     password: ""
     driver-class-name: com.mysql.cj.jdbc.Driver
+  jackson:
+    generator:
+      write-bigdecimal-as-plain: true
   task:
     scheduling:
       # 기본은 스레드 1개를 모든 @Scheduled 가 나눠 써서, 느린 KIS 호출 하나가 진입·청산·마틴게일까지 막는다
@@ -28,23 +31,13 @@ spring:
 server:
   port: 8080
 
-# 시크릿은 절대 이 파일(git에 커밋됨)에 적지 않는다. application-local.yml 에만 적는다.
-kis:
-  mock:
-    app-key: ${KIS_MOCK_APP_KEY:}
-    app-secret: ${KIS_MOCK_APP_SECRET:}
-    account: ${KIS_MOCK_ACCOUNT:}
-    log-raw: ${KIS_MOCK_LOG_RAW:false}
-    # 실시간 체결통보 구독용 HTS ID(시크릿 취급). 비우면 체결통보를 구독하지 않는다.
-    hts-id: ${KIS_MOCK_HTS_ID:}
-    # 실시간 시세 WebSocket. 경로는 첫 연결 로그로 확인 필요(2026-09-29: 아직 실측 전).
-    # 구독 종목은 DB 의 보유 종목(account_holding)에서 자동으로 정한다 — realtime-max-subscriptions 는 동시 구독 상한.
-
+# 앱은 증권사 시크릿이 없다 — 증권사 호출·실시간 수신·체결 기록은 게이트웨이가 한다(docs/서버-분리.md).
 quantlog:
-  broker:
-    # kis-mock: 주문도 KIS 모의투자로 낸다 (기본값. 2026-10-02 모킹 체결이 실제 체결가와 달라 다시 되돌림).
-    # paper: 시세·분봉만 KIS 에서 받고 주문은 로컬에서 모킹 체결한다 (broker/paper/PaperBroker). 초기 자금·제세금은 PaperProperties 기본값 — 여기서 덮어쓴다.
-    type: ${QUANTLOG_BROKER_TYPE:kis-mock}
+  gateway:
+    # 게이트웨이(HTTP 명령 · WebSocket 스트림) 주소와 공유 토큰(시크릿 — 서버 env 또는 application-local.yml).
+    base-url: ${QUANTLOG_GATEWAY_URL:http://localhost:8081}
+    token: ${QUANTLOG_GATEWAY_TOKEN:}
+    enabled: ${QUANTLOG_GATEWAY_ENABLED:true}
   notify:
     # Discord/Slack Incoming Webhook URL (시크릿 — application-local.yml 에만 적는다). 비우면 알림 꺼짐.
     webhook-url: ${QUANTLOG_NOTIFY_WEBHOOK_URL:}
@@ -91,9 +84,10 @@ quantlog:
     enabled: ${QUANTLOG_RECONCILE_ENABLED:true}
     interval-millis: 60000
   holding-sync:
-    # 증권사 앱에서 직접 거래한 물량을 10초마다 KIS 잔고 기준으로 DB에 맞춘다(화면용 현재가도 같이 갱신) (마틴게일이 DB 기준이라 필요).
+    # 게이트웨이가 기록한 체결 원장·잔고 스냅샷(broker_fill / broker_balance)을 보유 현황(account_holding)에 반영한다.
+    # 알림(WebSocket)이 오면 바로, 안 와도 interval-millis 마다 DB 를 확인한다. 증권사 앱에서 직접 거래한 물량도 잔고 스냅샷으로 따라온다.
     enabled: ${QUANTLOG_HOLDING_SYNC_ENABLED:true}
-    interval-millis: 10000
+    interval-millis: 1000
   risk:
     # 1회 주문 상한은 폐지 (2026-09-30). 시장별 자본 배분(국내 1000만원)이 한도를 맡는다. 하루 손실 한도는 2026-10-08 폐지.
     market-allocation-krw: 10000000

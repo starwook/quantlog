@@ -1,19 +1,48 @@
+# 서비스 둘: gateway(증권사 키·REST·실시간·주문·원장 기록) / quantlog(앱: 전략·화면·알림). docs/서버-분리.md.
+# 둘은 서로 다른 jar 이고 따로 배포된다. 게이트웨이는 재배포가 드물어야 한다(deploy/DEPLOY.md).
 services:
-  quantlog:
-    build: .
-    container_name: quantlog
+  gateway:
+    build:
+      context: .
+      args:
+        JAR: gateway.jar
+    container_name: quantlog-gateway
     restart: unless-stopped
-    ports:
-      - "8080:8080"
-    # DB 접속 정보(SPRING_DATASOURCE_*). 서버에만 있는 파일 — 저장소에 없다. deploy/DEPLOY.md 참고.
+    # 호스트에는 열지 않는다 — 앱 컨테이너가 같은 컴포즈 네트워크에서 http://gateway:8081 로 부른다.
+    expose:
+      - "8081"
+    # DB 접속 정보(SPRING_DATASOURCE_*)와 QUANTLOG_GATEWAY_TOKEN(앱과 같은 값). 서버에만 있는 파일 — 저장소에 없다. deploy/DEPLOY.md 참고.
     env_file: .env
     environment:
       TZ: Asia/Seoul
       SPRING_PROFILES_ACTIVE: local
-    # 호스트에 설치된 MySQL 접속용 (iptables가 172.16.0.0/12 → 3306 만 허용한다)
+      JAVA_OPTS: "-XX:MaxRAMPercentage=30"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       # KIS 키 등 시크릿. 서버에만 있는 파일 (로컬 application-local.yml 을 동기화해서 둔다)
+      - ./application-local.yml:/app/application-local.yml:ro
+
+  quantlog:
+    build:
+      context: .
+      args:
+        JAR: app.jar
+    container_name: quantlog
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      TZ: Asia/Seoul
+      SPRING_PROFILES_ACTIVE: local
+      JAVA_OPTS: "-XX:MaxRAMPercentage=45"
+      QUANTLOG_GATEWAY_URL: http://gateway:8081
+    # 호스트에 설치된 MySQL 접속용 (iptables가 172.16.0.0/12 → 3306 만 허용한다)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # 지금은 웹훅 URL(quantlog.notify.webhook-url)이 이 파일에 있어 앱에도 둔다. 증권사 키는 앱이 쓰지 않는다.
+      # 웹훅 URL 을 .env 의 QUANTLOG_NOTIFY_WEBHOOK_URL 로 옮기면 이 줄을 지울 수 있다(앱 컨테이너에서 시크릿 파일 제거).
       - ./application-local.yml:/app/application-local.yml:ro
       - ./playbook:/app/playbook
