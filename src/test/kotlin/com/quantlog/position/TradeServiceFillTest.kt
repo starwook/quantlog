@@ -28,21 +28,25 @@ class TradeServiceFillTest {
 
     private fun <T> anyNonNull(): T = Mockito.any<T>()
 
-    private fun notice(fill: Boolean = true) =
-        FillNotice(
-            symbol = "005930",
-            orderNo = "A1",
-            originalOrderNo = "",
-            sellBuyCode = "02",
-            filledFlag = if (fill) "2" else "1",
-            acceptFlag = if (fill) "2" else "1",
-            refuseFlag = "0",
-            filledQuantity = if (fill) BigDecimal.ONE else null,
-            filledPrice = if (fill) BigDecimal("277500") else null,
-            orderQuantity = BigDecimal.ONE,
-            orderPrice = BigDecimal("278500"),
-            time = "092344",
-        )
+    private fun notice(
+        fill: Boolean = true,
+        quantity: BigDecimal = BigDecimal.ONE,
+        price: BigDecimal = BigDecimal("277500"),
+        orderQuantity: BigDecimal = BigDecimal.ONE,
+    ) = FillNotice(
+        symbol = "005930",
+        orderNo = "A1",
+        originalOrderNo = "",
+        sellBuyCode = "02",
+        filledFlag = if (fill) "2" else "1",
+        acceptFlag = if (fill) "2" else "1",
+        refuseFlag = "0",
+        filledQuantity = if (fill) quantity else null,
+        filledPrice = if (fill) price else null,
+        orderQuantity = orderQuantity,
+        orderPrice = BigDecimal("278500"),
+        time = "092344",
+    )
 
     private fun savedTrades(): MutableList<Trade> {
         val saved = mutableListOf<Trade>()
@@ -96,5 +100,50 @@ class TradeServiceFillTest {
         service.record(order, receipt, "마틴게일")
 
         assertNull(saved.single().filledPrice)
+    }
+
+    @Test
+    fun `부분체결 통보는 체결 누적만큼만 올리고 주문수량이 다 차야 체결로 본다`() {
+        val trade = Trade(Market.KR, "005930", Side.BUY, 44, BigDecimal("69595"), "A1", "ok")
+        Mockito.`when`(repository.findFirstByMarketAndOrderNo(Market.KR, "A1")).thenReturn(trade)
+
+        service.onFillNotice(notice(quantity = BigDecimal(3), price = BigDecimal("69590"), orderQuantity = BigDecimal(44)))
+
+        assertEquals(OrderState.PARTIAL, trade.state)
+        assertEquals(3, trade.filledQuantity)
+
+        service.onFillNotice(notice(quantity = BigDecimal(41), price = BigDecimal("69590"), orderQuantity = BigDecimal(44)))
+
+        assertEquals(OrderState.FILLED, trade.state)
+        assertEquals(44, trade.filledQuantity)
+    }
+
+    @Test
+    fun `통보가 주문 응답보다 먼저 와서 일부만 체결됐으면 저장할 때도 일부 체결로 둔다`() {
+        val saved = savedTrades()
+        Mockito.`when`(repository.findFirstByMarketAndOrderNo(Market.KR, "A1")).thenReturn(null)
+        service.onFillNotice(notice(quantity = BigDecimal(3), orderQuantity = BigDecimal(10)))
+
+        service.record(OrderRequest(Market.KR, "005930", Side.BUY, 10, BigDecimal("278500")), receipt, "마틴게일")
+
+        assertEquals(OrderState.PARTIAL, saved.single().state)
+        assertEquals(3, saved.single().filledQuantity)
+    }
+
+    @Test
+    fun `부분체결 중인 주문을 REST 조회로 전량 체결이 확인되면 체결로 올린다`() {
+        val trade =
+            Trade(
+                Market.KR, "005930", Side.BUY, 10,
+                BigDecimal(
+                    "278500",
+                ),
+                "A1", "ok", initialFilledPrice = BigDecimal("277500"), initialFilledQuantity = 3,
+            )
+
+        assertTrue(trade.apply(com.quantlog.broker.OrderStatus.Filled(BigDecimal("277400"))))
+
+        assertEquals(OrderState.FILLED, trade.state)
+        assertEquals(10, trade.filledQuantity)
     }
 }

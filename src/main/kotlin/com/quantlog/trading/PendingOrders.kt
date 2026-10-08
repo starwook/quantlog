@@ -100,7 +100,13 @@ class PendingOrders(
                 pending.remove(key)
                 log.info { "[$label 취소] ${request.market} ${request.symbol} 미체결 주문 $orderNo 을 취소했다 — 다음 틱부터 다시 판정" }
             }
-            .onFailure { log.warn(it) { "[$label] ${request.symbol} 주문 $orderNo 취소 실패(이미 체결됐을 수 있다) — 체결통보를 기다린다" } }
+            .onFailure {
+                // 2026-10-08: 취소가 2분간 계속 실패했는데 사유를 로그에서 못 찾았다 — 주문번호·경과·응답 메시지를 한 줄에 남긴다.
+                log.warn(it) {
+                    "[$label] ${request.symbol} 주문 $orderNo 취소 실패(${Duration.between(order.placedAt, Instant.now()).seconds}초 경과, " +
+                        "이미 체결됐을 수 있다): ${it.message} — 체결통보를 기다린다"
+                }
+            }
     }
 
     private companion object {
