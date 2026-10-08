@@ -37,9 +37,6 @@ kis:
     hts-id: ${KIS_MOCK_HTS_ID:}
 
 quantlog:
-  broker:
-    # kis-mock: 주문도 KIS 모의투자로 낸다(기본). paper: 시세·분봉만 KIS 에서 받고 주문은 로컬에서 모킹 체결한다(gateway/paper/PaperBroker).
-    type: ${QUANTLOG_BROKER_TYPE:kis-mock}
   gateway:
     # 앱이 HTTP·웹소켓 호출에 붙이는 공유 토큰. 비우면 검사하지 않는다(사설망·로컬 개발).
     token: ${QUANTLOG_GATEWAY_TOKEN:}

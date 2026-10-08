@@ -20,7 +20,7 @@ class WatchSymbol(
     val market: String,
     @Column(nullable = false, length = 20)
     val symbol: String,
-    /** ETF 면 true (모킹 체결의 제세금 계산용). */
+    /** 앱이 모킹 체결의 제세금 계산 등에 쓰는 값. 게이트웨이는 쓰지 않는다(계약 테이블 컬럼이라 남겨 둔다). */
     @Column(nullable = false)
     val etf: Boolean = false,
 ) {
@@ -30,9 +30,4 @@ class WatchSymbol(
         protected set
 }
 
-interface WatchSymbolRepository : JpaRepository<WatchSymbol, Long> {
-    fun findByMarketAndSymbol(
-        market: String,
-        symbol: String,
-    ): WatchSymbol?
-}
+interface WatchSymbolRepository : JpaRepository<WatchSymbol, Long>

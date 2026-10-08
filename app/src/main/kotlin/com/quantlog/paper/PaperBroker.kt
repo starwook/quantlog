@@ -1,15 +1,14 @@
-package com.quantlog.gateway.paper
+package com.quantlog.paper
 
-import com.quantlog.gateway.broker.BrokerClient
-import com.quantlog.gateway.broker.BuyingPower
-import com.quantlog.gateway.broker.Holding
-import com.quantlog.gateway.broker.Market
-import com.quantlog.gateway.broker.MinuteCandle
-import com.quantlog.gateway.broker.OrderReceipt
-import com.quantlog.gateway.broker.OrderRequest
-import com.quantlog.gateway.broker.Quote
-import com.quantlog.gateway.broker.Side
-import com.quantlog.gateway.kis.KisMockBroker
+import com.quantlog.broker.BrokerClient
+import com.quantlog.broker.BuyingPower
+import com.quantlog.broker.Holding
+import com.quantlog.broker.KisBrokerClient
+import com.quantlog.broker.Market
+import com.quantlog.broker.OrderReceipt
+import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.Quote
+import com.quantlog.broker.Side
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Component
@@ -18,7 +17,7 @@ import java.math.RoundingMode
 
 /**
  * 주문을 증권사에 보내지 않고 로컬에서 체결시키는 구현체 (`quantlog.broker.type=paper`).
- * 시세·분봉만 [KisMockBroker] 에서 받는다. 모의계좌가 하나뿐이라 여러 봇을 동시에 못 돌려서 만들었다.
+ * 시세만 [KisBrokerClient] 에서 받는다. 모의계좌가 하나뿐이라 여러 봇을 동시에 못 돌려서 만들었다.
  *
  * 체결 모델: 호가를 모르므로 현재가 ± 1틱을 매도/매수 1호가로 본다. 매수는 `현재가+1틱`, 매도는 `현재가-1틱`에
  * 전량 즉시 체결되고, 지정가가 그보다 불리하면(안 체결될 가격이면) 접수 실패로 던진다 — 미체결 주문은 없다.
@@ -30,7 +29,7 @@ import java.math.RoundingMode
 @Component
 @ConditionalOnProperty(name = ["quantlog.broker.type"], havingValue = "paper")
 class PaperBroker(
-    private val market: KisMockBroker,
+    private val market: KisBrokerClient,
     private val orders: PaperOrderRepository,
     private val properties: PaperProperties,
     private val etfRegistry: EtfRegistry,
@@ -44,12 +43,6 @@ class PaperBroker(
         market: Market,
         symbol: String,
     ): BigDecimal? = this.market.previousClose(market, symbol)
-
-    override fun minuteCandles(
-        market: Market,
-        symbol: String,
-        atTime: java.time.LocalTime,
-    ): List<MinuteCandle> = this.market.minuteCandles(market, symbol, atTime)
 
     override fun filledPrice(
         market: Market,

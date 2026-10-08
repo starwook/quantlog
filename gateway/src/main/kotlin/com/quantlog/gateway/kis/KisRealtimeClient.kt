@@ -11,7 +11,6 @@ import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import java.math.BigDecimal
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.WebSocket
@@ -26,15 +25,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 private val log = KotlinLogging.logger {}
 
-data class LivePrice(val price: BigDecimal, val at: Instant)
-
 /** 한투 실시간 시세 메시지 원문 한 건(`0|H0STCNT0|001|...`). StreamHub 가 앱으로 그대로 전달한다. */
 data class RawRealtimeMessage(val raw: String)
 
 /**
  * KIS 실시간 WebSocket 구독. 시세(H0STCNT0)는 받은 한투 메시지를 **해석하지 않고 원문 그대로** [RawRealtimeMessage] 이벤트로 내보낸다
- * (StreamHub 가 앱에 전달 — 틱·분봉 해석은 앱이 한투 문서대로 한다). 예외는 하나: KisMockBroker.quote() 가 REST 대신 쓰는 최신가 캐시를
- * 위해 종목·가격 칸만 읽는다(REST 조회를 한투 통로로 바꾸는 작업에서 앱으로 옮길 임시 해석).
+ * (StreamHub 가 앱에 전달 — 틱·분봉·최신가 해석은 앱이 한투 문서대로 한다).
  * KIS 키가 없으면 켜지 않고(연결 안 됨 → isLive=false) REST 폴링만으로 동작한다.
  */
 @Component
@@ -47,7 +43,6 @@ class KisRealtimeClient(
     private val fillNotices: KisFillNoticeHandler,
 ) : RealtimePriceFeed {
     private val httpClient = HttpClient.newHttpClient()
-    private val liveQuotes = ConcurrentHashMap<String, LivePrice>()
     private var webSocket: WebSocket? = null
 
     @Volatile
@@ -65,8 +60,6 @@ class KisRealtimeClient(
 
     /** java.net.http.WebSocket 은 이전 sendText 가 끝나기 전에 또 보내면 예외라서, 전송을 한 줄로 이어 보낸다. */
     private var sendChain: CompletableFuture<*> = CompletableFuture.completedFuture(null)
-
-    fun latestPrice(symbol: String): LivePrice? = liveQuotes[symbol]
 
     /** 연결이 붙어 있으면 붙은 시각, 아니면 null. */
     fun wsConnectedAt(): Instant? = connectedAt.takeIf { connected }
@@ -181,15 +174,8 @@ class KisRealtimeClient(
         }
     }
 
-    /** 최신가 캐시용으로 종목·가격 칸만 읽고, 메시지는 원문 그대로 내보낸다. 칸 번호가 어긋나도 원문 전달은 영향이 없다. */
+    /** 시세 메시지는 해석 없이 원문 그대로 내보낸다. 칸 번호가 어긋나도 게이트웨이는 영향이 없다. */
     private fun handleTick(raw: String) {
-        val parts = raw.split("|", limit = 4)
-        if (parts.size < 4) return
-        val fields = parts[3].split("^")
-        if (fields.size > PRICE_INDEX) {
-            val price = fields[PRICE_INDEX].toBigDecimalOrNull()
-            if (price != null) liveQuotes[fields[SYMBOL_INDEX]] = LivePrice(price, Instant.now())
-        }
         eventPublisher.publishEvent(RawRealtimeMessage(raw))
     }
 
@@ -247,8 +233,6 @@ class KisRealtimeClient(
         const val SUBSCRIBE = "1"
         const val UNSUBSCRIBE = "2"
         const val REFRESH_INTERVAL_MILLIS = 10_000L
-        const val SYMBOL_INDEX = 0
-        const val PRICE_INDEX = 2
         val RECONNECT_DELAY: Duration = Duration.ofSeconds(5)
     }
 }

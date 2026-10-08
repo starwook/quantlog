@@ -1,7 +1,7 @@
-package com.quantlog.gateway.paper
+package com.quantlog.paper
 
-import com.quantlog.gateway.broker.Market
-import com.quantlog.gateway.broker.Side
+import com.quantlog.broker.Market
+import com.quantlog.broker.Side
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType

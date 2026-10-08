@@ -1,7 +1,6 @@
 package com.quantlog.broker
 
 import java.math.BigDecimal
-import java.time.LocalTime
 
 interface BrokerClient {
     /** 현재가와 그 가격대의 호가 단위. */
@@ -15,17 +14,6 @@ interface BrokerClient {
         market: Market,
         symbol: String,
     ): BigDecimal? = null
-
-    /**
-     * 당일 분봉 조회.
-     * KIS 쪽 제약(docs/kis-api/README.md, 2026-09-29 실측): 한 번에 최대 30건, **당일 데이터만** 제공.
-     * 최신 분봉이 리스트 맨 앞에 온다(내림차순).
-     */
-    fun minuteCandles(
-        market: Market,
-        symbol: String,
-        atTime: LocalTime,
-    ): List<MinuteCandle>
 
     /**
      * 실제 체결가(평균). 국내 체결내역(inquire-daily-ccld)으로 조회. 못 구하면 null.

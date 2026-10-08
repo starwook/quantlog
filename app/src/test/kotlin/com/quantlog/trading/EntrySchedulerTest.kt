@@ -4,7 +4,6 @@ import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.BuyingPower
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
-import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
@@ -28,7 +27,6 @@ import com.quantlog.watchlist.symbolStrategyServiceOf
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import java.math.BigDecimal
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import kotlin.test.assertEquals
@@ -42,12 +40,6 @@ class EntrySchedulerTest {
             market: Market,
             symbol: String,
         ) = Quote(BigDecimal("10000"), BigDecimal("10"))
-
-        override fun minuteCandles(
-            market: Market,
-            symbol: String,
-            atTime: LocalTime,
-        ) = emptyList<MinuteCandle>()
 
         override fun filledPrice(
             market: Market,

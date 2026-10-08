@@ -40,12 +40,12 @@
 | 매도 | 미국 | 〃 | `VTTT1001U` ※ |
 | 매수/매도 | 국내 | `POST /uapi/domestic-stock/v1/trading/order-cash` | `VTTC0012U` / `VTTC0011U` |
 | 정정/취소 | 미국 | `POST /uapi/overseas-stock/v1/trading/order-rvsecncl` | `VTTT1004U` (미구현) |
-| 당일 분봉 조회 | 국내 | `GET /uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice` | `FHKST03010200` (실전·모의 동일, V 접두 안 씀) — `KisMockBroker.minuteCandles()` |
-| 주문체결내역 | 미국 | `GET /uapi/overseas-stock/v1/trading/inquire-ccnl` | `VTTS3035R` (실전 `TTTS3035R`) — `KisMockBroker.filledPrice()`. **모의는 PDNO/OVRS_EXCG_CD=""·SLL_BUY_DVSN/CCLD_NCCS_DVSN="00"만 가능, ODNO(주문번호) 검색 불가, 정렬 불가** → 기간 전체를 받아 주문번호를 직접 골라냄. 체결 필드 `odno`/`ft_ccld_qty`/`ft_ccld_unpr3` (원문 `examples/overseas_stock/inquire_ccnl.py`, 2026-09-30 SOXL 실측 확인). **주의: 응답 `odno`는 앞자리 0이 빠짐("37508") — 주문 접수 응답 "0000037508"과 앞 0을 떼고 비교** |
+| 당일 분봉 조회 | 국내 | `GET /uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice` | `FHKST03010200` (실전·모의 동일, V 접두 안 씀) — `KisMinuteChartParser`(앱) |
+| 주문체결내역 | 미국 | `GET /uapi/overseas-stock/v1/trading/inquire-ccnl` | `VTTS3035R` (실전 `TTTS3035R`) — `KisBrokerClient.filledPrice()`. **모의는 PDNO/OVRS_EXCG_CD=""·SLL_BUY_DVSN/CCLD_NCCS_DVSN="00"만 가능, ODNO(주문번호) 검색 불가, 정렬 불가** → 기간 전체를 받아 주문번호를 직접 골라냄. 체결 필드 `odno`/`ft_ccld_qty`/`ft_ccld_unpr3` (원문 `examples/overseas_stock/inquire_ccnl.py`, 2026-09-30 SOXL 실측 확인). **주의: 응답 `odno`는 앞자리 0이 빠짐("37508") — 주문 접수 응답 "0000037508"과 앞 0을 떼고 비교** |
 
 ## 주의 / 확인 필요
 
-- **주문 응답(`ODNO`)은 지정가 접수 확인일 뿐, 실제 체결가가 아니다** (2026-09-29 실측으로 발견: 삼성전자 273,000원 지정가 매수가 실제로는 272,000원에 체결됨 — 1,000원, SK하이닉스는 1,791,000원 지정 → 1,779,500원 체결로 11,500원이나 차이 남). 실제 체결가는 `주식일별주문체결조회`(`/uapi/domestic-stock/v1/trading/inquire-daily-ccld`, 모의 TR `VTTC0081R`)를 `ODNO`로 필터링해서 조회한다. 응답 `output1`의 `avg_prvs`(체결평균가)·`tot_ccld_qty`(체결수량) 필드 실측 확인됨. `KisMockBroker.filledPrice()`. 해외는 아직 미구현.
+- **주문 응답(`ODNO`)은 지정가 접수 확인일 뿐, 실제 체결가가 아니다** (2026-09-29 실측으로 발견: 삼성전자 273,000원 지정가 매수가 실제로는 272,000원에 체결됨 — 1,000원, SK하이닉스는 1,791,000원 지정 → 1,779,500원 체결로 11,500원이나 차이 남). 실제 체결가는 `주식일별주문체결조회`(`/uapi/domestic-stock/v1/trading/inquire-daily-ccld`, 모의 TR `VTTC0081R`)를 `ODNO`로 필터링해서 조회한다. 응답 `output1`의 `avg_prvs`(체결평균가)·`tot_ccld_qty`(체결수량) 필드 실측 확인됨. `KisBrokerClient.filledPrice()`. 해외는 아직 미구현.
 
 
 - **국내 분봉 조회는 당일 데이터만, 1회 최대 30건**(2026-09-29, `inquire_time_itemchartprice.py` 원문 확인 + 실측 둘 다 일치). 전일자 분봉은 안 준다. 1시간(1분봉 60개) 분석도 2회 호출이 필요하다 — "한 시간치 분봉 데이터가 많지 않을까"라는 걱정은 용량이 아니라 **이 30건 제한**이 진짜 이슈. 응답은 최신 분봉이 배열 맨 앞(내림차순)이다.
@@ -60,7 +60,7 @@
 - 모의투자 미국 주문은 **지정가(`ORD_DVSN=00`)만 가능**. 모의는 **일부 종목만 매매 가능** — 종목이 거절되면 다른 종목으로 바꿔 본다.
 - **주문 가능 시간(서머타임, 한국시간)**: 프리마켓 17:00~22:30 / 정규장 22:30~05:00 / 애프터마켓 05:00~07:00 — 모두 같은 주문 API로 가능(포털 명시). 그 외 시간은 에러. **단, 모의투자(VTTT1001U)는 프리마켓(17:16 KST 실측)에 `[40570000] 모의투자 장시작전 입니다`로 거부한다 [실측 2026-10-07].** 실전에서 프리마켓 주문이 되는지는 2단계에서 확인한다. 서머타임은 2026-11-01 종료(이후 1시간씩 늦어짐).
 - **미국 주간거래(10:00~18:00)는 별도 API이며 모의투자 미지원** → 모의 테스트 불가, 구현하지 않음.
-- **주문 취소(정정취소 API)**: 예제 `examples/{domestic,overseas}_stock/order_rvsecncl.py` 에 있다. 모의 TR 은 국내 `VTTC0013U`(`/uapi/domestic-stock/v1/trading/order-rvsecncl`, 원주문번호 `ORGN_ODNO` + 주문 응답의 `KRX_FWDG_ORD_ORGNO`(주문조직번호) 필요), 해외 `VTTT1004U`(`/uapi/overseas-stock/v1/trading/order-rvsecncl`). 취소는 `RVSE_CNCL_DVSN_CD=02`. `KisMockBroker.cancelOrder()` 로 구현했지만 **모의 실측 전**이다(국내는 `QTY_ALL_ORD_YN=Y`·원주문 수량·단가 0 으로 보냄 — 첫 취소 때 원문을 확인할 것). 정정(01)은 새 주문번호가 생겨 기록 갱신이 필요해서 아직 안 만들었다 — 취소 뒤 새 가격으로 다시 주문한다.
+- **주문 취소(정정취소 API)**: 예제 `examples/{domestic,overseas}_stock/order_rvsecncl.py` 에 있다. 모의 TR 은 국내 `VTTC0013U`(`/uapi/domestic-stock/v1/trading/order-rvsecncl`, 원주문번호 `ORGN_ODNO` + 주문 응답의 `KRX_FWDG_ORD_ORGNO`(주문조직번호) 필요), 해외 `VTTT1004U`(`/uapi/overseas-stock/v1/trading/order-rvsecncl`). 취소는 `RVSE_CNCL_DVSN_CD=02`. `KisBrokerClient.cancelOrder()` 로 구현했지만 **모의 실측 전**이다(국내는 `QTY_ALL_ORD_YN=Y`·원주문 수량·단가 0 으로 보냄 — 첫 취소 때 원문을 확인할 것). 정정(01)은 새 주문번호가 생겨 기록 갱신이 필요해서 아직 안 만들었다 — 취소 뒤 새 가격으로 다시 주문한다.
 - 미국 미체결 조회(`inquire-nccs`)는 예제에 실전 TR(`TTTS3018R`)만 있어 모의 지원 여부 불명 → 미구현.
 - 응답 필드명(`last`, `ord_psbl_frcr_amt`, `ovrs_cblc_qty`, `ODNO` 등)은 예제 코드에 명시되지 않아 공식 응답 규격 기억을 바탕으로 매핑했다. 첫 실행은 `application-local.yml`의 `kis.mock.log-raw: true`로 원문을 보고 맞춘다. **실전 확인됨**(2026-09-28, SOXL/AMEX): `last`, `ord_psbl_frcr_amt`, `max_ord_psbl_qty` 필드명이 실제 응답과 일치했다.
 - 모의투자 서버 호출 빈도 제한을 **실측 확인**(2026-09-28): 600ms 간격으로 현재가→매수가능→잔고를 연달아 호출하니 잔고 조회에서 `EGW00201 초당 거래건수를 초과하였습니다`가 실제로 발생했다. `ACCOUNT` 그룹(문서상 초당 최대 1회)이 원인으로 보여 기본 호출 간격을 **1100ms**로 올렸다 (`KisProperties.minIntervalMillis`).
