@@ -282,7 +282,7 @@ class ExitServiceTest {
     @Test
     fun `다른 이유로 거부당하면 쉬지 않고 다음 판정에서 다시 시도한다`() {
         val broker = FakeBroker(BigDecimal("274500"))
-        broker.rejection = KisApiException("KIS 오류 (VTTT1001U): [40000000] 기타", code = "40000000")
+        broker.rejection = KisApiException("KIS 오류 (VTTC0011U): [40000000] 기타", code = "40000000")
         val service = scheduler(broker)
 
         service.checkAll(krOpen)

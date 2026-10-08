@@ -6,7 +6,7 @@ import java.math.BigDecimal
  * 증권사가 실시간으로 밀어준 체결통보 한 건 ([PriceTick] 처럼 이벤트로 발행된다).
  * 한 주문은 보통 접수 통보(CNTG_YN=1)와 체결 통보(CNTG_YN=2) 두 건으로 온다 — 같은 필드라도 값의 의미가 다르다:
  * 접수 통보의 수량·단가 칸은 **주문값**이라 [filledQuantity]·[filledPrice] 를 채우지 않고, 체결 통보에서만 채운다.
- * 국내 모의 실측(2026-10-07) 기준이다 — docs/kis-api/field-reference.md 3절.
+ * 국내 모의 실측(2026-10-07) 기준이다 — docs/kis-api/field-reference.md 2절.
  * 계좌번호·고객 ID·계좌명 같은 식별 필드는 일부러 담지 않는다.
  */
 data class FillNotice(
