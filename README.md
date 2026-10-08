@@ -73,8 +73,15 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 ## 개발
 
 ```bash
-./gradlew ktlintFormat build   # 포맷 + 컴파일 + 테스트 (KIS 서버 없이 도는 단위 테스트)
+./gradlew ktlintFormat build   # 포맷 + 컴파일 + 테스트 (KIS 서버 없이 도는 단위 테스트, 통합 테스트는 localhost MySQL 필요)
 ```
+
+## 모듈 구성 (2026-10-08)
+
+Gradle 멀티모듈이다(설계·남은 단계는 [docs/서버-분리.md](docs/서버-분리.md)).
+- `common`: 게이트웨이·앱이 같이 쓰는 계약(`BrokerClient`·모델·이벤트)과 공용 엔티티·저장소
+- `gateway`: KIS 와 닿는 모든 것(키·토큰·REST·웹소켓·주문 실행·체결 원장). KIS 키가 필요한 쪽
+- `app`: 전략·화면·알림. `gateway` 에 컴파일 의존이 없다(실수로 부르면 빌드가 깨진다). 실행 jar 는 `app` 에서 만들고(`./gradlew bootJar` → `build/libs/app-*.jar`) 게이트웨이를 같이 담는다 — 지금은 한 프로세스로 뜬다.
 
 ## 해외 주식 제거에 따른 DB 정리 (2026-10-08)
 

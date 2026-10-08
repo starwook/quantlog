@@ -1,38 +1,40 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "1.9.25"
-    id("org.jetbrains.kotlin.plugin.jpa") version "1.9.25"
-    id("org.jetbrains.kotlin.plugin.spring") version "1.9.25"
-    id("org.springframework.boot") version "3.2.4"
-    id("io.spring.dependency-management") version "1.1.6"
-    id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
+    id("org.jetbrains.kotlin.jvm") version "1.9.25" apply false
+    id("org.jetbrains.kotlin.plugin.jpa") version "1.9.25" apply false
+    id("org.jetbrains.kotlin.plugin.spring") version "1.9.25" apply false
+    id("org.springframework.boot") version "3.2.4" apply false
+    id("io.spring.dependency-management") version "1.1.6" apply false
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.0" apply false
 }
 
-group = "com.quantlog"
-version = "0.0.1-SNAPSHOT"
+allprojects {
+    group = "com.quantlog"
+    version = "0.0.1-SNAPSHOT"
 
-repositories {
-    mavenCentral()
+    repositories {
+        mavenCentral()
+    }
 }
 
-dependencies {
-    implementation("org.springframework.boot:spring-boot-starter-web")
-    implementation("org.springframework.boot:spring-boot-starter-websocket")
-    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    runtimeOnly("com.mysql:mysql-connector-j")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-    implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("io.github.microutils:kotlin-logging:3.0.5")
+// 세 모듈 공통 설정. 의존성은 모듈마다 따로 적는다(경계가 곧 의존성 목록이다).
+subprojects {
+    apply(plugin = "org.jetbrains.kotlin.jvm")
+    apply(plugin = "org.jetbrains.kotlin.plugin.jpa")
+    apply(plugin = "org.jetbrains.kotlin.plugin.spring")
+    apply(plugin = "io.spring.dependency-management")
+    apply(plugin = "org.jlleitschuh.gradle.ktlint")
 
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
+    configure<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension> {
+        imports {
+            mavenBom("org.springframework.boot:spring-boot-dependencies:3.2.4")
+        }
+    }
 
-kotlin {
-    jvmToolchain(17)
-}
+    configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
+        jvmToolchain(17)
+    }
 
-tasks.withType<Test> {
-    useJUnitPlatform()
+    tasks.withType<Test> {
+        useJUnitPlatform()
+    }
 }
