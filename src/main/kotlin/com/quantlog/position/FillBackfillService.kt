@@ -33,7 +33,8 @@ data class BackfillResult(
  *   체결 시각은 채운 시각이고, 체결 직전 평단을 몰라 그 몫은 실현손익에 넣지 않는다(짐작으로 채우지 않는다).
  * - 방금 체결통보가 온 주문은 건너뛴다([QUIET]) — 통보가 오는 중에 보충하면 같은 체결이 두 번 들어갈 수 있다.
  * - 원장 합계가 KIS 보다 많으면(중복 반영 의심) 고치지 않고 불일치만 보고한다. 보충한 때도 보고한다([SyncMismatchReporter], CLAUDE.md "동기화 불일치 보고").
- * - 우리 매매 기록(Trade)에 있는 주문만 본다. 증권사 앱에서 직접 낸 주문은 대상이 아니다.
+ * - 우리 매매 기록(Trade)에 있는 주문만 본다. 증권사 앱에서 직접 낸 주문은 대상이 아니다. 원장이 돌기 시작한 시각(가장 이른 체결통보 기록)
+ *   전에 낸 옛 주문과, 체결통보 기록이 아직 하나도 없을 때(원장 시작 시각을 모를 때)는 보충하지 않는다.
  */
 @Service
 class FillBackfillService(
@@ -44,11 +45,17 @@ class FillBackfillService(
     @Transactional
     fun backfill(now: Instant = Instant.now()): BackfillResult {
         val today = now.atZone(KST).toLocalDate()
+        val allFills = tradeFillRepository.findAll().filter { it.market == Market.KR }
+        // 원장이 돌기 시작한 시각 = 가장 이른 체결통보 기록. 그 전에 낸 주문은 원장이 아예 없던 옛 주문이라 보충하지 않는다 — 채우면
+        // 평단을 모르는 줄이 생겨 옛 FIFO 로 잘 나오던 손익이 사라진다(2026-10-08 배포 직후 아침 주문 7건이 그렇게 보충됐다).
+        val ledgerStart = allFills.filter { it.source == FillSource.NOTICE }.minOfOrNull { it.filledAt } ?: return BackfillResult()
         val orders =
-            tradeRepository.findAll().filter { it.market == Market.KR && it.executedAt.atZone(KST).toLocalDate() == today }
+            tradeRepository.findAll().filter {
+                it.market == Market.KR && it.executedAt.atZone(KST).toLocalDate() == today && !it.executedAt.isBefore(ledgerStart)
+            }
         if (orders.isEmpty()) return BackfillResult()
 
-        val fillsByOrder = tradeFillRepository.findAll().filter { it.market == Market.KR }.groupBy { it.orderNo }
+        val fillsByOrder = allFills.groupBy { it.orderNo }
         // 이미 주문수량만큼 원장에 쌓인 주문은 볼 필요가 없다. 취소된 주문은 몇 주 체결됐는지 몰라 늘 확인한다.
         val candidates =
             orders.filter { trade ->
