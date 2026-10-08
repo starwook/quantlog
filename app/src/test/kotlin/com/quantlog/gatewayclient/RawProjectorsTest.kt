@@ -1,14 +1,11 @@
 package com.quantlog.gatewayclient
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.quantlog.broker.Holding
-import com.quantlog.broker.Market
 import com.quantlog.marketdata.MinuteCandleEntity
 import com.quantlog.marketdata.MinuteCandleRepository
 import com.quantlog.marketdata.MinuteCandleStore
 import com.quantlog.position.HoldingSyncService
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentCaptor
 import org.mockito.Mockito
 import java.time.Instant
 import java.time.LocalTime
@@ -46,13 +43,11 @@ class RawProjectorsTest {
             ),
         )
         val holdingSync = Mockito.mock(HoldingSyncService::class.java)
-        val held = Mockito.mock(HeldSymbolPublisher::class.java)
-        val projector = BalanceProjector(balances, cursors, holdingSync, held, mapper)
+        val projector = BalanceProjector(balances, cursors, holdingSync, mapper)
 
         assertEquals(true, projector.project())
 
         Mockito.verify(holdingSync).sync(Mockito.anyList(), Mockito.eq(fetchedAt) ?: fetchedAt)
-        Mockito.verify(held).publish(Mockito.anyList())
         assertEquals(7L, cursorStore["kis_balance"])
         assertEquals(false, projector.project()) // 같은 줄은 다시 반영하지 않는다
         Mockito.verifyNoMoreInteractions(holdingSync)
@@ -64,33 +59,10 @@ class RawProjectorsTest {
         Mockito.`when`(balances.findTopByOrderByIdDesc()).thenReturn(balanceRow(3, "not json"))
         val holdingSync = Mockito.mock(HoldingSyncService::class.java)
 
-        assertEquals(
-            false,
-            BalanceProjector(balances, cursors, holdingSync, Mockito.mock(HeldSymbolPublisher::class.java), mapper).project(),
-        )
+        assertEquals(false, BalanceProjector(balances, cursors, holdingSync, mapper).project())
 
         Mockito.verifyNoInteractions(holdingSync)
         assertEquals(3L, cursorStore["kis_balance"])
-    }
-
-    @Test
-    fun `보유 종목 알림은 없어진 종목을 지우고 새 종목을 넣는다`() {
-        val rows = Mockito.mock(HeldSymbolRowRepository::class.java)
-        val old = HeldSymbolRow("KR", "000660")
-        val keep = HeldSymbolRow("KR", "005930")
-        Mockito.`when`(rows.findAll()).thenReturn(listOf(old, keep))
-
-        HeldSymbolPublisher(rows).publish(
-            listOf(
-                Holding(Market.KR, "005930", "삼성전자", 1.toBigDecimal(), 1.toBigDecimal(), 1.toBigDecimal()),
-                Holding(Market.KR, "035720", "카카오", 1.toBigDecimal(), 1.toBigDecimal(), 1.toBigDecimal()),
-            ),
-        )
-
-        Mockito.verify(rows).delete(old)
-        val saved = ArgumentCaptor.forClass(HeldSymbolRow::class.java)
-        Mockito.verify(rows).save(saved.capture())
-        assertEquals("035720", saved.value.symbol)
     }
 
     @Test

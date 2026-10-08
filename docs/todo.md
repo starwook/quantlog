@@ -12,8 +12,7 @@
 2. **연속조회**: 당일 체결조회가 여러 쪽일 때 응답 `tr_cont` 가 M·F 이고 앱이 `tr_cont: N` + 응답의 `ctx_area_fk100`/`nk100` 로 다음 쪽을 이어 받는지(`KisBrokerClient.dailyCcld`, 최대 10쪽). 잔고(`kis_balance`)는 첫 쪽만 받는다 — 보유 종목이 한 쪽(모의 최대 50)을 넘으면 이어 받는 처리 필요.
 3. 주문 멱등: `kis_order` 에 SENDING→DONE 으로 쌓이고 응답 원문이 들어 있는지, 같은 `X-Request-Id` 재요청이 한투로 안 나가는지.
 4. `kis_minute_chart`·`kis_balance` 용량: 분봉은 본문이 바뀔 때마다 한 줄(감시 종목 × 장중 최대 초당 1줄, 줄당 ~9KB)이라 하루치가 크다 — 하루 지난 줄을 지우지만 DB 크기와 앱의 `CandleProjector` 부하를 보고 수집 주기(`quantlog.gateway.candle-collection.interval-millis`)를 늘릴지 정한다.
-5. 보유 종목 구독: 새로 산 종목이 잔고 반영 뒤 `held_symbol` → 게이트웨이 구독(10초 안)으로 이어지는지.
-6. `BalanceRecorder`·`CandleCollector` 는 KIS 키가 없으면 건너뛴다(예전엔 호출이 실패해 경고만 남았다).
+5. `BalanceRecorder`·`CandleCollector` 는 KIS 키가 없으면 건너뛴다(예전엔 호출이 실패해 경고만 남았다).
 
 ## 주문 상태 경우의 수 정립 (2026-10-07)
 **배경:** 이날 익절이 10분 쿨다운에 막혀 안 나간 일(체결된 매도의 쿨다운이 새로 산 물량까지 막음)로, 매수·매도 경로마다 "미체결·체결·보유 변화"를 다루는 방식이 제각각이라는 게 드러났다. 지금은 마틴게일(틱)·청산 매도만 공용 `PendingOrders`(체결 확인까지 대기, 10초 미체결이면 취소 후 즉시 재판정)를 쓰고, 나머지는 경로별로 다르다. **모든 경우를 표로 정하고 한 규칙으로 맞춘다.**

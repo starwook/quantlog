@@ -41,7 +41,7 @@
 ### 게이트웨이 전용 (한투가 아님)
 | 메서드 경로 | 응답 |
 |---|---|
-| `POST /api/watch/refresh` | `{liveSymbols: [..]}` — `watch_symbol`·`held_symbol` 을 다시 읽어 실시간 구독을 즉시 맞춘다. 실패해도 게이트웨이가 10초 주기로 같은 일을 한다 |
+| `POST /api/watch/refresh` | `{liveSymbols: [..]}` — `watch_symbol` 을 다시 읽어 실시간 구독을 즉시 맞춘다. 실패해도 게이트웨이가 10초 주기로 같은 일을 한다 |
 | `GET /api/health` | `{instanceId, startedAt, contractVersion, kisCredentials, wsConnected, wsConnectedAt, liveSymbols, now}` |
 
 ## 2. 웹소켓 스트림 `/stream` (게이트웨이 → 앱)
@@ -65,8 +65,7 @@
 | `kis_minute_chart` | 게이트웨이 → 앱 | 당일분봉조회(FHKST03010200) 응답 원문. `id, market, symbol, received_at, body`(종목마다 한 번 받을 때 한 줄, 직전과 같은 본문은 건너뜀). 하루 지난 줄은 지운다. 앱 `KisMinuteChartParser` 가 자기 `minute_candle` 에 넣는다 |
 | `kis_order` | 게이트웨이 → (게이트웨이) | 주문·취소 요청·응답 원문과 멱등. `request_id`(유일), `tr_id, path, request_body, status`(SENDING/DONE/FAILED), `http_status, response_body, error` |
 | `gateway_instance` | 게이트웨이 → 앱 | 1행. 단일 실행 임대(`instance_id, lease_until`)와 하트비트(`heartbeat_at, ws_connected_at, live_symbols, contract_version`) |
-| `watch_symbol` | **앱** → 게이트웨이 | 구독·분봉 수집 종목의 **원본**. `market, symbol, etf`. 앱 `symbol_strategy.watch_symbol_id` 가 이 행을 외래키로 가리키고, 종목 추가·삭제는 같은 트랜잭션에서 둘을 함께 바꾼 뒤 `POST /api/watch/refresh` 로 알린다 |
-| `held_symbol` | **앱** → 게이트웨이 | 지금 보유 중인 종목. `market, symbol`. 게이트웨이는 잔고 원문을 해석하지 않으므로 앱이 잔고를 반영할 때 보유 종목으로 맞춰 쓴다. 구독·분봉 수집에서 `watch_symbol` 보다 앞선다 |
+| `watch_symbol` | **앱** → 게이트웨이 | 구독·분봉 수집 종목의 **원본**(관심종목 전체. 보유 종목은 모두 여기 있다 — 앱이 보유 중인 종목의 삭제를 막는다). `market, symbol, etf`. 앱 `symbol_strategy.watch_symbol_id` 가 이 행을 외래키로 가리키고, 종목 추가·삭제는 같은 트랜잭션에서 둘을 함께 바꾼 뒤 `POST /api/watch/refresh` 로 알린다 |
 | `minute_candle` | **앱만** | 분봉. 앱이 실시간 시세로 만든 것과 `kis_minute_chart` 에서 푼 것이 함께 들어간다(게이트웨이는 쓰지 않는다) |
 | `paper_order` | 앱만 | 모킹 체결(`QUANTLOG_BROKER_TYPE=paper`) 기록 |
 | `error_log` | 양쪽 → 앱(화면·알림) | 게이트웨이는 `logger` 가 `com.quantlog.gateway` 로 시작 |

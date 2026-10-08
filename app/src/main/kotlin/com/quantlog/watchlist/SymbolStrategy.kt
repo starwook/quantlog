@@ -4,6 +4,7 @@ import com.quantlog.broker.Market
 import com.quantlog.gatewayclient.WatchSymbolRow
 import com.quantlog.gatewayclient.WatchSymbolRowRepository
 import com.quantlog.paper.EtfRegistry
+import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.strategy.MartingaleProperties
 import com.quantlog.strategy.StrategyProperties
 import mu.KotlinLogging
@@ -48,6 +49,7 @@ object WatchSymbolsChanged
 class SymbolStrategyService(
     private val repository: SymbolStrategyRepository,
     private val watchSymbols: WatchSymbolRowRepository,
+    private val holdings: AccountHoldingRepository,
     private val strategyProperties: StrategyProperties,
     private val martingaleProperties: MartingaleProperties,
     private val events: ApplicationEventPublisher,
@@ -140,13 +142,16 @@ class SymbolStrategyService(
         events.publishEvent(WatchSymbolsChanged)
     }
 
-    /** 감시 종목을 지운다. 종목 원본(`watch_symbol`)도 같은 트랜잭션에서 지운다. 보유 중인 종목은 게이트웨이가 계속 구독한다. */
+    /** 감시 종목을 지운다. 종목 원본(`watch_symbol`)도 같은 트랜잭션에서 지운다. 보유 중인 종목은 지울 수 없다(청산 감시·실시간 구독이 관심종목에 의존한다). */
     @Transactional
     fun remove(
         market: Market,
         symbol: String,
     ) {
         val target = requireNotNull(find(market, symbol)) { "등록되지 않은 종목입니다: $symbol" }
+        require(
+            holdings.findByMarketAndSymbol(market, symbol)?.quantity?.let { it > 0 } != true,
+        ) { "보유 중인 종목은 삭제할 수 없습니다: $symbol (먼저 매도하세요)" }
         repository.delete(target)
         repository.flush()
         target.watchSymbol?.let(watchSymbols::delete)

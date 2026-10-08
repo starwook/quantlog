@@ -82,23 +82,6 @@ interface KisMinuteChartRowRepository : JpaRepository<KisMinuteChartRow, Long> {
     fun findTop200ByIdGreaterThanOrderByIdAsc(id: Long): List<KisMinuteChartRow>
 }
 
-/** 앱이 쓰는 계약 테이블(`held_symbol`) — 지금 보유 중인 종목. 게이트웨이는 잔고 원문을 해석하지 않으므로 앱이 알려 준다. docs/contracts/README.md. */
-@Entity
-@Table(name = "held_symbol", uniqueConstraints = [UniqueConstraint(columnNames = ["market", "symbol"])])
-class HeldSymbolRow(
-    @Column(nullable = false, length = 20)
-    val market: String,
-    @Column(nullable = false, length = 20)
-    val symbol: String,
-) {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = null
-        protected set
-}
-
-interface HeldSymbolRowRepository : JpaRepository<HeldSymbolRow, Long>
-
 /** 게이트웨이 인스턴스 하트비트(`gateway_instance`, 1행) — docs/contracts/gateway_instance.md. */
 @Entity
 @Immutable
