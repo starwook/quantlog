@@ -9,7 +9,7 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** 체결 내역 화면 한 줄([FillLiveView]) — 원장(`broker_fill`) 1줄이 한 줄이고, 매도 줄에만 그 체결의 손익이 붙는다. */
+/** 체결 내역 화면 한 줄([FillLiveView]) — 원장(`broker_notice`) 1줄이 한 줄이고, 매도 줄에만 그 체결의 손익이 붙는다. */
 class FillLiveViewTest {
     private val at = Instant.parse("2026-10-08T00:27:51Z")
 

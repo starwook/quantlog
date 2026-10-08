@@ -68,7 +68,7 @@ class HoldingSyncServiceLedgerEventTest {
         assertEquals(0, BigDecimal("7835").compareTo(event.avgCostBefore))
         assertEquals("S1", event.orderNo)
         assertEquals(receivedAt, event.filledAt)
-        assertEquals(id, event.brokerFillId)
+        assertEquals(id, event.noticeId)
     }
 
     @Test

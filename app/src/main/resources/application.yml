@@ -80,7 +80,7 @@ quantlog:
     interval-millis: 1000
     cooldown: 10m
   holding-sync:
-    # 게이트웨이가 기록한 체결 원장·잔고 스냅샷(broker_fill / broker_balance)을 보유 현황(account_holding)에 반영한다.
+    # 게이트웨이가 기록한 체결통보 원장·잔고 스냅샷(broker_notice / broker_balance)을 보유 현황(account_holding)에 반영한다.
     # 알림(WebSocket)이 오면 바로, 안 와도 interval-millis 마다 DB 를 확인한다. 증권사 앱에서 직접 거래한 물량도 잔고 스냅샷으로 따라온다.
     enabled: ${QUANTLOG_HOLDING_SYNC_ENABLED:true}
     interval-millis: 1000

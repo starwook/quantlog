@@ -9,5 +9,5 @@
 | `ping` | `at` | 5초마다 |
 | `tick` | `market, symbol, price` | 종목별 최신 값만 50ms 간격(유실 무관) |
 | `candle` | `market, symbol, candle{date,time,open,high,low,close,volume}` | 분봉 갱신, 종목별 최신 값만 |
-| `fill` | `id` | `broker_fill` 에 새 행(id) — 빠른 알림일 뿐 정본은 DB |
+| `fill` | `id` | `broker_notice` 에 새 행(id) — 빠른 알림일 뿐 정본은 DB |
 | `balance` | `seq` | `broker_balance_meta.seq` 가 올랐다 — 위와 같음 |

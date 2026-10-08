@@ -15,7 +15,7 @@ import java.math.BigDecimal
 import java.time.Instant
 
 /**
- * 브로커에 접수된 주문 1건의 기록 (매수/매도). `orderPrice`는 제출한 지정가, `filledPrice`는 실제 체결가(평균)로 체결 원장(`broker_fill`)에서 채운다.
+ * 브로커에 접수된 주문 1건의 기록 (매수/매도). `orderPrice`는 제출한 지정가, `filledPrice`는 실제 체결가(평균)로 체결 원장(`broker_notice`)에서 채운다.
  * 매도 손익은 [avgCostBefore](체결 직전 평단) 기준으로 확정한다(PortfolioService).
  */
 @Entity
@@ -58,7 +58,7 @@ class Trade(
         protected set
 
     /**
-     * 실제 체결가(평균). 체결 원장(`broker_fill`)의 이 주문 체결 누적으로 채운다([applyFill]). 아직 체결 전이면 null, [orderPrice] 로 대체.
+     * 실제 체결가(평균). 체결 원장(`broker_notice`)의 이 주문 체결 누적으로 채운다([applyFill]). 아직 체결 전이면 null, [orderPrice] 로 대체.
      * 2026-09-29 실측: 지정가와 체결가가 꽤 다를 수 있었다(삼성전자 273,000 지정 → 272,000 체결).
      */
     @Column(name = "filled_price", precision = 19, scale = 6)

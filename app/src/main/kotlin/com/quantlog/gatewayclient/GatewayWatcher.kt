@@ -14,7 +14,7 @@ import java.util.concurrent.Executors
 private val log = KotlinLogging.logger {}
 
 /** 앱이 이해하는 게이트웨이 계약 버전. 게이트웨이(`gateway_instance.contract_version`)와 다르면 에러로 알린다 — docs/contracts/. */
-const val APP_CONTRACT_VERSION = 1
+const val APP_CONTRACT_VERSION = 2
 
 /**
  * 게이트웨이 하트비트(`gateway_instance`)를 주기적으로 읽어 세 가지를 한다.
