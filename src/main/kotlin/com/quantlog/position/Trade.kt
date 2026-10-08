@@ -80,6 +80,14 @@ class Trade(
     val partiallyFilled: Boolean
         get() = filledPrice != null && (filledQuantity ?: quantity) < quantity
 
+    /** 체결 정보가 어디까지 채워져 있나. 동기화 불일치 보고용 문구다. */
+    fun fillStateText(): String =
+        when {
+            filledPrice == null -> "체결가 없음"
+            partiallyFilled -> "일부 체결 $filledQuantity/${quantity}주"
+            else -> "체결 ${filledPrice?.stripTrailingZeros()?.toPlainString()}"
+        }
+
     /** 취소된 주문. 체결되지 않았으므로 손익·사이클 계산과 체결가 재확인에서 빠진다. */
     @Column(nullable = false)
     var canceled: Boolean = false

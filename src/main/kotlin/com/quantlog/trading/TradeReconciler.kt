@@ -4,6 +4,7 @@ import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.OrderStatus
 import com.quantlog.position.TradeFilledEvent
 import com.quantlog.position.TradeRepository
+import com.quantlog.position.reportFillCorrection
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.context.ApplicationEventPublisher
@@ -45,9 +46,11 @@ class TradeReconciler(
         pending.forEach { trade ->
             runCatching { broker.orderStatus(trade.market, trade.orderNo, trade.quantity) }
                 .onSuccess { status ->
+                    val dbBefore = trade.fillStateText()
                     if (trade.apply(status)) {
                         tradeRepository.save(trade)
                         if (status is OrderStatus.Filled) {
+                            reportFillCorrection(trade, dbBefore, status)
                             events.publishEvent(TradeFilledEvent(trade.market, trade.symbol))
                             log.info { "[체결가 확정] ${trade.market} ${trade.symbol} 주문번호=${trade.orderNo} → ${status.price}" }
                         } else {

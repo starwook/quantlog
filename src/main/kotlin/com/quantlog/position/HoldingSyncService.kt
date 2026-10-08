@@ -4,12 +4,14 @@ import com.quantlog.broker.FillNotice
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
+import com.quantlog.sync.SyncMismatchReporter
 import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
+import java.math.MathContext
 import java.math.RoundingMode
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -98,8 +100,26 @@ class HoldingSyncService(
                     }
                 }
                 Side.SELL -> {
-                    if (row == null) return null
+                    if (row == null) {
+                        SyncMismatchReporter.report(
+                            AREA_FILL,
+                            "$name(${notice.symbol}) 주문번호=${notice.orderNo}",
+                            "보유 없음",
+                            "${quantity}주 매도 체결 (${plain(price)})",
+                            "반영 건너뜀 — 다음 KIS 잔고 동기화가 맞춘다",
+                        )
+                        return null
+                    }
                     val left = row.quantity - quantity
+                    if (left < 0) {
+                        SyncMismatchReporter.report(
+                            AREA_FILL,
+                            "$name(${notice.symbol}) 주문번호=${notice.orderNo}",
+                            "${row.quantity}주 보유",
+                            "${quantity}주 매도 체결 (${plain(price)})",
+                            "보유를 0주로 고침",
+                        )
+                    }
                     if (left <= 0) {
                         accountHoldingRepository.delete(row)
                         "$name 전량 매도 (${row.quantity}주 → 0주, 체결 $price)"
@@ -153,6 +173,11 @@ class HoldingSyncService(
             market: Market,
             symbol: String,
         ) = symbolStrategyService.displayName(market, symbol)
+
+        fun label(
+            market: Market,
+            symbol: String,
+        ) = "${nameOf(market, symbol)}($symbol)"
         val actual = kis.filter { it.quantity.toInt() > 0 }.associateBy { it.market to it.symbol }
         val existing = accountHoldingRepository.findAll().associateBy { it.market to it.symbol }
         val changes = mutableListOf<String>()
@@ -170,9 +195,31 @@ class HoldingSyncService(
                     AccountHolding(holding.market, holding.symbol, quantity, holding.averagePrice, holding.currentPrice),
                 )
                 changes += "${nameOf(holding.market, holding.symbol)} 신규 ${quantity}주 (평단 ${holding.averagePrice})"
+                SyncMismatchReporter.report(
+                    AREA_BALANCE,
+                    label(holding.market, holding.symbol),
+                    "보유 없음",
+                    "${quantity}주 (평단 ${plain(holding.averagePrice)})",
+                    "DB 에 추가",
+                )
             } else {
                 if (row.quantity != quantity) {
                     changes += "${nameOf(row.market, row.symbol)} ${row.quantity}주 → ${quantity}주 (평단 ${holding.averagePrice})"
+                    SyncMismatchReporter.report(
+                        AREA_BALANCE,
+                        label(row.market, row.symbol),
+                        "${row.quantity}주 (평단 ${plain(row.avgCost)})",
+                        "${quantity}주 (평단 ${plain(holding.averagePrice)})",
+                        "DB 를 증권사 값으로 고침",
+                    )
+                } else if (averageDiffers(row.avgCost, holding.averagePrice)) {
+                    SyncMismatchReporter.report(
+                        AREA_BALANCE,
+                        label(row.market, row.symbol),
+                        "평단 ${plain(row.avgCost)} (${quantity}주)",
+                        "평단 ${plain(holding.averagePrice)} (${quantity}주)",
+                        "DB 평단을 증권사 값으로 고침",
+                    )
                 }
                 if (row.currentPrice.compareTo(holding.currentPrice) != 0) priceChanged = true
                 row.update(quantity, holding.averagePrice, holding.currentPrice)
@@ -181,6 +228,7 @@ class HoldingSyncService(
         existing.filterKeys { it !in actual && !reflectedAfterFetch(it) }.values.forEach {
             accountHoldingRepository.delete(it)
             changes += "${nameOf(it.market, it.symbol)} 잔고에서 사라짐 (${it.quantity}주)"
+            SyncMismatchReporter.report(AREA_BALANCE, label(it.market, it.symbol), "${it.quantity}주", "보유 없음", "DB 에서 삭제")
         }
 
         lastSyncedAt = fetchedAt
@@ -189,8 +237,26 @@ class HoldingSyncService(
         return changes
     }
 
+    /**
+     * 평단이 "어긋났다"고 볼 기준: 두 값의 차이가 큰 쪽의 0.01% 를 넘을 때. 체결가들로 직접 계산한 평단과 증권사가 주는 평단은
+     * 소수 자릿수·반올림이 달라 미세하게 다를 수 있어서, 그 정도로는 매번 오류를 내지 않는다.
+     */
+    private fun averageDiffers(
+        db: BigDecimal,
+        kis: BigDecimal,
+    ): Boolean {
+        val base = db.abs().max(kis.abs())
+        if (base.signum() == 0) return false
+        return db.subtract(kis).abs().divide(base, MathContext.DECIMAL64) > AVERAGE_TOLERANCE
+    }
+
+    private fun plain(value: BigDecimal): String = value.stripTrailingZeros().toPlainString()
+
     private companion object {
         /** account_holding.avg_cost 의 소수 자릿수. */
         const val COST_SCALE = 6
+        val AVERAGE_TOLERANCE: BigDecimal = BigDecimal("0.0001")
+        const val AREA_BALANCE = "잔고 동기화"
+        const val AREA_FILL = "체결통보 반영"
     }
 }

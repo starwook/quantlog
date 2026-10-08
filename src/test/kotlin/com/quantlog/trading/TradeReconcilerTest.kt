@@ -146,4 +146,34 @@ class TradeReconcilerTest {
         assertNull(trade.filledPrice)
         Mockito.verify(repository).save(trade)
     }
+
+    @Test
+    fun `오래된 주문의 체결가를 증권사가 알려주면 불일치로 보고한다`() {
+        val trade =
+            Trade(
+                market = Market.KR,
+                symbol = "005930",
+                side = Side.BUY,
+                quantity = 1,
+                orderPrice = BigDecimal("273000"),
+                orderNo = "0000008307",
+                message = "ok",
+                executedAt = java.time.Instant.now().minusSeconds(120),
+            )
+        val repository = Mockito.mock(TradeRepository::class.java)
+        Mockito.`when`(repository.findAllByFilledPriceIsNullAndCanceledFalse()).thenReturn(listOf(trade))
+
+        com.quantlog.sync.MismatchLog().use { captured ->
+            TradeReconciler(
+                FakeBroker(BigDecimal("272000")),
+                repository,
+                ReconcileProperties(enabled = true),
+                Mockito.mock(ApplicationEventPublisher::class.java),
+            ).reconcile()
+
+            val message = captured.messages.single()
+            assertTrue("체결 조회" in message && "DB=체결가 없음" in message && "272000" in message, message)
+        }
+        assertEquals(0, BigDecimal("272000").compareTo(trade.filledPrice))
+    }
 }
