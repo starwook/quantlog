@@ -33,6 +33,12 @@ data class FillNotice(
 ) {
     val isFill: Boolean get() = filledFlag == FILLED_FLAG
 
+    /**
+     * 주문 취소 확정 통보. 모의 실측(2026-10-08, 하루 9건 모두 같은 모양): CNTG_YN=1 · ACPT_YN=2 · 원주문번호가 채워져 있고 거부 아님.
+     * 취소 주문에 새 주문번호([orderNo])가 붙고 취소된 원주문이 [originalOrderNo] 다. 정정도 같은 모양일 수 있지만 우리는 정정 주문을 내지 않는다.
+     */
+    val isCancel: Boolean get() = !isFill && acceptFlag == CANCEL_ACCEPT_FLAG && originalOrderNo.isNotBlank() && refuseFlag == "0"
+
     /** 매수/매도. 모르는 코드값이면 null. */
     val side: Side?
         get() =
@@ -50,5 +56,6 @@ data class FillNotice(
 
     companion object {
         const val FILLED_FLAG = "2"
+        const val CANCEL_ACCEPT_FLAG = "2"
     }
 }

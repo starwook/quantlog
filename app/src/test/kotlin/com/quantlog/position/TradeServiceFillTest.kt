@@ -64,6 +64,28 @@ class TradeServiceFillTest {
     }
 
     @Test
+    fun `증권사 취소 통보가 오면 원주문 기록을 취소로 바꾼다`() {
+        val trade = Trade(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"), "A1", "ok")
+        Mockito.`when`(repository.findFirstByMarketAndOrderNo(Market.KR, "A1")).thenReturn(trade)
+        val cancelNotice = notice(fill = false).copy(orderNo = "A2", originalOrderNo = "A1", acceptFlag = "2")
+
+        service.onOrderNotice(cancelNotice)
+
+        assertTrue(trade.canceled)
+        verify(repository).save(trade)
+    }
+
+    @Test
+    fun `취소 통보가 와도 원주문이 이미 취소로 기록돼 있으면 다시 저장하지 않는다`() {
+        val trade = Trade(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"), "A1", "ok").also { it.cancel() }
+        Mockito.`when`(repository.findFirstByMarketAndOrderNo(Market.KR, "A1")).thenReturn(trade)
+
+        service.onOrderNotice(notice(fill = false).copy(orderNo = "A2", originalOrderNo = "A1", acceptFlag = "2"))
+
+        verify(repository, never()).save(anyNonNull<Trade>())
+    }
+
+    @Test
     fun `통보가 주문 응답보다 먼저 왔으면 매매 기록을 저장할 때 체결가를 바로 채운다`() {
         val saved = savedTrades()
         Mockito.`when`(repository.findFirstByMarketAndOrderNo(Market.KR, "A1")).thenReturn(null)
