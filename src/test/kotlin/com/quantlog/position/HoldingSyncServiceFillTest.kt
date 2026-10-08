@@ -41,7 +41,6 @@ class HoldingSyncServiceFillTest {
         orderQuantity: Int = quantity,
         fill: Boolean = true,
     ) = FillNotice(
-        overseas = false,
         symbol = symbol,
         orderNo = orderNo,
         originalOrderNo = "",
@@ -96,9 +95,8 @@ class HoldingSyncServiceFillTest {
     }
 
     @Test
-    fun `접수 통보와 해외 통보는 건드리지 않는다`() {
+    fun `접수 통보는 건드리지 않는다`() {
         assertNull(service.applyFill(notice(Side.BUY, 1, "277500", fill = false), now))
-        assertNull(service.applyFill(notice(Side.BUY, 1, "277500").copy(overseas = true), now))
 
         verify(repository, never()).save(any(AccountHolding::class.java))
     }

@@ -26,11 +26,10 @@ class MartingaleTickListenerTest {
     }
 
     @Test
-    fun `진입이 꺼져 있거나 국내 틱이 아니면 무시한다`() {
+    fun `진입이 꺼져 있으면 무시한다`() {
         val service = Mockito.mock(MartingaleService::class.java)
 
         listener(service, enabled = false).onTick(PriceTick(Market.KR, "005930", BigDecimal("10000")))
-        listener(service).onTick(PriceTick(Market.NASDAQ, "AAPL", BigDecimal("190")))
 
         assertEquals(0, Mockito.mockingDetails(service).invocations.size)
     }

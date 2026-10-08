@@ -62,7 +62,7 @@ class HoldingSyncService(
     fun isOrderFilled(orderNo: String): Boolean = completedOrders.containsKey(orderNo)
 
     /**
-     * 체결통보 한 건을 보유 현황에 반영한다. 체결 통보(국내)만 처리하고 접수 통보·해외는 건너뛴다(해외는 실측 전).
+     * 체결통보 한 건을 보유 현황에 반영한다. 체결 통보만 처리하고 접수 통보는 건너뛴다.
      * 매수는 수량 가중평균으로 평단을 다시 계산하고, 매도는 수량만 줄인다(0이 되면 행 삭제). 바뀐 내용 설명을 돌려준다(건너뛰면 null).
      * 부분체결 통보의 체결수량은 건별이다(2026-10-07 실측: 100주 매도가 44주 + 56주로 왔다). 그대로 더하고 빼되, 같은 통보가 중복 와도 주문수량을 넘기지 않게만 막는다.
      */
@@ -71,7 +71,7 @@ class HoldingSyncService(
         notice: FillNotice,
         now: Instant = Instant.now(),
     ): String? {
-        if (notice.overseas || !notice.isFill) return null
+        if (!notice.isFill) return null
         val side = notice.side ?: return null
         val price = notice.filledPrice ?: return null
         val reported = notice.filledQuantity?.toInt() ?: return null

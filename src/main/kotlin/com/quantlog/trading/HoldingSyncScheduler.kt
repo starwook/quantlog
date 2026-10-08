@@ -72,7 +72,7 @@ class HoldingSyncScheduler(
         val fetchedAt = Instant.now()
         val kis =
             try {
-                broker.holdings(Market.KR) + broker.holdings(Market.NASDAQ)
+                broker.holdings(Market.KR)
             } catch (e: Exception) {
                 log.warn(e) { "[잔고 동기화] KIS 잔고 조회 실패, 이번 회차 건너뜀" }
                 return

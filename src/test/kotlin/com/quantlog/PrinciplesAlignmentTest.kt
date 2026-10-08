@@ -61,10 +61,9 @@ class PrinciplesAlignmentTest {
     }
 
     @Test
-    fun `리스크 가드는 국내 1000만원 해외 2700달러 하루 손실 3퍼센트`() {
+    fun `리스크 가드는 국내 1000만원 하루 손실 3퍼센트`() {
         val risk = bound<RiskProperties>("quantlog.risk")
         assertDecimal("10000000", risk.marketAllocationKrw)
-        assertDecimal("2700", risk.marketAllocationUsd)
         assertDecimal("3", risk.dailyLossLimitPercent)
     }
 

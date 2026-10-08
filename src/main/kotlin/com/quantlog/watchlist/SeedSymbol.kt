@@ -17,6 +17,5 @@ enum class SeedSymbol(
     SAMSUNG(Market.KR, "005930", "삼성전자"),
     SK_HYNIX(Market.KR, "000660", "SK하이닉스"),
     KODEX_SEMICONDUCTOR(Market.KR, "091160", "KODEX 반도체", etf = true),
-    SOXL(Market.AMEX, "SOXL", "SOXL", etf = true),
     KODEX_KOSDAQ150_LEVERAGE(Market.KR, "233740", "KODEX 코스닥150레버리지", tradeByDefault = true, etf = true),
 }

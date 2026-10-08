@@ -22,7 +22,7 @@ import java.math.RoundingMode
  *
  * 체결 모델: 호가를 모르므로 현재가 ± 1틱을 매도/매수 1호가로 본다. 매수는 `현재가+1틱`, 매도는 `현재가-1틱`에
  * 전량 즉시 체결되고, 지정가가 그보다 불리하면(안 체결될 가격이면) 접수 실패로 던진다 — 미체결 주문은 없다.
- * 증권사 수수료는 0이고, 제세금(국내 주식 거래세·미국 SEC fee, 국내 ETF 는 면제)은 매도 체결가에서 빼서
+ * 증권사 수수료는 0이고, 제세금(국내 주식 거래세, ETF 는 면제)은 매도 체결가에서 빼서
  * 실효 체결가로 기록하므로 실현손익에 자동 반영된다.
  * 현실보다 낙관적인 부분: 호가 잔량·부분체결·시세 지연은 모른다.
  */
@@ -98,12 +98,11 @@ class PaperBroker(
         reason: String,
     ) = "모킹 주문 거부: ${order.market} ${order.symbol} ${order.side} x${order.quantity} @ ${order.limitPrice} — $reason"
 
-    /** 제세금을 체결가에 반영하는 배수. 매수는 비용이 없고, 매도는 1-요율(국내 ETF 는 거래세 면제, 해외는 SEC fee). */
+    /** 제세금을 체결가에 반영하는 배수. 매수는 비용이 없고, 매도는 1-요율(국내 ETF 는 거래세 면제). */
     private fun costMultiplier(order: OrderRequest): BigDecimal {
         val percent =
             when {
                 order.side == Side.BUY -> BigDecimal.ZERO
-                order.market.isOverseas -> properties.usSellSecFeePercent
                 etfRegistry.isEtf(order.market, order.symbol) -> BigDecimal.ZERO
                 else -> properties.krStockSellTaxPercent
             }
@@ -114,12 +113,11 @@ class PaperBroker(
 
     private class Account(val cash: BigDecimal, val positions: Map<Pair<Market, String>, Position>)
 
-    /** 기록을 처음부터 다시 계산한 현금·보유. 해외는 미국 3개 거래소가 한 계좌(통화 USD)다. */
+    /** 기록을 처음부터 다시 계산한 현금·보유. */
     private fun account(market: Market): Account {
-        val markets = if (market.isOverseas) Market.entries.filter { it.isOverseas } else listOf(Market.KR)
-        var cash = if (market.isOverseas) properties.initialCashUsd else properties.initialCashKrw
+        var cash = properties.initialCashKrw
         val positions = mutableMapOf<Pair<Market, String>, Position>()
-        orders.findAllByMarketInOrderByIdAsc(markets).forEach { o ->
+        orders.findAllByMarketInOrderByIdAsc(listOf(market)).forEach { o ->
             val amount = o.fillPrice.multiply(BigDecimal(o.quantity))
             val position = positions.getOrPut(o.market to o.symbol) { Position(0, BigDecimal.ZERO) }
             if (o.side == Side.BUY) {

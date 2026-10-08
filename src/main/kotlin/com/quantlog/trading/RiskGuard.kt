@@ -8,9 +8,8 @@ import java.math.BigDecimal
 
 @ConfigurationProperties(prefix = "quantlog.risk")
 data class RiskProperties(
-    /** 시장별 자본 배분 한도 (playbook/principles.md: "시장별로 쓸 돈을 나눈다. 국내 1000만원 / 미국 500만원 상당"). */
+    /** 자본 배분 한도 (playbook/principles.md: "국내 1000만원"). */
     val marketAllocationKrw: BigDecimal = BigDecimal("10000000"),
-    val marketAllocationUsd: BigDecimal = BigDecimal("2700"),
     /** 하루 손실 한도(킬스위치) — 배분 자본 대비 %. */
     val dailyLossLimitPercent: BigDecimal = BigDecimal("3"),
 )
@@ -36,7 +35,7 @@ class RiskGuard(
 
     fun checkBuy(order: OrderRequest) {
         check(order)
-        val allocation = if (order.market.isOverseas) properties.marketAllocationUsd else properties.marketAllocationKrw
+        val allocation = properties.marketAllocationKrw
         val summary = portfolioService.snapshot().summaryByCurrency[order.market.currency]
         val costBasis = summary?.costBasis ?: BigDecimal.ZERO
         val investedAfter = costBasis.add(order.notional)

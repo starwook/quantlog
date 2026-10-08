@@ -125,15 +125,13 @@ class KisRealtimeClient(
         subscribed.addAll(wanted)
     }
 
-    /** 연결마다 한 번: 계좌 체결통보(국내·해외)를 구독한다. tr_key 는 HTS ID — 비어 있으면 건너뛴다(시세만 동작). */
+    /** 연결마다 한 번: 계좌 체결통보를 구독한다. tr_key 는 HTS ID — 비어 있으면 건너뛴다(시세만 동작). */
     private fun subscribeFillNotices(ws: WebSocket) {
         if (properties.htsId.isBlank()) {
             log.warn { "[체결통보] kis.mock.hts-id 가 비어 있어 구독하지 않는다" }
             return
         }
-        listOf(KisFillNoticeHandler.DOMESTIC_TR_ID, KisFillNoticeHandler.OVERSEAS_TR_ID).forEach {
-            send(ws, SUBSCRIBE, it, properties.htsId)
-        }
+        send(ws, SUBSCRIBE, KisFillNoticeHandler.DOMESTIC_TR_ID, properties.htsId)
     }
 
     private fun send(

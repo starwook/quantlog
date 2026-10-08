@@ -43,9 +43,9 @@ class SymbolStrategyControllerTest {
 
     @Test
     fun `종목 추가 화면 입력이 서비스로 전달되고 설정 화면으로 돌아간다`() {
-        mvc.perform(post("/settings").param("market", "NASDAQ").param("symbol", "TSLA").param("displayName", "테슬라"))
+        mvc.perform(post("/settings").param("market", "KR").param("symbol", "000660").param("displayName", "SK하이닉스"))
             .andExpect(status().is3xxRedirection)
             .andExpect(redirectedUrl("/settings"))
-        Mockito.verify(service).add(com.quantlog.broker.Market.NASDAQ, "TSLA", "테슬라")
+        Mockito.verify(service).add(com.quantlog.broker.Market.KR, "000660", "SK하이닉스")
     }
 }

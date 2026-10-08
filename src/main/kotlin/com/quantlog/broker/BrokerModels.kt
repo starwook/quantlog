@@ -59,7 +59,7 @@ data class OrderRequest(
 data class OrderReceipt(
     val orderNo: String,
     val message: String,
-    /** 국내 정정·취소에 필요한 주문조직번호(KRX_FWDG_ORD_ORGNO). 해외는 필요 없어 빈 값. */
+    /** 국내 정정·취소에 필요한 주문조직번호(KRX_FWDG_ORD_ORGNO). */
     val branchNo: String = "",
 )
 

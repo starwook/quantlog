@@ -46,7 +46,7 @@ class SmokeTestRunnerTest {
             market: Market,
             symbol: String,
             price: BigDecimal,
-        ) = BuyingPower("USD", BigDecimal("10000"), BigDecimal("50"))
+        ) = BuyingPower("KRW", BigDecimal("10000"), BigDecimal("50"))
 
         override fun holdings(market: Market) = emptyList<Holding>()
 
@@ -98,7 +98,7 @@ class SmokeTestRunnerTest {
     @Test
     fun `배분 한도를 넘으면 주문이 나가지 않는다`() {
         val broker = FakeBroker()
-        val strict = RiskGuard(RiskProperties(marketAllocationUsd = BigDecimal("100")), portfolioService)
+        val strict = RiskGuard(RiskProperties(marketAllocationKrw = BigDecimal("100")), portfolioService)
         runCatching { runner(broker, SmokeProperties(mode = "BUY"), strict).run(DefaultApplicationArguments()) }
         assertTrue(broker.orders.isEmpty())
     }
@@ -110,7 +110,7 @@ class SmokeTestRunnerTest {
             .thenReturn(emptyList())
         runner(broker, SmokeProperties(mode = "CANDLES")).run(DefaultApplicationArguments())
         assertTrue(broker.orders.isEmpty())
-        Mockito.verify(marketDataService).fetchAndStoreRecentMinutes(eqNonNull(Market.NASDAQ), eqNonNull("AAPL"), anyNonNull())
+        Mockito.verify(marketDataService).fetchAndStoreRecentMinutes(eqNonNull(Market.KR), eqNonNull("005930"), anyNonNull())
     }
 
     /** Mockito.any()/eq() 는 코틀린 non-null 타입 파라미터에 null 을 넘겨 NPE 를 낸다. */

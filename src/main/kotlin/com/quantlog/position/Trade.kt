@@ -46,7 +46,7 @@ class Trade(
     initialFilledPrice: BigDecimal? = null,
     @Column(name = "executed_at", nullable = false)
     val executedAt: Instant = Instant.now(),
-    /** 국내 정정·취소에 쓰는 주문조직번호(주문 응답의 KRX_FWDG_ORD_ORGNO). 해외·옛 기록은 null. */
+    /** 국내 정정·취소에 쓰는 주문조직번호(주문 응답의 KRX_FWDG_ORD_ORGNO). 옛 기록은 null. */
     @Column(name = "branch_no", length = 20)
     val branchNo: String? = null,
     initialOpenConfirmed: Boolean = false,
@@ -57,7 +57,7 @@ class Trade(
         protected set
 
     /**
-     * 실제 체결가(평균). KIS 체결내역 조회로 채움(국내·해외). 못 구했으면 null, [orderPrice] 로 대체.
+     * 실제 체결가(평균). KIS 체결내역 조회로 채움. 못 구했으면 null, [orderPrice] 로 대체.
      * 2026-09-29 실측: 지정가와 체결가가 꽤 다를 수 있었다(삼성전자 273,000 지정 → 272,000 체결).
      * 실현손익·평단 계산은 이 값을 우선한다 (PortfolioService). 주문 직후 한 번 조회해서 못 구했으면
      * null 로 남는데, [TradeReconciler] 가 KIS 를 다시 물어봐서 나중에 채운다 — KIS 가 "정답"이고

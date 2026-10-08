@@ -72,7 +72,6 @@ class KisFillNoticeHandlerTest {
         handler.onData("H0STCNI9", encrypted = true, recordCount = 1, payload = encrypt(domesticRow()))
 
         val notice = events.single() as FillNotice
-        assertFalse(notice.overseas)
         assertEquals("005930", notice.symbol)
         assertEquals("0000008775", notice.orderNo)
         assertEquals(Side.BUY, notice.side)
@@ -115,27 +114,6 @@ class KisFillNoticeHandlerTest {
         assertEquals(2, events.size)
         assertFalse((events[0] as FillNotice).isFill)
         assertTrue((events[1] as FillNotice).isFill)
-    }
-
-    @Test
-    fun `해외 체결통보는 25개 필드 위치로 읽는다`() {
-        val fields = MutableList(25) { "" }
-        fields[2] = "0030012345"
-        fields[7] = "AAPL"
-        fields[8] = "2"
-        fields[9] = "189.5"
-        fields[12] = "2"
-        fields[15] = "2"
-        handler.onSubscribeResponse("H0GSCNI9", subscribeResponse("H0GSCNI9"))
-
-        handler.onData("H0GSCNI9", encrypted = true, recordCount = 1, payload = encrypt(fields.joinToString("^")))
-
-        val notice = events.single() as FillNotice
-        assertTrue(notice.overseas)
-        assertEquals("AAPL", notice.symbol)
-        assertEquals(0, notice.filledPrice!!.compareTo(BigDecimal("189.5")))
-        assertNull(notice.side)
-        assertTrue(notice.isFill)
     }
 
     @Test

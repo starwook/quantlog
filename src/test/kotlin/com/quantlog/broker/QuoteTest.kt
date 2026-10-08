@@ -15,10 +15,4 @@ class QuoteTest {
         assertEquals(0, BigDecimal("274000").compareTo(samsung.roundToTick(BigDecimal("274365"), RoundingMode.FLOOR)))
         assertEquals(0, BigDecimal("274500").compareTo(samsung.roundToTick(BigDecimal("274001"), RoundingMode.CEILING)))
     }
-
-    @Test
-    fun `미국은 1달러 이상이면 센트 단위`() {
-        val quote = Quote(BigDecimal("187.50"), Market.NASDAQ.overseasTickSize(BigDecimal("187.50")))
-        assertEquals(0, BigDecimal("189.38").compareTo(quote.roundToTick(BigDecimal("189.375"))))
-    }
 }

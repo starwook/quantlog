@@ -77,7 +77,7 @@ class ExitServiceTest {
 
     private val seoul = ZoneId.of("Asia/Seoul")
 
-    /** 2026-09-29(화) 10:00 KST: 국내 정규장, 미국은 장 마감 시간. */
+    /** 2026-09-29(화) 10:00 KST: 국내 정규장. */
     private val krOpen = ZonedDateTime.of(2026, 9, 29, 10, 0, 0, 0, seoul)
 
     /** ExitService 는 보유 현황을 잔고 사본 테이블(AccountHolding)로 본다. */
@@ -277,20 +277,6 @@ class ExitServiceTest {
         val broker = FakeBroker(BigDecimal("274500"))
         scheduler(broker).checkAll(krOpen) { _, symbol -> symbol == "005930" }
         assertTrue(broker.orders.isEmpty())
-    }
-
-    @Test
-    fun `장 시작 전이라 거부당한 종목은 5분 동안 주문을 다시 내지 않는다`() {
-        val broker = FakeBroker(BigDecimal("274500"))
-        broker.rejection = KisApiException("KIS 오류 (VTTT1001U): [40570000] 모의투자 장시작전 입니다.", code = "40570000")
-        val service = scheduler(broker)
-
-        service.checkAll(krOpen)
-        service.checkAll(krOpen.plusSeconds(3))
-        assertEquals(1, broker.placeAttempts)
-
-        service.checkAll(krOpen.plusMinutes(6))
-        assertEquals(2, broker.placeAttempts)
     }
 
     @Test

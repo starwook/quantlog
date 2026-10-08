@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap
 private val log = KotlinLogging.logger {}
 
 /**
- * 한국투자증권 모의투자 구현체. 스펙 출처: docs/kis-api/examples (TR ID 는 모의투자용 V 접두).
+ * 한국투자증권 모의투자 구현체(국내 주식 전용). 스펙 출처: docs/kis-api/examples (TR ID 는 모의투자용 V 접두).
  * 응답 필드명은 예제 코드에서 확인되지 않은 부분이 있어 첫 실행 시 KIS_MOCK_LOG_RAW=true 로 원문을 확인한다.
  */
 @Component
@@ -38,7 +38,7 @@ class KisMockBroker(
     /** 실시간 시세는 호가 단위(aspr_unit)를 안 주므로, REST 로 마지막에 받은 값을 잠깐 재사용한다. */
     private val tickSizeCache = ConcurrentHashMap<String, BigDecimal>()
 
-    /** 전일 종가는 하루 동안 안 바뀌므로 (시장, 종목, 현지 날짜)별로 한 번만 REST 로 받는다. */
+    /** 전일 종가는 하루 동안 안 바뀌므로 (시장, 종목, 날짜)별로 한 번만 REST 로 받는다. */
     private val previousCloseCache = ConcurrentHashMap<String, BigDecimal>()
 
     override fun previousClose(
@@ -48,21 +48,13 @@ class KisMockBroker(
         val key = "$market:$symbol:${LocalDate.now(market.zone)}"
         previousCloseCache[key]?.let { return it }
         val output =
-            if (market.isOverseas) {
-                api.get(
-                    "/uapi/overseas-price/v1/quotations/price",
-                    "HHDFS00000300",
-                    mapOf("AUTH" to "", "EXCD" to market.quoteExchangeCode(), "SYMB" to symbol),
-                ).path("output")
-            } else {
-                api.get(
-                    "/uapi/domestic-stock/v1/quotations/inquire-price",
-                    "FHKST01010100",
-                    mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
-                ).path("output")
-            }
-        // 국내: 전일 종가(stck_prdy_clpr), 없으면 기준가(stck_sdpr). 해외: 전일종가(base). 필드명은 공식 예제 근거(실측 전).
-        val fields = if (market.isOverseas) listOf("base") else listOf("stck_prdy_clpr", "stck_sdpr")
+            api.get(
+                "/uapi/domestic-stock/v1/quotations/inquire-price",
+                "FHKST01010100",
+                mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
+            ).path("output")
+        // 전일 종가(stck_prdy_clpr), 없으면 기준가(stck_sdpr).
+        val fields = listOf("stck_prdy_clpr", "stck_sdpr")
         val value = fields.map { output.decimal(it) }.firstOrNull { it > BigDecimal.ZERO }
         if (value == null) log.warn { "[전일 종가] $market $symbol 응답에서 $fields 를 못 찾음. 응답 필드: ${output.fieldNames().asSequence().toList()}" }
         return value?.also { previousCloseCache[key] = it }
@@ -72,174 +64,98 @@ class KisMockBroker(
         market: Market,
         symbol: String,
     ): Quote {
-        if (!market.isOverseas) {
-            val cachedTick = tickSizeCache[symbol]
-            val live = realtimeClient.latestPrice(symbol)
-            if (cachedTick != null && live != null && Duration.between(live.at, Instant.now()) <= LIVE_QUOTE_FRESHNESS) {
-                return Quote(live.price, cachedTick)
-            }
+        val cachedTick = tickSizeCache[symbol]
+        val live = realtimeClient.latestPrice(symbol)
+        if (cachedTick != null && live != null && Duration.between(live.at, Instant.now()) <= LIVE_QUOTE_FRESHNESS) {
+            return Quote(live.price, cachedTick)
         }
-        return quoteViaRest(market, symbol)
+        return quoteViaRest(symbol)
     }
 
-    private fun quoteViaRest(
-        market: Market,
-        symbol: String,
-    ): Quote =
-        if (market.isOverseas) {
-            val res =
-                api.get(
-                    "/uapi/overseas-price/v1/quotations/price",
-                    "HHDFS00000300",
-                    mapOf("AUTH" to "", "EXCD" to market.quoteExchangeCode(), "SYMB" to symbol),
-                )
-            val price = res.path("output").decimal("last")
-            Quote(price, market.overseasTickSize(price))
-        } else {
-            val res =
-                api.get(
-                    "/uapi/domestic-stock/v1/quotations/inquire-price",
-                    "FHKST01010100",
-                    mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
-                )
-            val output = res.path("output")
-            // aspr_unit: 현재가 기준 호가 단위 (2026-09-29 모의투자 실측: 삼성전자 273,000원 → 500)
-            val tickSize = output.decimal("aspr_unit")
-            require(tickSize > BigDecimal.ZERO) { "KIS 시세에 호가 단위(aspr_unit)가 없음: $symbol" }
-            tickSizeCache[symbol] = tickSize
-            Quote(output.decimal("stck_prpr"), tickSize)
-        }
+    private fun quoteViaRest(symbol: String): Quote {
+        val res =
+            api.get(
+                "/uapi/domestic-stock/v1/quotations/inquire-price",
+                "FHKST01010100",
+                mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
+            )
+        val output = res.path("output")
+        // aspr_unit: 현재가 기준 호가 단위 (2026-09-29 모의투자 실측: 삼성전자 273,000원 → 500)
+        val tickSize = output.decimal("aspr_unit")
+        require(tickSize > BigDecimal.ZERO) { "KIS 시세에 호가 단위(aspr_unit)가 없음: $symbol" }
+        tickSizeCache[symbol] = tickSize
+        return Quote(output.decimal("stck_prpr"), tickSize)
+    }
 
     override fun buyingPower(
         market: Market,
         symbol: String,
         price: BigDecimal,
-    ): BuyingPower =
-        if (market.isOverseas) {
-            val res =
-                api.get(
-                    "/uapi/overseas-stock/v1/trading/inquire-psamount",
-                    "VTTS3007R",
-                    accountParams() +
-                        mapOf(
-                            "OVRS_EXCG_CD" to market.orderExchangeCode(),
-                            "OVRS_ORD_UNPR" to price.priceText(market),
-                            "ITEM_CD" to symbol,
-                        ),
-                )
-            val out = res.path("output")
-            BuyingPower(market.currency, out.decimal("ord_psbl_frcr_amt"), out.decimal("max_ord_psbl_qty"))
-        } else {
-            val res =
-                api.get(
-                    "/uapi/domestic-stock/v1/trading/inquire-psbl-order",
-                    "VTTC8908R",
-                    accountParams() +
-                        mapOf(
-                            "PDNO" to symbol,
-                            "ORD_UNPR" to price.priceText(market),
-                            "ORD_DVSN" to "00",
-                            "CMA_EVLU_AMT_ICLD_YN" to "N",
-                            "OVRS_ICLD_YN" to "N",
-                        ),
-                )
-            val out = res.path("output")
-            BuyingPower(market.currency, out.decimal("ord_psbl_cash"), out.decimal("max_buy_qty"))
-        }
+    ): BuyingPower {
+        val res =
+            api.get(
+                "/uapi/domestic-stock/v1/trading/inquire-psbl-order",
+                "VTTC8908R",
+                accountParams() +
+                    mapOf(
+                        "PDNO" to symbol,
+                        "ORD_UNPR" to price.priceText(),
+                        "ORD_DVSN" to "00",
+                        "CMA_EVLU_AMT_ICLD_YN" to "N",
+                        "OVRS_ICLD_YN" to "N",
+                    ),
+            )
+        val out = res.path("output")
+        return BuyingPower(market.currency, out.decimal("ord_psbl_cash"), out.decimal("max_buy_qty"))
+    }
 
-    override fun holdings(market: Market): List<Holding> =
-        if (market.isOverseas) {
-            val res =
-                api.get(
-                    "/uapi/overseas-stock/v1/trading/inquire-balance",
-                    "VTTS3012R",
-                    accountParams() +
-                        mapOf(
-                            "OVRS_EXCG_CD" to "NASD",
-                            "TR_CRCY_CD" to "USD",
-                            "CTX_AREA_FK200" to "",
-                            "CTX_AREA_NK200" to "",
-                        ),
-                )
-            res.path("output1").mapNotNull { row ->
-                Holding(
-                    market = row.path("ovrs_excg_cd").asText().toUsMarket(),
-                    symbol = row.path("ovrs_pdno").asText(),
-                    name = row.path("ovrs_item_name").asText(),
-                    quantity = row.decimal("ovrs_cblc_qty"),
-                    averagePrice = row.decimal("pchs_avg_pric"),
-                    currentPrice = row.decimal("now_pric2"),
-                ).takeIf { it.quantity > BigDecimal.ZERO }
-            }
-        } else {
-            val res =
-                api.get(
-                    "/uapi/domestic-stock/v1/trading/inquire-balance",
-                    "VTTC8434R",
-                    accountParams() +
-                        mapOf(
-                            "AFHR_FLPR_YN" to "N",
-                            "OFL_YN" to "",
-                            "INQR_DVSN" to "02",
-                            "UNPR_DVSN" to "01",
-                            "FUND_STTL_ICLD_YN" to "N",
-                            "FNCG_AMT_AUTO_RDPT_YN" to "N",
-                            "PRCS_DVSN" to "00",
-                            "CTX_AREA_FK100" to "",
-                            "CTX_AREA_NK100" to "",
-                        ),
-                )
-            res.path("output1").mapNotNull { row ->
-                Holding(
-                    market = Market.KR,
-                    symbol = row.path("pdno").asText(),
-                    name = row.path("prdt_name").asText(),
-                    quantity = row.decimal("hldg_qty"),
-                    averagePrice = row.decimal("pchs_avg_pric"),
-                    currentPrice = row.decimal("prpr"),
-                ).takeIf { it.quantity > BigDecimal.ZERO }
-            }
+    override fun holdings(market: Market): List<Holding> {
+        val res =
+            api.get(
+                "/uapi/domestic-stock/v1/trading/inquire-balance",
+                "VTTC8434R",
+                accountParams() +
+                    mapOf(
+                        "AFHR_FLPR_YN" to "N",
+                        "OFL_YN" to "",
+                        "INQR_DVSN" to "02",
+                        "UNPR_DVSN" to "01",
+                        "FUND_STTL_ICLD_YN" to "N",
+                        "FNCG_AMT_AUTO_RDPT_YN" to "N",
+                        "PRCS_DVSN" to "00",
+                        "CTX_AREA_FK100" to "",
+                        "CTX_AREA_NK100" to "",
+                    ),
+            )
+        return res.path("output1").mapNotNull { row ->
+            Holding(
+                market = Market.KR,
+                symbol = row.path("pdno").asText(),
+                name = row.path("prdt_name").asText(),
+                quantity = row.decimal("hldg_qty"),
+                averagePrice = row.decimal("pchs_avg_pric"),
+                currentPrice = row.decimal("prpr"),
+            ).takeIf { it.quantity > BigDecimal.ZERO }
         }
+    }
 
     override fun placeOrder(order: OrderRequest): OrderReceipt {
-        val market = order.market
+        val trId = if (order.side == Side.BUY) "VTTC0012U" else "VTTC0011U"
         val res =
-            if (market.isOverseas) {
-                val trId = if (order.side == Side.BUY) "VTTT1002U" else "VTTT1001U"
-                api.post(
-                    "/uapi/overseas-stock/v1/trading/order",
-                    trId,
-                    accountParams() +
-                        mapOf(
-                            "OVRS_EXCG_CD" to market.orderExchangeCode(),
-                            "PDNO" to order.symbol,
-                            "ORD_QTY" to order.quantity.toString(),
-                            "OVRS_ORD_UNPR" to order.limitPrice.priceText(market),
-                            "CTAC_TLNO" to "",
-                            "MGCO_APTM_ODNO" to "",
-                            "SLL_TYPE" to if (order.side == Side.SELL) "00" else "",
-                            "ORD_SVR_DVSN_CD" to "0",
-                            // 모의투자는 지정가만 가능
-                            "ORD_DVSN" to "00",
-                        ),
-                )
-            } else {
-                val trId = if (order.side == Side.BUY) "VTTC0012U" else "VTTC0011U"
-                api.post(
-                    "/uapi/domestic-stock/v1/trading/order-cash",
-                    trId,
-                    accountParams() +
-                        mapOf(
-                            "PDNO" to order.symbol,
-                            "ORD_DVSN" to "00",
-                            "ORD_QTY" to order.quantity.toString(),
-                            "ORD_UNPR" to order.limitPrice.priceText(market),
-                            "EXCG_ID_DVSN_CD" to "KRX",
-                            "SLL_TYPE" to if (order.side == Side.SELL) "01" else "",
-                            "CNDT_PRIC" to "",
-                        ),
-                )
-            }
+            api.post(
+                "/uapi/domestic-stock/v1/trading/order-cash",
+                trId,
+                accountParams() +
+                    mapOf(
+                        "PDNO" to order.symbol,
+                        "ORD_DVSN" to "00",
+                        "ORD_QTY" to order.quantity.toString(),
+                        "ORD_UNPR" to order.limitPrice.priceText(),
+                        "EXCG_ID_DVSN_CD" to "KRX",
+                        "SLL_TYPE" to if (order.side == Side.SELL) "01" else "",
+                        "CNDT_PRIC" to "",
+                    ),
+            )
         val out = res.path("output")
         return OrderReceipt(
             orderNo = out.path("ODNO").asText(),
@@ -248,56 +164,28 @@ class KisMockBroker(
         )
     }
 
-    /** 정정취소 API(docs/kis-api 의 order_rvsecncl 예제)의 취소(02). 모의 TR: 국내 VTTC0013U, 해외 VTTT1004U. */
+    /** 정정취소 API(docs/kis-api 의 order_rvsecncl 예제)의 취소(02). 모의 TR: VTTC0013U. */
     override fun cancelOrder(request: CancelRequest) {
-        if (request.market.isOverseas) {
-            api.post(
-                "/uapi/overseas-stock/v1/trading/order-rvsecncl",
-                "VTTT1004U",
-                accountParams() +
-                    mapOf(
-                        "OVRS_EXCG_CD" to request.market.orderExchangeCode(),
-                        "PDNO" to request.symbol,
-                        "ORGN_ODNO" to request.orderNo,
-                        "RVSE_CNCL_DVSN_CD" to "02",
-                        "ORD_QTY" to request.quantity.toString(),
-                        "OVRS_ORD_UNPR" to "0",
-                        "MGCO_APTM_ODNO" to "",
-                        "ORD_SVR_DVSN_CD" to "0",
-                    ),
-            )
-        } else {
-            api.post(
-                "/uapi/domestic-stock/v1/trading/order-rvsecncl",
-                "VTTC0013U",
-                accountParams() +
-                    mapOf(
-                        "KRX_FWDG_ORD_ORGNO" to request.branchNo,
-                        "ORGN_ODNO" to request.orderNo,
-                        "ORD_DVSN" to "00",
-                        "RVSE_CNCL_DVSN_CD" to "02",
-                        "ORD_QTY" to request.quantity.toString(),
-                        "ORD_UNPR" to "0",
-                        "QTY_ALL_ORD_YN" to "Y",
-                        "EXCG_ID_DVSN_CD" to "KRX",
-                    ),
-            )
-        }
+        api.post(
+            "/uapi/domestic-stock/v1/trading/order-rvsecncl",
+            "VTTC0013U",
+            accountParams() +
+                mapOf(
+                    "KRX_FWDG_ORD_ORGNO" to request.branchNo,
+                    "ORGN_ODNO" to request.orderNo,
+                    "ORD_DVSN" to "00",
+                    "RVSE_CNCL_DVSN_CD" to "02",
+                    "ORD_QTY" to request.quantity.toString(),
+                    "ORD_UNPR" to "0",
+                    "QTY_ALL_ORD_YN" to "Y",
+                    "EXCG_ID_DVSN_CD" to "KRX",
+                ),
+        )
     }
 
     /** 실측 확인(2026-09-29, 삼성전자): output2 필드명이 아래와 정확히 일치. docs/kis-api/README.md 참고. */
     override fun minuteCandles(
         market: Market,
-        symbol: String,
-        atTime: LocalTime,
-    ): List<MinuteCandle> =
-        if (market.isOverseas) {
-            overseasMinuteCandles(market, symbol)
-        } else {
-            domesticMinuteCandles(symbol, atTime)
-        }
-
-    private fun domesticMinuteCandles(
         symbol: String,
         atTime: LocalTime,
     ): List<MinuteCandle> {
@@ -326,54 +214,13 @@ class KisMockBroker(
         }
     }
 
-    /**
-     * 실측 확인(2026-09-29, SOXL 프리마켓): 공식 예제엔 output2 필드명이 안 적혀 있어 KIS 일반 명명
-     * 규칙으로 추정(tymd/xhms/open/high/low/last/evol)했는데, SmokeTestRunner CANDLES 모드로 받아보니
-     * 실제 가격·거래량이 정상 범위로 나와 필드명이 맞는 것으로 확인됨.
-     */
-    private fun overseasMinuteCandles(
-        market: Market,
-        symbol: String,
-    ): List<MinuteCandle> {
-        val res =
-            api.get(
-                "/uapi/overseas-price/v1/quotations/inquire-time-itemchartprice",
-                "HHDFS76950200",
-                mapOf(
-                    "AUTH" to "",
-                    "EXCD" to market.quoteExchangeCode(),
-                    "SYMB" to symbol,
-                    "NMIN" to "1",
-                    "PINC" to "0",
-                    "NEXT" to "",
-                    "NREC" to "120",
-                    "FILL" to "",
-                    "KEYB" to "",
-                ),
-            )
-        return res.path("output2").mapNotNull { node ->
-            val dateText = node.path("tymd").asText("")
-            val timeText = node.path("xhms").asText("")
-            if (dateText.isEmpty() || timeText.isEmpty()) return@mapNotNull null
-            MinuteCandle(
-                date = LocalDate.parse(dateText, DATE_FORMAT),
-                time = LocalTime.parse(timeText, HOUR_FORMAT),
-                open = node.decimal("open"),
-                high = node.decimal("high"),
-                low = node.decimal("low"),
-                close = node.decimal("last"),
-                volume = node.path("evol").asText("0").toLongOrNull() ?: 0L,
-            )
-        }
-    }
-
     override fun filledPrice(
         market: Market,
         orderNo: String,
     ): BigDecimal? = (orderStatus(market, orderNo, 1) as? OrderStatus.Filled)?.price
 
     /**
-     * 국내: 주식일별주문체결조회를 **전체(00)**로 주문번호만 걸어 부른다 — 체결분(01)만 부르면 "미체결"과 "아직 조회에 안 잡힘"이
+     * 주식일별주문체결조회를 **전체(00)**로 주문번호만 걸어 부른다 — 체결분(01)만 부르면 "미체결"과 "아직 조회에 안 잡힘"이
      * 똑같이 빈 응답이라 구분이 안 된다. 행이 있고 체결 수량이 주문 수량 미만이면 [OrderStatus.Open], 행이 없으면 [OrderStatus.Unknown].
      * 실측 확인(2026-09-29): output1 필드명(odno, tot_ccld_qty, avg_prvs)이 일치. docs/kis-api/README.md 참고.
      */
@@ -382,7 +229,6 @@ class KisMockBroker(
         orderNo: String,
         quantity: Int,
     ): OrderStatus {
-        if (market.isOverseas) return overseasOrderStatus(market, orderNo, quantity)
         val today = LocalDate.now(KST).format(DATE_FORMAT)
         val res =
             api.get(
@@ -410,73 +256,10 @@ class KisMockBroker(
         return if (filledQty >= quantity) OrderStatus.Filled(row.decimal("avg_prvs")) else OrderStatus.Open
     }
 
-    /**
-     * 해외 주문체결내역(VTTS3035R, docs/kis-api/examples/overseas_stock/inquire_ccnl.py 원문 기준).
-     * 모의투자는 종목·구분·거래소 필터가 전체 조회만 되고 주문번호로 검색도 안 돼서(ODNO 는 반드시 ""),
-     * 어제~오늘(현지 날짜) 전체를 받아 주문번호를 직접 골라낸다. 첫 페이지만 본다(연속조회 헤더 미지원).
-     * 필드명(odno/ft_ccld_qty/ft_ccld_unpr3)은 2026-09-30 실측으로 확인했다.
-     */
-    private fun overseasOrderStatus(
-        market: Market,
-        orderNo: String,
-        quantity: Int,
-    ): OrderStatus {
-        val today = LocalDate.now(market.zone)
-        val res =
-            api.get(
-                "/uapi/overseas-stock/v1/trading/inquire-ccnl",
-                "VTTS3035R",
-                accountParams() +
-                    mapOf(
-                        "PDNO" to "",
-                        "ORD_STRT_DT" to today.minusDays(1).format(DATE_FORMAT),
-                        "ORD_END_DT" to today.format(DATE_FORMAT),
-                        "SLL_BUY_DVSN" to "00",
-                        "CCLD_NCCS_DVSN" to "00",
-                        "OVRS_EXCG_CD" to "",
-                        "SORT_SQN" to "DS",
-                        "ORD_DT" to "",
-                        "ORD_GNO_BRNO" to "",
-                        "ODNO" to "",
-                        "CTX_AREA_NK200" to "",
-                        "CTX_AREA_FK200" to "",
-                    ),
-            )
-        // 실측(2026-09-30): 접수 응답은 "0000037508", 체결내역 odno 는 "37508"로 앞자리 0 이 빠져 있다.
-        val target = orderNo.trimStart('0')
-        val row = res.path("output").firstOrNull { it.path("odno").asText().trimStart('0') == target } ?: return OrderStatus.Unknown
-        val filledQty = row.path("ft_ccld_qty").asText("0").toBigDecimalOrNull() ?: BigDecimal.ZERO
-        return if (filledQty >= BigDecimal(quantity)) OrderStatus.Filled(row.decimal("ft_ccld_unpr3")) else OrderStatus.Open
-    }
-
     private fun accountParams() = mapOf("CANO" to properties.accountNumber, "ACNT_PRDT_CD" to properties.accountProductCode)
 
-    private fun Market.quoteExchangeCode() =
-        when (this) {
-            Market.NASDAQ -> "NAS"
-            Market.NYSE -> "NYS"
-            Market.AMEX -> "AMS"
-            Market.KR -> error("KR has no overseas exchange code")
-        }
-
-    private fun Market.orderExchangeCode() =
-        when (this) {
-            Market.NASDAQ -> "NASD"
-            Market.NYSE -> "NYSE"
-            Market.AMEX -> "AMEX"
-            Market.KR -> error("KR has no overseas exchange code")
-        }
-
-    private fun String.toUsMarket() =
-        when (this) {
-            "NYSE", "NYS" -> Market.NYSE
-            "AMEX", "AMS" -> Market.AMEX
-            else -> Market.NASDAQ
-        }
-
-    /** 원화는 정수, 달러는 소수 둘째 자리. */
-    private fun BigDecimal.priceText(market: Market): String =
-        if (market.isOverseas) setScale(2, RoundingMode.HALF_UP).toPlainString() else setScale(0, RoundingMode.HALF_UP).toPlainString()
+    /** 원화는 정수. */
+    private fun BigDecimal.priceText(): String = setScale(0, RoundingMode.HALF_UP).toPlainString()
 
     private fun JsonNode.decimal(field: String): BigDecimal {
         val text = path(field).asText("").trim()

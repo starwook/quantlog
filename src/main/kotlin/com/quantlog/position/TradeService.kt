@@ -51,7 +51,7 @@ class TradeService(
      */
     @EventListener
     fun onFillNotice(notice: FillNotice) {
-        if (notice.overseas || !notice.isFill) return
+        if (!notice.isFill) return
         val price = notice.filledPrice ?: return
         val quantity = notice.filledQuantity ?: return
         val average =
@@ -73,7 +73,6 @@ class TradeService(
         order: OrderRequest,
         orderNo: String,
     ): BigDecimal? {
-        if (order.market.isOverseas) return null
         val fill = synchronized(fills) { fills[orderNo] } ?: return null
         return fill.amount.divide(fill.quantity, PRICE_SCALE, RoundingMode.HALF_UP)
     }

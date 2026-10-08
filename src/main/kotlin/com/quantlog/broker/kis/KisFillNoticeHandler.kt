@@ -14,7 +14,7 @@ import javax.crypto.spec.SecretKeySpec
 private val log = KotlinLogging.logger {}
 
 /**
- * KIS 실시간 체결통보(국내 H0STCNI9 / 해외 H0GSCNI9, 모의) 수신 처리. 연결·구독은 [KisRealtimeClient] 가 같은 WebSocket 연결로 하고,
+ * KIS 실시간 체결통보(국내 H0STCNI9, 모의) 수신 처리. 연결·구독은 [KisRealtimeClient] 가 같은 WebSocket 연결로 하고,
  * 여기는 (1) 구독 응답에 실려 오는 AES 키·IV 보관 (2) 수신 데이터 복호화 (3) 필드 파싱 → [FillNotice] 이벤트 발행만 한다.
  * 필드 순서는 공식 샘플(examples_llm ccnl_notice) 기준이고 모의에서 실측 전이다(docs/kis-api/field-reference.md).
  * 계좌번호·고객 ID·계좌명은 로그에 남기지 않는다.
@@ -57,7 +57,6 @@ class KisFillNoticeHandler(
             } else {
                 payload
             }
-        val overseas = trId in OVERSEAS_TR_IDS
         val fields = text.split("^")
         // 한 메시지에 여러 건이 이어 붙어 올 수 있다. 한 건의 필드 수는 사양 문서가 아니라 실제 건수로 나눠서 구한다
         // (2026-10-07 모의 실측: 문서는 26개인데 H0STCNI9 가 23개로 옴).
@@ -65,10 +64,9 @@ class KisFillNoticeHandler(
             return log.warn { "[체결통보] $trId 필드 수 ${fields.size} 를 건수 $recordCount 로 나눌 수 없어 버린다" }
         }
         val width = fields.size / recordCount
-        val minWidth = if (overseas) OVERSEAS_MIN_FIELD_COUNT else DOMESTIC_MIN_FIELD_COUNT
-        if (width < minWidth) return log.warn { "[체결통보] $trId 한 건이 ${width}필드뿐이라 파싱할 수 없다 (최소 $minWidth)" }
+        if (width < MIN_FIELD_COUNT) return log.warn { "[체결통보] $trId 한 건이 ${width}필드뿐이라 파싱할 수 없다 (최소 $MIN_FIELD_COUNT)" }
         fields.chunked(width).forEach { row ->
-            val notice = if (overseas) parseOverseas(row) else parseDomestic(row)
+            val notice = parseDomestic(row)
             log.info { "[체결통보] ${notice.summary()}" }
             eventPublisher.publishEvent(notice)
         }
@@ -81,7 +79,6 @@ class KisFillNoticeHandler(
     internal fun parseDomestic(f: List<String>): FillNotice {
         val fill = f[13] == FillNotice.FILLED_FLAG
         return FillNotice(
-            overseas = false,
             symbol = f[8],
             orderNo = f[2],
             originalOrderNo = f[3],
@@ -97,26 +94,6 @@ class KisFillNoticeHandler(
         )
     }
 
-    /** 해외는 공식 샘플 순서 그대로이고 실측 전이다(국내와 같은 접수/체결 규칙을 가정). 주문가 위치는 몰라 null. */
-    internal fun parseOverseas(f: List<String>): FillNotice {
-        val fill = f[12] == FillNotice.FILLED_FLAG
-        return FillNotice(
-            overseas = true,
-            symbol = f[7],
-            orderNo = f[2],
-            originalOrderNo = f[3],
-            sellBuyCode = f[4],
-            filledFlag = f[12],
-            acceptFlag = f[13],
-            refuseFlag = f[11],
-            filledQuantity = f[8].toBigDecimalOrNull().takeIf { fill },
-            filledPrice = f[9].toBigDecimalOrNull().takeIf { fill },
-            orderQuantity = f[15].toBigDecimalOrNull(),
-            orderPrice = null,
-            time = f[10],
-        )
-    }
-
     /** AES-256-CBC, 키·IV 는 UTF-8 문자열 그대로, 데이터는 Base64, PKCS7 패딩(공식 샘플 kis_auth.py 와 같다). */
     internal fun decrypt(
         key: String,
@@ -129,12 +106,9 @@ class KisFillNoticeHandler(
     }
 
     companion object {
-        /** 모의투자 TR ID. 실전은 H0STCNI0 / H0GSCNI0 (이 앱은 모의 연결만 쓴다). */
+        /** 모의투자 TR ID. 실전은 H0STCNI0 (이 앱은 모의 연결만 쓴다). */
         const val DOMESTIC_TR_ID = "H0STCNI9"
-        const val OVERSEAS_TR_ID = "H0GSCNI9"
-        val OVERSEAS_TR_IDS = setOf(OVERSEAS_TR_ID, "H0GSCNI0")
-        val TR_IDS = setOf(DOMESTIC_TR_ID, OVERSEAS_TR_ID, "H0STCNI0", "H0GSCNI0")
-        private const val DOMESTIC_MIN_FIELD_COUNT = 17
-        private const val OVERSEAS_MIN_FIELD_COUNT = 16
+        val TR_IDS = setOf(DOMESTIC_TR_ID, "H0STCNI0")
+        private const val MIN_FIELD_COUNT = 17
     }
 }
