@@ -14,7 +14,7 @@
 4. **잔고 스냅샷 원문** — `gateway` `record/BalanceRecorder.kt` 가 잔고 조회 응답을 해석해 `broker_balance`(+meta)에 넣는다 → 응답 원문 JSON 을 회차마다 `kis_balance` 에 한 줄로. 앱 `BalanceProjector` 가 해석한다.
 5. **분봉 수집 원문** — `gateway` `record/CandleCollector.kt` 가 분봉 응답을 해석해 `minute_candle` 에 넣는다 → 응답 원문을 `kis_minute_chart` 에 저장하고 앱이 해석해 자기 `minute_candle` 에 넣는다.
 6. **모의 체결(`gateway` `paper/`)은 앱으로** — 한투 형식이 아니므로 앱의 `BrokerClient` 다른 구현으로 옮긴다(운영은 `kis-mock` 이라 영향 없음).
-7. 문서: `docs/contracts/` 축소, `docs/서버-분리.md`·CLAUDE.md 의 게이트웨이 설명을 "원문 통로"로 고친다.
+7. 문서: `docs/contracts/` 4개 파일(README·gateway-http·gateway-stream·tables)을 `README.md` 한 장으로 합쳐 축소하고, `docs/서버-분리.md` 와 겹치는 내용(시세·계약 설명을 두 곳에 적는 것)은 한 곳만 남긴다. 그리고 `docs/서버-분리.md`·CLAUDE.md 의 게이트웨이 설명을 "원문 통로"로 고친다.
 
 **놓치기 쉬운 것 (위 작업을 할 때 같이 챙길 것):**
 - **계좌번호는 앱이 모른다(시크릿은 게이트웨이에만).** REST 통로에서 계좌가 필요한 요청(잔고 VTTC8434R, 매수가능 VTTC8908R, 주문 VTTC0012U/0011U, 취소 VTTC0013U, 당일 체결조회 VTTC0081R)은 게이트웨이가 `CANO`·`ACNT_PRDT_CD` 를 **끼워 넣는다**(지금 `gateway` `kis/KisMockBroker.kt` 의 `accountParams()`). 응답에 계좌 식별 값이 있으면 체결통보처럼 비우고 돌려준다·저장한다.
