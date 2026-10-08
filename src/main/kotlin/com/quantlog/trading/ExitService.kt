@@ -6,7 +6,6 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
-import com.quantlog.broker.kis.KisApiException
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.TradeService
@@ -63,9 +62,6 @@ class ExitService(
     private val pending = PendingOrders("청산", broker, tradeService, holdingSync, properties.fillTimeout)
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
 
-    /** 증권사가 "장 시작 전"으로 거부한 종목이 이 시각까지 판정을 쉰다. */
-    private val marketClosedUntil = ConcurrentHashMap<String, Instant>()
-
     /** 보유 종목 전체를 판정한다. [exclude] 가 true 인 종목은 다른 경로(실시간)가 맡고 있으니 건너뛴다. */
     fun checkAll(
         now: ZonedDateTime,
@@ -97,18 +93,9 @@ class ExitService(
     ) {
         if (position.quantity <= 0 || !position.market.isTradable(now)) return
         val key = "${position.market}:${position.symbol}"
-        if (marketClosedUntil[key]?.isAfter(now.toInstant()) == true) return
         if (!inFlight.add(key)) return
         try {
             checkHolding(position, key)
-        } catch (e: KisApiException) {
-            if (e.isMarketNotOpen) {
-                // 모의투자는 프리마켓 시간에도 해외 주문을 거부한다. 3초마다 다시 내 봐야 같은 거부만 쌓이므로 잠시 쉰다.
-                marketClosedUntil[key] = now.toInstant().plus(MARKET_CLOSED_BACKOFF)
-                log.info { "[청산 감시] ${position.market} ${position.symbol} 장 시작 전 거부 — ${MARKET_CLOSED_BACKOFF.toMinutes()}분 쉼" }
-            } else {
-                log.warn(e) { "[청산 감시] 실패: ${position.market} ${position.symbol}" }
-            }
         } catch (e: Exception) {
             log.warn(e) { "[청산 감시] 실패: ${position.market} ${position.symbol}" }
         } finally {
@@ -191,9 +178,5 @@ class ExitService(
                 }
             }
         }
-    }
-
-    private companion object {
-        val MARKET_CLOSED_BACKOFF: Duration = Duration.ofMinutes(5)
     }
 }

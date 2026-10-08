@@ -18,7 +18,6 @@ class DbRealtimeSymbolSourceTest {
             listOf(
                 AccountHolding(Market.KR, "000660", 3, BigDecimal.ONE, BigDecimal.ONE),
                 AccountHolding(Market.KR, "999999", 0, BigDecimal.ONE, BigDecimal.ONE),
-                AccountHolding(Market.AMEX, "SOXL", 1, BigDecimal.ONE, BigDecimal.ONE),
             ),
         )
 
@@ -33,7 +32,6 @@ class DbRealtimeSymbolSourceTest {
             symbolStrategyServiceOf(
                 symbolStrategy(Market.KR, "005930"),
                 symbolStrategy(Market.KR, "000660"),
-                symbolStrategy(Market.AMEX, "SOXL"),
             )
 
         assertEquals(listOf("000660", "005930"), DbRealtimeSymbolSource(holdings, watched).symbols(Market.KR))

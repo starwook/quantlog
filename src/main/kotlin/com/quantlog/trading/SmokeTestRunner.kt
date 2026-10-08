@@ -26,8 +26,8 @@ private val log = KotlinLogging.logger {}
 data class SmokeProperties(
     /** 비어 있으면 아무것도 하지 않는다. READ(조회만) / BUY / SELL. */
     val mode: String = "",
-    val market: Market = Market.NASDAQ,
-    val symbol: String = "AAPL",
+    val market: Market = Market.KR,
+    val symbol: String = "005930",
     val quantity: Int = 1,
     /** 체결이 잘 되도록 현재가에서 벗어나는 지정가 폭(%). BUY 는 +, SELL 은 -. */
     val limitOffsetPercent: BigDecimal = BigDecimal("0.5"),
@@ -87,7 +87,7 @@ class SmokeTestRunner(
         }
     }
 
-    /** 국내만 지원(KIS 해외 분봉 미확인). 최근 분봉을 받아 DB에 새로 생긴 것만 저장한다. */
+    /** 최근 분봉을 받아 DB에 새로 생긴 것만 저장한다. */
     private fun fetchCandles(
         market: Market,
         symbol: String,

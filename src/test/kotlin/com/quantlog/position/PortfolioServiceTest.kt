@@ -51,7 +51,7 @@ class PortfolioServiceTest {
         price: String = "100",
     ) = Trade(
         market = market,
-        symbol = if (market == Market.KR) "005930" else "AAPL",
+        symbol = "005930",
         side = side,
         quantity = quantity,
         orderPrice = BigDecimal(price),
@@ -71,7 +71,6 @@ class PortfolioServiceTest {
                 trade(Market.KR, Side.BUY, now),
                 trade(Market.KR, Side.SELL, now),
                 trade(Market.KR, Side.BUY, yesterday),
-                trade(Market.NASDAQ, Side.BUY, now),
             ),
         )
 
@@ -79,8 +78,6 @@ class PortfolioServiceTest {
 
         assertEquals(2, summaries.getValue("KRW").buyCountToday)
         assertEquals(1, summaries.getValue("KRW").sellCountToday)
-        assertEquals(1, summaries.getValue("USD").buyCountToday)
-        assertEquals(0, summaries.getValue("USD").sellCountToday)
     }
 
     private fun tradeAt(
@@ -88,7 +85,7 @@ class PortfolioServiceTest {
         side: Side,
         price: String,
         executedAt: Instant,
-        symbol: String = if (market == Market.KR) "005930" else "AAPL",
+        symbol: String = "005930",
     ) = Trade(
         market = market,
         symbol = symbol,
@@ -154,29 +151,6 @@ class PortfolioServiceTest {
 
         assertEquals(0, summary.sellWinToday)
         assertEquals(0, summary.sellLossToday)
-    }
-
-    @Test
-    fun `매도 승률은 통화별로 따로 센다`() {
-        val now = Instant.now()
-        val bought = now.minusSeconds(60)
-        Mockito.`when`(tradeRepository.findAll()).thenReturn(
-            listOf(
-                tradeAt(Market.KR, Side.BUY, "100", bought),
-                // KRW 성공
-                tradeAt(Market.KR, Side.SELL, "110", now),
-                tradeAt(Market.NASDAQ, Side.BUY, "100", bought),
-                // USD 실패
-                tradeAt(Market.NASDAQ, Side.SELL, "90", now),
-            ),
-        )
-
-        val summaries = service.snapshot().summaryByCurrency
-
-        assertEquals(1, summaries.getValue("KRW").sellWinToday)
-        assertEquals(0, summaries.getValue("KRW").sellLossToday)
-        assertEquals(0, summaries.getValue("USD").sellWinToday)
-        assertEquals(1, summaries.getValue("USD").sellLossToday)
     }
 
     @Test

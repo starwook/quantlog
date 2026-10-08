@@ -32,7 +32,6 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val log = KotlinLogging.logger {}
 private val KST: ZoneId = ZoneId.of("Asia/Seoul")
-private val NEW_YORK: ZoneId = ZoneId.of("America/New_York")
 
 @ConfigurationProperties(prefix = "quantlog.entry")
 data class EntryProperties(
@@ -46,7 +45,7 @@ data class EntryProperties(
 
 /**
  * 진입 스케줄러 (마틴게일 / 저점 판단 진입(분봉 저점 근접+반등 신호) / 주기(n분) 재매수 — 종목별 완전 별개 옵션, AI 없이 순수 규칙 — playbook/principles.md "아직 정하는 중").
- * 정규장(국내) 또는 프리마켓~애프터마켓(미국, Market.isTradable) 동안 DB 감시 종목(symbol_strategy) 전체의 분봉을 받아
+ * 정규장(Market.isTradable) 동안 DB 감시 종목(symbol_strategy) 전체의 분봉을 받아
  * DB에 쌓는다 — 차트·백테스트가 쓸 데이터라 매매 대상 여부와 무관하게 항상 수집한다
  * (2026-09-29: "SK하이닉스는 화면엔 있는데 분봉이 안 쌓인다"는 지적으로, 수집 대상과 매매 대상을 분리함).
  * 매매는 그중 DB 설정의 매수 옵션이 켜진 종목만 마틴게일(보유 중 추가 매수) / 주기 재매수(보유 0주일 때 종목별 n분마다 설정 수량) /
@@ -106,7 +105,7 @@ class EntryScheduler(
                 snapshot.summaryByCurrency[watched.market.currency]?.holdings?.any {
                     it.market == watched.market && it.symbol == watched.symbol
                 } == true
-            // 국내 실시간이 커버하는 종목의 마틴게일은 틱 경로([MartingaleService])가 맡는다. 여기선 해외·실시간 끊김 종목만 폴링하고,
+            // 국내 실시간이 커버하는 종목의 마틴게일은 틱 경로([MartingaleService])가 맡는다. 여기선 실시간 끊김 종목만 폴링하고,
             // 체결통보가 없는 이 경로에서만 "잔고 동기화보다 늦은 주문이 있으면 보유 현황이 낡았다"며 다음 동기화까지 미룬다.
             val polledMartingale =
                 watched.martingale && held && !realtimeFeed.isLive(watched.market, watched.symbol) &&
@@ -189,7 +188,7 @@ class EntryScheduler(
         val last = lastSignalAt[key]
         if (last != null && Duration.between(last, now) < properties.cooldown) return
 
-        val localDate = LocalDate.now(if (watched.market.isOverseas) NEW_YORK else KST)
+        val localDate = LocalDate.now(KST)
         val candles = marketDataService.recentCandles(watched.market, watched.symbol, localDate)
         if (entryRule.evaluate(candles) != EntrySignal.BUY) return
 

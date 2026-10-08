@@ -25,7 +25,7 @@ private fun record(
 class ErrorLogClassifierTest {
     @Test
     fun `메시지 앞의 대괄호 태그가 분류가 된다`() {
-        assertEquals("청산 감시", ErrorLogClassifier.category(record("[청산 감시] 실패: AMEX SOXL")))
+        assertEquals("청산 감시", ErrorLogClassifier.category(record("[청산 감시] 실패: KR 005930")))
     }
 
     @Test
@@ -42,7 +42,7 @@ class ErrorLogClassifierTest {
 
     @Test
     fun `종목이나 예외 종류가 다르면 다른 종류다`() {
-        val soxl = record("[청산 감시] 실패: AMEX SOXL")
+        val soxl = record("[청산 감시] 실패: KR 005930")
         assertNotEquals(ErrorLogClassifier.fingerprint(soxl), ErrorLogClassifier.fingerprint(record("[청산 감시] 실패: KR 삼성")))
         assertNotEquals(ErrorLogClassifier.fingerprint(soxl), ErrorLogClassifier.fingerprint(soxl.copy(exceptionClass = "KisApiException")))
     }
@@ -54,7 +54,7 @@ class ErrorLogRecorderTest {
 
     @Test
     fun `처음 보는 오류는 새 행으로 저장한다`() {
-        recorder.record(record("[청산 감시] 실패: AMEX SOXL"))
+        recorder.record(record("[청산 감시] 실패: KR 005930"))
 
         val saved = ArgumentCaptor.forClass(ErrorLog::class.java)
         Mockito.verify(repository).save(saved.capture())
@@ -64,7 +64,7 @@ class ErrorLogRecorderTest {
 
     @Test
     fun `같은 종류가 또 나면 횟수와 마지막 발생 시각만 올린다`() {
-        val first = record("[청산 감시] 실패: AMEX SOXL")
+        val first = record("[청산 감시] 실패: KR 005930")
         val existing =
             ErrorLog(
                 ErrorLogClassifier.fingerprint(first),
@@ -104,7 +104,7 @@ class ErrorLogControllerTest {
                 "WARN",
                 "청산 감시",
                 "com.quantlog.trading.ExitService",
-                "[청산 감시] 실패: AMEX SOXL",
+                "[청산 감시] 실패: KR 005930",
                 firstSeen = at,
                 lastSeen = at,
                 count = 1234,
@@ -113,7 +113,7 @@ class ErrorLogControllerTest {
 
         mvc.perform(get("/errors"))
             .andExpect(status().isOk)
-            .andExpect(content().string(containsString("[청산 감시] 실패: AMEX SOXL")))
+            .andExpect(content().string(containsString("[청산 감시] 실패: KR 005930")))
             .andExpect(content().string(containsString("1,234회")))
             .andExpect(content().string(containsString("청산 감시 1")))
     }

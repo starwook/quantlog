@@ -75,7 +75,7 @@ class ManualOrderService(
         tradeService.applyStatus(trade, status)
         check(status !is OrderStatus.Filled) { "이미 체결된 주문이라 취소할 수 없습니다" }
         check(status == OrderStatus.Open) { "증권사가 아직 이 주문을 확인해 주지 않았습니다 — 잠시 뒤 다시 시도하세요" }
-        check(trade.market.isOverseas || trade.branchNo != null) { "주문조직번호가 없는 옛 주문이라 취소할 수 없습니다 — 증권사 앱에서 취소하세요" }
+        check(trade.branchNo != null) { "주문조직번호가 없는 옛 주문이라 취소할 수 없습니다 — 증권사 앱에서 취소하세요" }
         broker.cancelOrder(
             CancelRequest(trade.market, trade.symbol, trade.orderNo, trade.branchNo.orEmpty(), trade.quantity, trade.orderPrice),
         )

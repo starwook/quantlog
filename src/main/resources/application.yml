@@ -63,17 +63,17 @@ quantlog:
       support-zone-fraction: 0.5
   smoke:
     mode: ${QUANTLOG_SMOKE_MODE:}
-    market: ${QUANTLOG_SMOKE_MARKET:NASDAQ}
-    symbol: ${QUANTLOG_SMOKE_SYMBOL:AAPL}
+    market: ${QUANTLOG_SMOKE_MARKET:KR}
+    symbol: ${QUANTLOG_SMOKE_SYMBOL:005930}
     quantity: ${QUANTLOG_SMOKE_QUANTITY:1}
   exit:
     # 청산 감시: 정규장 동안 보유 현황(DB)을 보고 익절/손절 목표가에 닿으면 전량 매도한다.
-    # 실시간(WebSocket)이 커버하는 종목은 틱마다 바로 판정하고, interval-millis 폴링은 나머지(해외 등)만 맡는다.
+    # 실시간(WebSocket)이 커버하는 종목은 틱마다 바로 판정하고, interval-millis 폴링은 나머지(실시간 끊김 등)만 맡는다.
     # 2026-09-29: REST 잔고 조회 대신 DB 기반으로 바꿔서 초당 요청 한도 걱정 없이 1초로 좁힘.
     enabled: ${QUANTLOG_EXIT_ENABLED:true}
     interval-millis: 1000
   entry:
-    # 진입 스케줄러: 국내 정규장/미국 프리마켓~애프터마켓 동안 감시 종목(DB symbol_strategy) 분봉을 보고
+    # 진입 스케줄러: 국내 정규장 동안 감시 종목(DB symbol_strategy) 분봉을 보고
     # 저점 근접+반등 신호가 뜨면 소량 매수한다. 감시 종목 목록·자동매매 대상 여부는
     # 감시 종목·실제 매수 대상·종목별 값은 모두 DB symbol_strategy 에서 관리한다(여기 yaml이 아님).
     # 검증 전 규칙(playbook/principles.md "아직 정하는 중") — 끄려면 false로.
@@ -81,7 +81,7 @@ quantlog:
     interval-millis: 1000
     cooldown: 10m
   reconcile:
-    # 주문 직후 한 번에 못 구한 실제 체결가를 1분마다 KIS 에 다시 물어봐서 채운다 (국내·해외).
+    # 주문 직후 한 번에 못 구한 실제 체결가를 1분마다 KIS 에 다시 물어봐서 채운다.
     enabled: ${QUANTLOG_RECONCILE_ENABLED:true}
     interval-millis: 60000
   holding-sync:

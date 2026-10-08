@@ -102,7 +102,6 @@
 
     <div class="tabs">
         <button class="tab active" data-market="KR">국내</button>
-        <button class="tab" disabled title="해외 체결통보 실측 후 지원">해외 (준비중)</button>
     </div>
 
     <section class="card">
@@ -124,7 +123,7 @@
 <script>
     // 서버가 접속 직후 보유 종목·대기열·체결 내역 전체(snapshot)를 보내고, 이후 주문 한 건(order), 보유 종목 목록(holdings), 보유 종목 틱(price)을 보낸다.
     // 포맷·색상 판정은 서버가 끝내서 보내므로 여기서는 찍기만 한다.
-    const market = 'KR'; // 해외는 체결통보 실측 후 탭을 연다
+    const market = 'KR';
     const orders = new Map(); // key -> 주문
     let holdings = [];
     const STATE_TEXT = { CHECKING: '체결 확인중', OPEN: '미체결', FILLED: '체결' };

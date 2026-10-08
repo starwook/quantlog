@@ -45,7 +45,6 @@ class RiskGuardTest {
     @Test
     fun `1회 주문 상한은 없다 - 큰 주문도 check 를 통과`() {
         val guard = RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java))
-        guard.check(order(Market.NASDAQ, 100, "150.00"))
         guard.check(order(Market.KR, 30, "272000"))
     }
 

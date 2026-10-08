@@ -28,24 +28,21 @@ class TradeServiceFillTest {
 
     private fun <T> anyNonNull(): T = Mockito.any<T>()
 
-    private fun notice(
-        fill: Boolean = true,
-        overseas: Boolean = false,
-    ) = FillNotice(
-        overseas = overseas,
-        symbol = "005930",
-        orderNo = "A1",
-        originalOrderNo = "",
-        sellBuyCode = "02",
-        filledFlag = if (fill) "2" else "1",
-        acceptFlag = if (fill) "2" else "1",
-        refuseFlag = "0",
-        filledQuantity = if (fill) BigDecimal.ONE else null,
-        filledPrice = if (fill) BigDecimal("277500") else null,
-        orderQuantity = BigDecimal.ONE,
-        orderPrice = BigDecimal("278500"),
-        time = "092344",
-    )
+    private fun notice(fill: Boolean = true) =
+        FillNotice(
+            symbol = "005930",
+            orderNo = "A1",
+            originalOrderNo = "",
+            sellBuyCode = "02",
+            filledFlag = if (fill) "2" else "1",
+            acceptFlag = if (fill) "2" else "1",
+            refuseFlag = "0",
+            filledQuantity = if (fill) BigDecimal.ONE else null,
+            filledPrice = if (fill) BigDecimal("277500") else null,
+            orderQuantity = BigDecimal.ONE,
+            orderPrice = BigDecimal("278500"),
+            time = "092344",
+        )
 
     private fun savedTrades(): MutableList<Trade> {
         val saved = mutableListOf<Trade>()
@@ -92,10 +89,9 @@ class TradeServiceFillTest {
     }
 
     @Test
-    fun `접수 통보와 해외 통보는 체결가로 쓰지 않는다`() {
+    fun `접수 통보는 체결가로 쓰지 않는다`() {
         val saved = savedTrades()
         service.onFillNotice(notice(fill = false))
-        service.onFillNotice(notice(overseas = true))
 
         service.record(order, receipt, "마틴게일")
 

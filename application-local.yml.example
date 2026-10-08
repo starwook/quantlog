@@ -18,6 +18,6 @@ quantlog:
     webhook-url: ""          # Discord/Slack 웹훅 URL. 체결(매수/매도)과 WARN 이상 로그를 알린다. 비우면 꺼짐
   smoke:
     mode: "READ"              # READ(조회만) / BUY / SELL. 비워두면 아무것도 안 한다.
-    market: "NASDAQ"          # NASDAQ / NYSE / AMEX / KR
-    symbol: "AAPL"            # 국내는 "005930" 처럼 종목코드
+    market: "KR"
+    symbol: "005930"          # 종목코드
     quantity: 1

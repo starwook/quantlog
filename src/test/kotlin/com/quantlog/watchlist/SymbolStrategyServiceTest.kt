@@ -125,13 +125,13 @@ class SymbolStrategyServiceTest {
     fun `종목을 추가하면 코드는 대문자로, 매수 옵션은 모두 꺼진 기본값으로 저장한다`() {
         Mockito.`when`(repository.save(Mockito.any(SymbolStrategy::class.java))).thenAnswer { it.arguments[0] }
 
-        service.add(Market.NASDAQ, " tsla ", " 테슬라 ")
+        service.add(Market.KR, " 0000d0 ", " 테스트 ")
 
         val captor = ArgumentCaptor.forClass(SymbolStrategy::class.java)
         Mockito.verify(repository).save(captor.capture())
         val saved = captor.value
-        assertEquals("TSLA", saved.symbol)
-        assertEquals("테슬라", saved.displayName)
+        assertEquals("0000D0", saved.symbol)
+        assertEquals("테스트", saved.displayName)
         assertTrue(!saved.martingale && !saved.supportBounceEntry && !saved.periodicRebuy)
     }
 

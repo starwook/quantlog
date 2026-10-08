@@ -100,7 +100,7 @@
                         <option th:each="m : ${markets}" th:value="${m}" th:text="${m}"></option>
                     </select>
                 </label>
-                <label>종목 코드 <small>예: 005930, SOXL</small>
+                <label>종목 코드 <small>예: 005930</small>
                     <input type="text" name="symbol" required>
                 </label>
                 <label>표시 이름
@@ -131,7 +131,7 @@
         <details>
             <summary>
                 <div class="sum">
-                    <span class="badge" th:text="${row.market.name() == 'KR'} ? '국장' : '미장'"></span>
+                    <span class="badge" >국장</span>
                     <span class="name"><span th:text="${row.displayName}"></span><span class="code" th:text="${row.symbol}"></span></span>
                     <span class="badge on" th:if="${row.martingale}">마틴게일</span>
                     <span class="badge on" th:if="${row.periodicRebuy}"th:text="${row.periodicRebuyIntervalMinutes} + '분 재매수'"></span>
@@ -194,7 +194,7 @@
     <p class="hint" id="none" hidden>조건에 맞는 종목이 없어요.</p>
 </main>
 <script>
-    // 종목 추가: 마스터 검색 결과를 고르면 시장·코드·이름·ETF 칸을 채운다(칸은 직접 고쳐도 된다 — 미국 종목은 직접 입력).
+    // 종목 추가: 마스터 검색 결과를 고르면 시장·코드·이름·ETF 칸을 채운다(칸은 직접 고쳐도 된다).
     const stockQ = document.getElementById('stockQ');
     const stockResults = document.getElementById('stockResults');
     let stockTimer;
