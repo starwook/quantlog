@@ -51,7 +51,7 @@ data class EntryProperties(
  * 매매는 그중 DB 설정의 매수 옵션이 켜진 종목만 마틴게일(보유 중 추가 매수) / 주기 재매수(보유 0주일 때 종목별 n분마다 설정 수량) /
  * 저점 판단 진입(보유 수량 무관, 신호 시 1주)을 각자 켜진 대로 독립 실행한다([checkMartingale]·[checkPeriodicRebuy]·[checkTarget]).
  * 주문은
- * SmokeTestRunner/ExitScheduler 와 같은 RiskGuard.checkBuy(자본 배분·하루 손실 킬스위치 포함) →
+ * SmokeTestRunner/ExitScheduler 와 같은 RiskGuard.checkBuy(자본 배분 포함) →
  * 주문 → 매매 기록 순서를 거친다. "이미 보유 중인지"는 REST 잔고 조회 대신 PortfolioService(우리
  * 매매 기록 DB)로 본다 — ExitScheduler 와 같은 이유(초당 요청 한도 없이 스케줄 주기를 1초로 줄이기 위함).
  */

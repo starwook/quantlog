@@ -67,7 +67,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 - 모의투자는 **일부 종목만 매매 가능**하다. `005930`이 거절되면 `application-local.yml`의 `quantlog.smoke.symbol`을 다른 대형주로 바꿔 본다.
 
 ### 3. 안전장치
-- 주문은 항상 `RiskGuard` 를 거친다 (자본 배분 한도·하루 손실 한도). 한도는 `application.yml` 의 `quantlog.risk`.
+- 주문은 항상 `RiskGuard` 를 거친다 (자본 배분 한도). 한도는 `application.yml` 의 `quantlog.risk`.
 - 모의 도메인(`openapivts…`)만 사용한다. 실전 도메인은 코드에 없다.
 
 ## 개발

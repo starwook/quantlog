@@ -87,25 +87,4 @@ class RiskGuardTest {
             )
         guard.checkBuy(order(Market.KR, 1, "60000"))
     }
-
-    @Test
-    fun `오늘 실현손실이 한도를 넘으면 매수 거부`() {
-        val guard =
-            RiskGuard(
-                RiskProperties(marketAllocationKrw = BigDecimal("1000000"), dailyLossLimitPercent = BigDecimal("3")),
-                // -3% of 1,000,000 = -30,000
-                portfolioServiceWith(currency = "KRW", realizedPnlToday = BigDecimal("-30000")),
-            )
-        assertFailsWith<RiskViolationException> { guard.checkBuy(order(Market.KR, 1, "10000")) }
-    }
-
-    @Test
-    fun `오늘 실현손실이 한도 이내면 매수 허용`() {
-        val guard =
-            RiskGuard(
-                RiskProperties(marketAllocationKrw = BigDecimal("1000000"), dailyLossLimitPercent = BigDecimal("3")),
-                portfolioServiceWith(currency = "KRW", realizedPnlToday = BigDecimal("-10000")),
-            )
-        guard.checkBuy(order(Market.KR, 1, "10000"))
-    }
 }
