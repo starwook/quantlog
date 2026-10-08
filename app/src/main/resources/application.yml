@@ -33,6 +33,9 @@ server:
 
 # 앱은 증권사 시크릿이 없다 — 증권사 호출·실시간 수신·체결 기록은 게이트웨이가 한다(docs/서버-분리.md).
 quantlog:
+  broker:
+    # kis-mock: 주문도 한투 모의투자로 낸다(기본). paper: 시세만 한투에서 받고 주문은 로컬에서 모킹 체결한다(paper/PaperBroker, `paper_order` 테이블).
+    type: ${QUANTLOG_BROKER_TYPE:kis-mock}
   gateway:
     # 게이트웨이(HTTP 명령 · WebSocket 스트림) 주소와 공유 토큰(시크릿 — 서버 env 또는 application-local.yml).
     base-url: ${QUANTLOG_GATEWAY_URL:http://localhost:8081}

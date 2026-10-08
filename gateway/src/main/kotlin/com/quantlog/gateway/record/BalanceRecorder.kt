@@ -1,66 +1,61 @@
 package com.quantlog.gateway.record
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantlog.gateway.GatewayProperties
-import com.quantlog.gateway.broker.BrokerClient
-import com.quantlog.gateway.broker.Holding
-import com.quantlog.gateway.broker.Market
+import com.quantlog.gateway.kis.KisApiClient
+import com.quantlog.gateway.kis.KisProperties
 import com.quantlog.gateway.stream.StreamHub
 import mu.KotlinLogging
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val log = KotlinLogging.logger {}
 
-/** KIS 잔고를 [BrokerBalance] 스냅샷에 그대로 덮어쓴다. 별도 빈이라 @Transactional 이 먹는다. */
+/** 잔고 원문을 [KisBalance] 에 쌓고 오래된 줄을 지운다. 별도 빈이라 @Transactional 이 먹는다. */
 @Service
-class BalanceStore(
-    private val repository: BrokerBalanceRepository,
-    private val metaRepository: BrokerBalanceMetaRepository,
+class KisBalanceStore(
+    private val repository: KisBalanceRepository,
 ) {
-    /** 저장하고 새 회차 번호를 돌려준다. 수량 0 인 종목은 뺀다. */
+    private var lastPrunedAt: Instant = Instant.EPOCH
+
+    /** 저장하고 새 줄의 id 를 돌려준다. */
     @Transactional
     fun record(
-        holdings: List<Holding>,
+        body: String,
         fetchedAt: Instant,
         now: Instant = Instant.now(),
     ): Long {
-        val actual = holdings.filter { it.quantity.signum() > 0 }.associateBy { it.market.name to it.symbol }
-        val existing = repository.findAll().associateBy { it.market to it.symbol }
-        actual.forEach { (key, h) ->
-            val row = existing[key]
-            if (row == null) {
-                repository.save(BrokerBalance(key.first, key.second, h.name, h.quantity, h.averagePrice, h.currentPrice, now))
-            } else {
-                row.name = h.name
-                row.quantity = h.quantity
-                row.averagePrice = h.averagePrice
-                row.currentPrice = h.currentPrice
-                row.updatedAt = now
-            }
+        val saved = repository.save(KisBalance(fetchedAt, now, body))
+        if (Duration.between(lastPrunedAt, now) > PRUNE_EVERY) {
+            lastPrunedAt = now
+            repository.deleteByReceivedAtBefore(now.minus(RETENTION))
         }
-        existing.filterKeys { it !in actual }.values.forEach { repository.delete(it) }
-        val meta = metaRepository.findById(1L).orElseGet { BrokerBalanceMeta() }
-        meta.seq += 1
-        meta.fetchedAt = fetchedAt
-        meta.completedAt = now
-        metaRepository.save(meta)
-        return meta.seq
+        return saved.id!!
+    }
+
+    private companion object {
+        val RETENTION: Duration = Duration.ofDays(1)
+        val PRUNE_EVERY: Duration = Duration.ofHours(1)
     }
 }
 
 /**
- * KIS 잔고를 주기적으로(그리고 체결이 있을 때 바로) 받아 DB 에 **기록만** 한다. 평단·수량 계산이나 사본과의 대조는 앱이 한다.
- * 느린 KIS 호출 하나가 다른 일을 막지 않도록 전용 스레드에서 돌리고, 이전 회차가 안 끝났으면 건너뛴다.
+ * 한투 잔고(주식잔고조회 VTTC8434R)를 주기적으로(그리고 체결이 있을 때 바로) 받아 응답 원문을 DB 에 **기록만** 한다. 평단·수량 계산이나 사본과의 대조는 앱이 한다.
+ * 느린 한투 호출 하나가 다른 일을 막지 않도록 전용 스레드에서 돌리고, 이전 회차가 안 끝났으면 건너뛴다.
+ * 한투가 오류(`rt_cd` ≠ 0)로 답한 회차는 기록하지 않는다 — 오류 응답이 "보유 없음"처럼 읽히면 안 된다.
  */
 @Component
 class BalanceRecorder(
-    private val broker: BrokerClient,
-    private val store: BalanceStore,
+    private val api: KisApiClient,
+    private val kis: KisProperties,
+    private val objectMapper: ObjectMapper,
+    private val store: KisBalanceStore,
     private val hub: StreamHub,
     private val properties: GatewayProperties,
 ) {
@@ -99,16 +94,41 @@ class BalanceRecorder(
 
     @Synchronized
     fun syncNow() {
+        if (!kis.hasCredentials) return
         val fetchedAt = Instant.now()
-        val holdings =
+        val response =
             try {
-                broker.holdings(Market.KR)
+                api.raw(BALANCE_PATH, BALANCE_TR_ID, KisApiClient.GET, BALANCE_PARAMS + accountParams(), null, null)
             } catch (e: Exception) {
-                log.warn(e) { "[잔고 기록] KIS 잔고 조회 실패, 이번 회차 건너뜀" }
+                log.warn(e) { "[잔고 기록] 한투 잔고 조회 실패, 이번 회차 건너뜀" }
                 return
             }
-        runCatching { store.record(holdings, fetchedAt) }
+        val rtCd = runCatching { objectMapper.readTree(response.body).path("rt_cd").asText() }.getOrNull()
+        if (rtCd != "0") {
+            log.warn { "[잔고 기록] 한투가 오류로 답해 이번 회차 건너뜀: HTTP ${response.status} ${response.body.take(200)}" }
+            return
+        }
+        runCatching { store.record(response.body, fetchedAt) }
             .onSuccess { hub.balanceRecorded(it) }
             .onFailure { log.error(it) { "[잔고 기록] DB 에 쓰지 못했다" } }
+    }
+
+    private fun accountParams() = mapOf("CANO" to kis.accountNumber, "ACNT_PRDT_CD" to kis.accountProductCode)
+
+    private companion object {
+        const val BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-balance"
+        const val BALANCE_TR_ID = "VTTC8434R"
+        val BALANCE_PARAMS =
+            mapOf(
+                "AFHR_FLPR_YN" to "N",
+                "OFL_YN" to "",
+                "INQR_DVSN" to "02",
+                "UNPR_DVSN" to "01",
+                "FUND_STTL_ICLD_YN" to "N",
+                "FNCG_AMT_AUTO_RDPT_YN" to "N",
+                "PRCS_DVSN" to "00",
+                "CTX_AREA_FK100" to "",
+                "CTX_AREA_NK100" to "",
+            )
     }
 }

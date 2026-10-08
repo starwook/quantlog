@@ -81,7 +81,7 @@ class StreamHub(
 
     fun fillRecorded(id: Long) = executor.execute { safely { send("fill", mapOf("id" to id)) } }
 
-    fun balanceRecorded(seq: Long) = executor.execute { safely { send("balance", mapOf("seq" to seq)) } }
+    fun balanceRecorded(id: Long) = executor.execute { safely { send("balance", mapOf("id" to id)) } }
 
     val connectionCount: Int get() = sessions.size
 

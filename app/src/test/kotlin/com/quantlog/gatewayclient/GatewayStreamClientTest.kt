@@ -2,6 +2,7 @@ package com.quantlog.gatewayclient
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.quantlog.broker.CandleUpdated
+import com.quantlog.broker.LatestPrices
 import com.quantlog.broker.Market
 import com.quantlog.broker.PriceTick
 import com.quantlog.marketdata.MinuteCandleEntity
@@ -31,7 +32,7 @@ class GatewayStreamClientTest {
             GatewayClientProperties(),
             jacksonObjectMapper().findAndRegisterModules(),
             events,
-            RealtimeCandleBuilder(store, events),
+            RealtimeCandleBuilder(store, events, LatestPrices()),
         )
 
     private fun raw(
@@ -83,7 +84,7 @@ class GatewayStreamClientTest {
     @Test
     fun `fill 과 balance 알림은 GatewayNotified 로 발행하고 ping 은 무시한다`() {
         client.handle("""{"type":"fill","id":5}""")
-        client.handle("""{"type":"balance","seq":3}""")
+        client.handle("""{"type":"balance","id":3}""")
         client.handle("""{"type":"ping","at":"2026-10-08T00:00:00Z"}""")
 
         assertEquals(listOf(GatewayNotified("fill"), GatewayNotified("balance")), published)

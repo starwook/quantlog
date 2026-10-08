@@ -1,6 +1,6 @@
-package com.quantlog.gateway.paper
+package com.quantlog.paper
 
-import com.quantlog.gateway.broker.Market
+import com.quantlog.broker.Market
 import org.springframework.data.jpa.repository.JpaRepository
 
 interface PaperOrderRepository : JpaRepository<PaperOrder, Long> {

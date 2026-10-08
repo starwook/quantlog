@@ -3,6 +3,7 @@ package com.quantlog.watchlist
 import com.quantlog.broker.Market
 import com.quantlog.gatewayclient.WatchSymbolRow
 import com.quantlog.gatewayclient.WatchSymbolRowRepository
+import com.quantlog.paper.EtfRegistry
 import com.quantlog.strategy.MartingaleProperties
 import com.quantlog.strategy.StrategyProperties
 import mu.KotlinLogging
@@ -50,9 +51,9 @@ class SymbolStrategyService(
     private val strategyProperties: StrategyProperties,
     private val martingaleProperties: MartingaleProperties,
     private val events: ApplicationEventPublisher,
-) {
+) : EtfRegistry {
     /** 등록 안 된 종목은 일반 주식으로 본다(제세금을 더 보수적으로 계산). */
-    fun isEtf(
+    override fun isEtf(
         market: Market,
         symbol: String,
     ): Boolean = find(market, symbol)?.etf ?: false

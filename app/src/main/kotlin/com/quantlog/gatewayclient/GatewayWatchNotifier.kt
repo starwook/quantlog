@@ -17,7 +17,7 @@ private val log = KotlinLogging.logger {}
 @Component
 class GatewayWatchNotifier(
     private val properties: GatewayClientProperties,
-    private val gateway: GatewayBrokerClient,
+    private val gateway: GatewayClient,
 ) {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     fun onChanged(event: WatchSymbolsChanged) {

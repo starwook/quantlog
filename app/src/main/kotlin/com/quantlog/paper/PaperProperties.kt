@@ -1,4 +1,4 @@
-package com.quantlog.gateway.paper
+package com.quantlog.paper
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 import java.math.BigDecimal

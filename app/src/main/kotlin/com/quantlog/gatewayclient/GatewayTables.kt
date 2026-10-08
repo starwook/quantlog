@@ -10,10 +10,9 @@ import jakarta.persistence.UniqueConstraint
 import org.hibernate.annotations.Immutable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
-import java.math.BigDecimal
 import java.time.Instant
 
-// 게이트웨이가 쓰는 테이블을 앱이 **읽기 전용으로** 읽는 선언이다. 게이트웨이와 코드를 공유하지 않으므로 같은 컬럼을 앱 쪽에 따로 적고,
+// 게이트웨이가 쓰는 테이블을 앱이 **읽기 전용으로** 읽는 선언이다(원문 그대로 쌓인 한투 응답이라 해석은 앱의 `broker/Kis*Parser` 가 한다). 게이트웨이와 코드를 공유하지 않으므로 같은 컬럼을 앱 쪽에 따로 적고,
 // 계약 테스트(docs/contracts/)가 둘이 같은지 확인한다. 컬럼은 추가만 되므로 앱이 아는 컬럼이 늘 있다.
 // 앱도 ddl-auto 라서 앱이 먼저 뜨면 이 선언으로 테이블이 만들어진다 — 게이트웨이가 IDENTITY 로 insert 하는 테이블은 여기서도 id 를 IDENTITY 로 선언해
 // AUTO_INCREMENT 가 빠지지 않게 한다(빠지면 게이트웨이 insert 가 "Field 'id' doesn't have a default value" 로 실패한다).
@@ -41,11 +40,31 @@ interface KisBrokerFillRowRepository : JpaRepository<KisBrokerFillRow, Long> {
     fun maxId(): Long?
 }
 
-/** 잔고 스냅샷(`broker_balance`, 종목당 1행) — docs/contracts/broker_balance.md. */
+/** 잔고 원문(`kis_balance`) 한 줄 — 한투 주식잔고조회 응답 JSON 원문. [fetchedAt] 은 게이트웨이가 한투를 부르기 **전** 시각이다. docs/contracts/README.md. */
 @Entity
 @Immutable
-@Table(name = "broker_balance", uniqueConstraints = [UniqueConstraint(columnNames = ["market", "symbol"])])
-class BrokerBalanceRow(
+@Table(name = "kis_balance")
+class KisBalanceRow(
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long? = null,
+    @Column(name = "fetched_at", nullable = false)
+    val fetchedAt: Instant = Instant.EPOCH,
+    @Column(name = "received_at", nullable = false)
+    val receivedAt: Instant = Instant.EPOCH,
+    @Column(nullable = false, columnDefinition = "mediumtext")
+    val body: String = "",
+)
+
+interface KisBalanceRowRepository : JpaRepository<KisBalanceRow, Long> {
+    fun findTopByOrderByIdDesc(): KisBalanceRow?
+}
+
+/** 분봉 원문(`kis_minute_chart`) 한 줄 — 한투 주식당일분봉조회 응답 JSON 원문(종목마다 한 번 받을 때 한 줄). docs/contracts/README.md. */
+@Entity
+@Immutable
+@Table(name = "kis_minute_chart")
+class KisMinuteChartRow(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
@@ -53,36 +72,32 @@ class BrokerBalanceRow(
     val market: String = "",
     @Column(nullable = false, length = 20)
     val symbol: String = "",
-    @Column(nullable = false, length = 100)
-    val name: String = "",
-    @Column(nullable = false, precision = 19, scale = 6)
-    val quantity: BigDecimal = BigDecimal.ZERO,
-    @Column(name = "average_price", nullable = false, precision = 19, scale = 6)
-    val averagePrice: BigDecimal = BigDecimal.ZERO,
-    @Column(name = "current_price", nullable = false, precision = 19, scale = 6)
-    val currentPrice: BigDecimal = BigDecimal.ZERO,
-    @Column(name = "updated_at", nullable = false)
-    val updatedAt: Instant = Instant.EPOCH,
+    @Column(name = "received_at", nullable = false)
+    val receivedAt: Instant = Instant.EPOCH,
+    @Column(nullable = false, columnDefinition = "mediumtext")
+    val body: String = "",
 )
 
-interface BrokerBalanceRowRepository : JpaRepository<BrokerBalanceRow, Long>
+interface KisMinuteChartRowRepository : JpaRepository<KisMinuteChartRow, Long> {
+    fun findTop200ByIdGreaterThanOrderByIdAsc(id: Long): List<KisMinuteChartRow>
+}
 
-/** 잔고 스냅샷 회차 메타(`broker_balance_meta`, 1행). [fetchedAt] 은 게이트웨이가 KIS 를 부르기 **전** 시각이다. */
+/** 앱이 쓰는 계약 테이블(`held_symbol`) — 지금 보유 중인 종목. 게이트웨이는 잔고 원문을 해석하지 않으므로 앱이 알려 준다. docs/contracts/README.md. */
 @Entity
-@Immutable
-@Table(name = "broker_balance_meta")
-class BrokerBalanceMetaRow(
+@Table(name = "held_symbol", uniqueConstraints = [UniqueConstraint(columnNames = ["market", "symbol"])])
+class HeldSymbolRow(
+    @Column(nullable = false, length = 20)
+    val market: String,
+    @Column(nullable = false, length = 20)
+    val symbol: String,
+) {
     @Id
-    val id: Long = 1,
-    @Column(nullable = false)
-    val seq: Long = 0,
-    @Column(name = "fetched_at", nullable = false)
-    val fetchedAt: Instant = Instant.EPOCH,
-    @Column(name = "completed_at", nullable = false)
-    val completedAt: Instant = Instant.EPOCH,
-)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = null
+        protected set
+}
 
-interface BrokerBalanceMetaRowRepository : JpaRepository<BrokerBalanceMetaRow, Long>
+interface HeldSymbolRowRepository : JpaRepository<HeldSymbolRow, Long>
 
 /** 게이트웨이 인스턴스 하트비트(`gateway_instance`, 1행) — docs/contracts/gateway_instance.md. */
 @Entity

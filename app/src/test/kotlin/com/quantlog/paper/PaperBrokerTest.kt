@@ -1,10 +1,10 @@
-package com.quantlog.gateway.paper
+package com.quantlog.paper
 
-import com.quantlog.gateway.broker.Market
-import com.quantlog.gateway.broker.OrderRequest
-import com.quantlog.gateway.broker.Quote
-import com.quantlog.gateway.broker.Side
-import com.quantlog.gateway.kis.KisMockBroker
+import com.quantlog.broker.KisBrokerClient
+import com.quantlog.broker.Market
+import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.Quote
+import com.quantlog.broker.Side
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyCollection
 import org.mockito.Mockito
@@ -19,7 +19,7 @@ class PaperBrokerTest {
     private val etfs = mutableSetOf<String>()
 
     private fun broker(properties: PaperProperties = PaperProperties()): PaperBroker {
-        val kis = Mockito.mock(KisMockBroker::class.java)
+        val kis = Mockito.mock(KisBrokerClient::class.java)
         Mockito.`when`(kis.quote(Market.KR, "005930")).thenReturn(Quote(BigDecimal("273000"), BigDecimal("500")))
         val repository = Mockito.mock(PaperOrderRepository::class.java)
         Mockito.`when`(repository.save(Mockito.any(PaperOrder::class.java))).thenAnswer {
