@@ -36,13 +36,16 @@ class FillBackfillServiceTest {
         orderNo: String = "O1",
     ) = TradeFill(Market.KR, "226490", Side.BUY, orderNo, quantity, BigDecimal(price), null, filledAt)
 
+    /** 원장이 돌기 시작한 시각을 정하는 체결통보 기록(다른 주문의 것). 테스트 주문은 이보다 늦게 냈다. */
+    private val ledgerStartMarker = fill(1, "100", filledAt = now.minusSeconds(7200), orderNo = "START")
+
     private fun given(
         trades: List<Trade>,
         fills: List<TradeFill>,
         totals: List<OrderFillTotal>,
     ) {
         Mockito.`when`(tradeRepository.findAll()).thenReturn(trades)
-        Mockito.`when`(tradeFillRepository.findAll()).thenReturn(fills)
+        Mockito.`when`(tradeFillRepository.findAll()).thenReturn(listOf(ledgerStartMarker) + fills)
         Mockito.`when`(broker.todayOrderFills(Market.KR)).thenReturn(totals)
     }
 
@@ -114,7 +117,7 @@ class FillBackfillServiceTest {
     @Test
     fun `KIS 조회가 실패하면 아무것도 채우지 않는다`() {
         Mockito.`when`(tradeRepository.findAll()).thenReturn(listOf(buy()))
-        Mockito.`when`(tradeFillRepository.findAll()).thenReturn(emptyList())
+        Mockito.`when`(tradeFillRepository.findAll()).thenReturn(listOf(ledgerStartMarker))
         Mockito.`when`(broker.todayOrderFills(Market.KR)).thenThrow(IllegalStateException("KIS 지연"))
 
         val result = service.backfill(now)
@@ -129,6 +132,25 @@ class FillBackfillServiceTest {
 
         service.backfill(now)
 
+        verify(broker, never()).todayOrderFills(Market.KR)
+    }
+
+    @Test
+    fun `원장이 돌기 전에 낸 옛 주문은 보충하지 않는다`() {
+        given(listOf(buy(executedAt = now.minusSeconds(10_000))), emptyList(), listOf(OrderFillTotal("O1", 44, BigDecimal("69590"))))
+
+        val result = service.backfill(now)
+
+        assertEquals(0, result.filledOrders)
+        verify(broker, never()).todayOrderFills(Market.KR)
+    }
+
+    @Test
+    fun `체결통보 기록이 하나도 없으면 원장 시작 시각을 몰라 아무것도 보충하지 않는다`() {
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(listOf(buy()))
+        Mockito.`when`(tradeFillRepository.findAll()).thenReturn(emptyList())
+
+        assertEquals(0, service.backfill(now).filledOrders)
         verify(broker, never()).todayOrderFills(Market.KR)
     }
 }
