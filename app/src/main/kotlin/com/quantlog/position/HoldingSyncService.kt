@@ -29,18 +29,13 @@ private val log = KotlinLogging.logger {}
 class HoldingSyncService(
     private val accountHoldingRepository: AccountHoldingRepository,
     private val tradeRepository: TradeRepository,
+    private val tradeFills: TradeFillRepository,
     private val symbolNames: SymbolStrategyService,
     private val events: ApplicationEventPublisher,
 ) : FillProgress {
     /** 마지막으로 잔고를 받기 시작한 시각. 한 번도 못 받았으면 null. */
     @Volatile
     private var lastSyncedAt: Instant? = null
-
-    /** 체결통보를 이미 반영한 수량(주문번호별). 같은 통보가 다시 와도, 체결수량이 누적으로 와도 주문수량을 넘겨 더하지 않는다. */
-    private val appliedQuantity: MutableMap<String, Int> = boundedMap()
-
-    /** 주문수량만큼 체결통보를 다 반영한 주문번호. */
-    private val completedOrders: MutableMap<String, Boolean> = boundedMap()
 
     /** 종목별로 체결통보를 마지막으로 반영한 시각. 그보다 먼저 시작한 KIS 잔고 조회 결과로는 그 종목을 덮어쓰지 않는다. */
     private val fillAppliedAt = ConcurrentHashMap<Pair<Market, String>, Instant>()
@@ -56,12 +51,15 @@ class HoldingSyncService(
         val synced = lastSyncedAt ?: return true
         val last = tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(market, symbol) ?: return false
         // 체결통보로 이미 다 반영한 주문이면 동기화를 기다릴 필요가 없다.
-        if (completedOrders.containsKey(last.orderNo)) return false
+        if (isOrderFilled(last.orderNo)) return false
         return last.executedAt.isAfter(synced)
     }
 
-    /** 이 주문을 체결통보로 주문수량만큼 다 반영했는가. 마틴게일의 "단계 진행 중"이 풀리는 기준이다. */
-    override fun isOrderFilled(orderNo: String): Boolean = completedOrders.containsKey(orderNo)
+    /** 이 주문을 원장([TradeFill])에 주문수량만큼 다 반영했는가. 마틴게일의 "단계 진행 중"이 풀리는 기준이다. 메모리가 아니라 원장에서 구해 재시작해도 같다. */
+    override fun isOrderFilled(orderNo: String): Boolean {
+        val trade = tradeRepository.findFirstByMarketAndOrderNo(Market.KR, orderNo) ?: return false
+        return tradeFills.filledSoFar(Market.KR, orderNo).quantity >= trade.quantity
+    }
 
     /**
      * 체결통보 한 건을 보유 현황에 반영한다. 체결 통보만 처리하고 접수 통보는 건너뛴다.
@@ -145,20 +143,12 @@ class HoldingSyncService(
         return tradeRepository.findFirstByMarketAndOrderNo(Market.KR, notice.orderNo)?.quantity ?: Int.MAX_VALUE
     }
 
-    /** 이 주문에서 이번 통보로 더 반영할 수량을 정하고 기록한다. 이미 주문수량만큼 반영했으면 0. */
+    /** 이 주문에서 이번 통보로 더 반영할 수량. 이미 원장에 주문수량만큼 있으면 0 — 같은 통보가 다시 와도, 체결수량이 누적으로 와도 주문수량을 넘겨 더하지 않는다. */
     private fun reserveFillQuantity(
         orderNo: String,
         reported: Int,
         orderQuantity: Int,
-    ): Int =
-        synchronized(appliedQuantity) {
-            val applied = appliedQuantity[orderNo] ?: 0
-            val take = minOf(reported, orderQuantity - applied)
-            if (take <= 0) return@synchronized 0
-            appliedQuantity[orderNo] = applied + take
-            if (applied + take >= orderQuantity) completedOrders[orderNo] = true
-            take
-        }
+    ): Int = minOf(reported, orderQuantity - tradeFills.filledSoFar(Market.KR, orderNo).quantity).coerceAtLeast(0)
 
     /**
      * [kis] 는 [fetchedAt] 시점에 받은 잔고 전체. 바뀐 내용 설명 목록을 돌려준다(변화가 없으면 빈 목록).

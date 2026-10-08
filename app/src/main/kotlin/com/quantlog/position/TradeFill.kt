@@ -13,6 +13,7 @@ import jakarta.persistence.Index
 import jakarta.persistence.Table
 import org.springframework.data.jpa.repository.JpaRepository
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Instant
 
 /** 체결 원장 한 줄이 어디서 왔는지. */
@@ -64,4 +65,26 @@ class TradeFill(
         protected set
 }
 
-interface TradeFillRepository : JpaRepository<TradeFill, Long>
+interface TradeFillRepository : JpaRepository<TradeFill, Long> {
+    fun findAllByMarketAndOrderNo(
+        market: Market,
+        orderNo: String,
+    ): List<TradeFill>
+}
+
+/** 한 주문이 지금까지 체결된 합계. 원장([TradeFill])에서 매번 구하므로 앱이 재시작돼도 같은 값이다. */
+data class FilledSoFar(val quantity: Int, val amount: BigDecimal) {
+    val averagePrice: BigDecimal? get() = if (quantity > 0) amount.divide(BigDecimal(quantity), PRICE_SCALE, RoundingMode.HALF_UP) else null
+
+    private companion object {
+        const val PRICE_SCALE = 6
+    }
+}
+
+fun TradeFillRepository.filledSoFar(
+    market: Market,
+    orderNo: String,
+): FilledSoFar {
+    val fills = findAllByMarketAndOrderNo(market, orderNo)
+    return FilledSoFar(fills.sumOf { it.quantity }, fills.fold(BigDecimal.ZERO) { sum, f -> sum + f.price * BigDecimal(f.quantity) })
+}

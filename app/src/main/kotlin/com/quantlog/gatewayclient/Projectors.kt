@@ -53,7 +53,8 @@ class FillProjector(
                         cursors.save(ProjectionCursor(CURSOR, row.id!!))
                     }
                 }.onFailure {
-                    log.warn(it) { "[체결 반영] 실패 — 건너뛴다(다음 잔고 반영이 바로잡는다): id=${row.id} ${notice.summary()}" }
+                    // 건너뛴 체결을 나중에 찾아볼 수 있게 ERROR 로 남긴다(/errors·웹훅). 원장 행 ID(broker_fill.id)와 주문번호로 그 행을 특정한다.
+                    log.error(it) { "[체결 반영 실패] 건너뛴다(다음 잔고 반영이 보유를 바로잡는다): broker_fill.id=${row.id} ${notice.summary()}" }
                     cursors.save(ProjectionCursor(CURSOR, row.id!!))
                 }
                 last = row.id

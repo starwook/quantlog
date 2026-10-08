@@ -11,7 +11,6 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
-import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -25,8 +24,9 @@ class HoldingSyncServiceFillTest {
     private val symbol = "005930"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
+    private val ledger = InMemoryTradeFills()
     private val service =
-        HoldingSyncService(repository, tradeRepository, symbolStrategyServiceOf(), ApplicationEventPublisher { })
+        HoldingSyncService(repository, tradeRepository, ledger.repository, symbolStrategyServiceOf(), ledger.publisher())
     private val now = Instant.parse("2026-10-07T00:24:00Z")
 
     private fun row(
@@ -164,6 +164,8 @@ class HoldingSyncServiceFillTest {
     @Test
     fun `주문수량만큼 다 반영해야 체결 완료이고 일부만 반영된 주문은 아직이다`() {
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(row(10, "9000"))
+        val trade = Trade(Market.KR, symbol, Side.BUY, 5, BigDecimal("9000"), "P1", "ok")
+        Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "P1")).thenReturn(trade)
 
         service.applyFill(notice(Side.BUY, 3, "9000", orderNo = "P1", orderQuantity = 5), now)
         assertFalse(service.isOrderFilled("P1"))
@@ -179,6 +181,7 @@ class HoldingSyncServiceFillTest {
         service.sync(emptyList(), synced)
         val trade = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("278500"), "0000008775", "ok", executedAt = now)
         Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(trade)
+        Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "0000008775")).thenReturn(trade)
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(null)
 
         assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))

@@ -11,23 +11,15 @@ import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
-import java.math.RoundingMode
 
 /** 주문이 브로커에 접수될 때마다 기록을 남긴다. 봇이든 점검용 실행기든 주문을 내는 곳은 모두 이걸 거친다. */
 @Service
 class TradeService(
     private val repository: TradeRepository,
+    private val tradeFills: TradeFillRepository,
     private val notifier: Notifier,
     private val events: ApplicationEventPublisher,
 ) {
-    private data class Fill(val quantity: BigDecimal, val amount: BigDecimal)
-
-    /**
-     * 체결통보로 받은 체결을 주문번호별로 보관한다. 체결통보는 주문 응답(REST)보다 먼저 오는 일이 흔해서(2026-10-07 실측: 통보 후 8~15초 뒤에
-     * 주문 응답), 매매 기록을 저장할 때 이미 와 있으면 그 체결가를 바로 채운다. 기록이 먼저 있으면 통보가 올 때 채운다([onFillNotice]).
-     */
-    private val fills: MutableMap<String, Fill> = boundedMap()
-
     /** 이 종목의 체결된 매매 기록(체결 시각 오름차순). 취소·미체결 주문은 뺀다. 마틴게일 사이클 계산에 쓴다. */
     fun trades(
         market: Market,
@@ -45,23 +37,17 @@ class TradeService(
     ): Trade? = repository.findFirstByMarketAndOrderNo(market, orderNo)
 
     /**
-     * 국내 체결 통보가 오면 체결가를 보관하고, 이미 저장된 매매 기록이 있으면 체결가를 채운다(이미 있으면 덮어쓰지 않는다).
+     * 국내 체결 통보가 오면, 이미 저장된 매매 기록이 있으면 원장([TradeFill])의 주문별 누적으로 체결가·체결수량을 채운다. 기록이 아직 없으면 [record] 가 저장할 때 원장에서 구해 채운다.
      * [TradeFilledEvent] 는 일부러 내지 않는다 — 그 이벤트는 REST 잔고 동기화를 돌리는데, 이 메서드는 WebSocket 수신 스레드에서 불리므로
      * 수 초 걸리는 REST 호출로 틱 수신을 막으면 안 된다(보유 수량은 [HoldingSyncService.applyFill] 이 이미 반영한다).
      */
     @EventListener
     fun onFillNotice(notice: FillNotice) {
         if (!notice.isFill) return
-        val price = notice.filledPrice ?: return
-        val quantity = notice.filledQuantity ?: return
-        val (average, cumulative) =
-            synchronized(fills) {
-                val before = fills[notice.orderNo]
-                val total =
-                    Fill((before?.quantity ?: BigDecimal.ZERO) + quantity, (before?.amount ?: BigDecimal.ZERO) + price * quantity)
-                fills[notice.orderNo] = total
-                total.amount.divide(total.quantity, PRICE_SCALE, RoundingMode.HALF_UP) to total.quantity.toInt()
-            }
+        // 누적은 메모리가 아니라 원장에서 구한다 — 이 통보는 호출 직전 [HoldingSyncService.applyFill] 이 같은 트랜잭션에서 원장에 적었다.
+        val total = tradeFills.filledSoFar(Market.KR, notice.orderNo)
+        val average = total.averagePrice ?: return
+        val cumulative = total.quantity
         val trade = repository.findFirstByMarketAndOrderNo(Market.KR, notice.orderNo) ?: return
         // 통보는 건별 체결이라 누적해서 반영한다 — 첫 통보로 "전량 체결"이 되면 부분체결 주문이 체결로 보인다(2026-10-08).
         if (trade.applyFill(average, cumulative)) {
@@ -69,11 +55,6 @@ class TradeService(
             events.publishEvent(TradeChangedEvent(trade))
         }
     }
-
-    private fun fillOf(
-        order: OrderRequest,
-        orderNo: String,
-    ): Fill? = synchronized(fills) { fills[orderNo] }
 
     fun find(id: Long): Trade = repository.findById(id).orElseThrow { IllegalStateException("주문 기록이 없습니다: $id") }
 
@@ -104,10 +85,17 @@ class TradeService(
         filledPrice: BigDecimal? = null,
         openConfirmed: Boolean = false,
     ): Trade {
-        val noticed = if (filledPrice == null) fillOf(order, receipt.orderNo) else null
-        val knownFilledPrice = filledPrice ?: noticed?.amount?.divide(noticed.quantity, PRICE_SCALE, RoundingMode.HALF_UP)
+        val noticed = if (filledPrice == null) tradeFills.filledSoFar(order.market, receipt.orderNo) else null
+        val knownFilledPrice = filledPrice ?: noticed?.averagePrice
         // 호출부가 체결가를 넘겼으면 전량 체결로 본다. 통보에서 온 값이면 지금까지 체결된 수량만큼만이다.
-        val knownFilledQuantity = if (filledPrice != null) order.quantity else noticed?.quantity?.toInt()?.let { minOf(it, order.quantity) }
+        val knownFilledQuantity =
+            if (filledPrice != null) {
+                order.quantity
+            } else {
+                noticed?.quantity?.takeIf {
+                    it > 0
+                }?.let { minOf(it, order.quantity) }
+            }
         val trade =
             repository.save(
                 Trade(
@@ -133,9 +121,5 @@ class TradeService(
         events.publishEvent(TradeChangedEvent(trade))
         if (knownFilledPrice != null) events.publishEvent(TradeFilledEvent(order.market, order.symbol))
         return trade
-    }
-
-    private companion object {
-        const val PRICE_SCALE = 6
     }
 }
