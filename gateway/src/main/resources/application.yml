@@ -1,0 +1,51 @@
+spring:
+  profiles:
+    # 다른 프로파일을 지정하지 않으면 "local" 이 기본으로 켜진다 → 프로젝트 루트(또는 작업 디렉터리)의 application-local.yml 이 있으면 읽어 덮어쓴다.
+    # 그 파일은 .gitignore 에 있어 커밋되지 않고, 없어도 에러 없이 기본값(빈 값)으로 실행된다. 시크릿(KIS 키 등)은 여기 쓰지 않는다.
+    default: local
+  # 로컬 개발용 MySQL. root/무비밀번호/localhost 라 시크릿이 아니라 커밋해도 된다. 배포에서는 환경변수(SPRING_DATASOURCE_*)로 덮어쓴다.
+  datasource:
+    url: jdbc:mysql://localhost:3306/quantlog?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: ""
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  task:
+    scheduling:
+      pool:
+        size: 4
+  jackson:
+    generator:
+      # BigDecimal 을 1E+3 같은 지수 표기로 보내지 않는다(앱이 같은 숫자로 받아야 한다).
+      write-bigdecimal-as-plain: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+server:
+  port: 8081
+
+# 시크릿은 절대 이 파일(git에 커밋됨)에 적지 않는다. 환경변수나 application-local.yml 에만 적는다.
+kis:
+  mock:
+    app-key: ${KIS_MOCK_APP_KEY:}
+    app-secret: ${KIS_MOCK_APP_SECRET:}
+    account: ${KIS_MOCK_ACCOUNT:}
+    log-raw: ${KIS_MOCK_LOG_RAW:false}
+    # 실시간 체결통보 구독용 HTS ID(시크릿 취급). 비우면 체결통보를 구독하지 않는다.
+    hts-id: ${KIS_MOCK_HTS_ID:}
+
+quantlog:
+  broker:
+    # kis-mock: 주문도 KIS 모의투자로 낸다(기본). paper: 시세·분봉만 KIS 에서 받고 주문은 로컬에서 모킹 체결한다(gateway/paper/PaperBroker).
+    type: ${QUANTLOG_BROKER_TYPE:kis-mock}
+  gateway:
+    # 앱이 HTTP·웹소켓 호출에 붙이는 공유 토큰. 비우면 검사하지 않는다(사설망·로컬 개발).
+    token: ${QUANTLOG_GATEWAY_TOKEN:}
+    candle-collection:
+      enabled: ${QUANTLOG_GATEWAY_CANDLES_ENABLED:true}
+      interval-millis: 1000
+    balance:
+      enabled: ${QUANTLOG_GATEWAY_BALANCE_ENABLED:true}
+      interval-millis: 10000

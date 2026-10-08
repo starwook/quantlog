@@ -6,7 +6,6 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
-import com.quantlog.marketdata.MinuteCandleCollector
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.FixedPercentExitRule
 import mu.KotlinLogging
@@ -17,8 +16,6 @@ import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
-import java.time.LocalTime
-import java.time.ZoneId
 
 private val log = KotlinLogging.logger {}
 
@@ -46,7 +43,6 @@ class SmokeTestRunner(
     private val properties: SmokeProperties,
     private val exitRule: FixedPercentExitRule,
     private val tradeService: TradeService,
-    private val candleCollector: MinuteCandleCollector,
 ) : ApplicationRunner {
     /**
      * 점검용 1회성 실행기라 여기서 실패해도 앱 전체(청산 스케줄러 등)를 죽이면 안 된다 —
@@ -64,10 +60,6 @@ class SmokeTestRunner(
             log.info { "quantlog.smoke.mode 가 비어 있어 점검을 건너뜁니다." }
             return
         }
-        if (mode == "CANDLES") {
-            fetchCandles(properties.market, properties.symbol)
-            return
-        }
         val market = properties.market
         val symbol = properties.symbol
 
@@ -83,19 +75,7 @@ class SmokeTestRunner(
             "READ" -> Unit
             "BUY" -> order(Side.BUY, quote, BUY_REASON)
             "SELL" -> order(Side.SELL, quote, sellReason(holdingsBefore, symbol, quote))
-            else -> error("알 수 없는 mode: $mode (READ/BUY/SELL/CANDLES)")
-        }
-    }
-
-    /** 최근 분봉을 받아 DB에 새로 생긴 것만 저장한다. */
-    private fun fetchCandles(
-        market: Market,
-        symbol: String,
-    ) {
-        val now = LocalTime.now(ZoneId.of("Asia/Seoul"))
-        val saved = candleCollector.fetchAndStoreRecentMinutes(market, symbol, now)
-        saved.sortedBy { it.tradeTime }.forEach {
-            log.info { "[분봉] ${it.tradeTime} O=${it.open} H=${it.high} L=${it.low} C=${it.close} V=${it.volume}" }
+            else -> error("알 수 없는 mode: $mode (READ/BUY/SELL)")
         }
     }
 

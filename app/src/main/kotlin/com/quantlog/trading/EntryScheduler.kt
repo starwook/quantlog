@@ -6,7 +6,6 @@ import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.RealtimePriceFeed
 import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
-import com.quantlog.marketdata.MinuteCandleCollector
 import com.quantlog.position.FillProgress
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
@@ -27,7 +26,6 @@ import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.concurrent.ConcurrentHashMap
@@ -64,7 +62,6 @@ class EntryScheduler(
     private val entryRule: SupportBounceEntryRule,
     private val symbolStrategyService: SymbolStrategyService,
     private val marketDataService: MarketDataService,
-    private val candleCollector: MinuteCandleCollector,
     private val tradeService: TradeService,
     private val portfolioService: PortfolioService,
     private val holdingSync: FillProgress,
@@ -97,10 +94,6 @@ class EntryScheduler(
 
         watchlist.forEach { watched ->
             if (!watched.market.isTradable(now)) return@forEach
-
-            // 분봉 수집은 매매 대상 여부와 무관하게 항상 한다.
-            runCatching { candleCollector.fetchAndStoreRecentMinutes(watched.market, watched.symbol, LocalTime.now(KST)) }
-                .onFailure { log.warn(it) { "[분봉 수집] 실패: ${watched.market} ${watched.symbol}" } }
 
             // 무엇을 살지는 같은 행(symbol_strategy)의 매수 옵션이 정한다 — 하나도 안 켜져 있으면 아래 세 분기가 모두 건너뛰어진다.
             // 세 진입 옵션은 완전히 별개다 — 서로의 조건·결과를 보지 않고 각자 판단한다(같은 주기에 둘 이상 주문이 나갈 수도 있다).

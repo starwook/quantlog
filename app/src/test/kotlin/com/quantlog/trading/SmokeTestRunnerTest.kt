@@ -9,7 +9,6 @@ import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
-import com.quantlog.marketdata.MinuteCandleCollector
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.TradeService
@@ -63,13 +62,12 @@ class SmokeTestRunnerTest {
     private val guard = RiskGuard(RiskProperties(), portfolioService)
     private val exitRule = FixedPercentExitRule(BigDecimal.ONE, BigDecimal.ONE)
     private val tradeService = Mockito.mock(TradeService::class.java)
-    private val marketDataService = Mockito.mock(MinuteCandleCollector::class.java)
 
     private fun runner(
         broker: FakeBroker,
         properties: SmokeProperties,
         riskGuard: RiskGuard = guard,
-    ) = SmokeTestRunner(broker, riskGuard, properties, exitRule, tradeService, marketDataService)
+    ) = SmokeTestRunner(broker, riskGuard, properties, exitRule, tradeService)
 
     @Test
     fun `mode 가 비어 있으면 주문하지 않는다`() {
@@ -102,19 +100,4 @@ class SmokeTestRunnerTest {
         runCatching { runner(broker, SmokeProperties(mode = "BUY"), strict).run(DefaultApplicationArguments()) }
         assertTrue(broker.orders.isEmpty())
     }
-
-    @Test
-    fun `CANDLES 모드는 주문 없이 분봉만 받아 저장을 위임한다`() {
-        val broker = FakeBroker()
-        Mockito.`when`(marketDataService.fetchAndStoreRecentMinutes(anyNonNull(), anyNonNull(), anyNonNull()))
-            .thenReturn(emptyList())
-        runner(broker, SmokeProperties(mode = "CANDLES")).run(DefaultApplicationArguments())
-        assertTrue(broker.orders.isEmpty())
-        Mockito.verify(marketDataService).fetchAndStoreRecentMinutes(eqNonNull(Market.KR), eqNonNull("005930"), anyNonNull())
-    }
-
-    /** Mockito.any()/eq() 는 코틀린 non-null 타입 파라미터에 null 을 넘겨 NPE 를 낸다. */
-    private fun <T> anyNonNull(): T = Mockito.any<T>()
-
-    private fun <T> eqNonNull(value: T): T = Mockito.eq(value)
 }
