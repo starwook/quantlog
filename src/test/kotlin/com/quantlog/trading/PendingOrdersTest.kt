@@ -5,6 +5,7 @@ import com.quantlog.broker.CancelRequest
 import com.quantlog.broker.Market
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.OrderStatus
 import com.quantlog.broker.Side
 import com.quantlog.position.HoldingSyncService
 import com.quantlog.position.TradeService
@@ -80,6 +81,34 @@ class PendingOrdersTest {
         assertTrue(pending.isWaiting(key))
 
         pending.expire(at(10 * 60 + 1), neverLocked)
+        assertFalse(pending.isWaiting(key))
+    }
+
+    @Test
+    fun `포기할 때가 돼도 KIS 에서 체결이 확인되면 포기하지 않고 대기만 푼다`() {
+        track()
+        Mockito.doThrow(IllegalStateException("취소 거부")).`when`(broker).cancelOrder(anyNonNull<CancelRequest>())
+        Mockito.`when`(broker.orderStatus(Market.KR, "0000011848", 44)).thenReturn(OrderStatus.Filled(BigDecimal("69590")))
+
+        pending.expire(at(11), runLocked)
+        pending.expire(at(11 + 121), runLocked)
+
+        assertFalse(pending.isWaiting(key))
+    }
+
+    @Test
+    fun `포기할 때가 돼도 KIS 에서 아직 미체결이면 포기하지 않고 취소를 계속 시도한다`() {
+        track()
+        Mockito.doThrow(IllegalStateException("취소 거부")).`when`(broker).cancelOrder(anyNonNull<CancelRequest>())
+        Mockito.`when`(broker.orderStatus(Market.KR, "0000011848", 44)).thenReturn(OrderStatus.Open)
+
+        pending.expire(at(11), runLocked)
+        pending.expire(at(11 + 121), runLocked)
+
+        assertTrue(pending.isWaiting(key))
+        assertEquals(2, cancelAttempts())
+
+        pending.expire(at(10 * 60 + 1), runLocked)
         assertFalse(pending.isWaiting(key))
     }
 }
