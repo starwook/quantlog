@@ -48,6 +48,12 @@ interface BrokerClient {
         quantity: Int,
     ): OrderStatus = filledPrice(market, orderNo)?.let { OrderStatus.Filled(it) } ?: OrderStatus.Unknown
 
+    /**
+     * 오늘 접수된 주문들의 체결 누적(주문번호별). 체결통보를 놓쳤을 때(서버 재시작·연결 끊김) 빠진 체결을 채우는 데 쓴다.
+     * 한 번에 한 페이지만 준다. 지원하지 않는 구현체는 빈 목록.
+     */
+    fun todayOrderFills(market: Market): List<OrderFillTotal> = emptyList()
+
     fun buyingPower(
         market: Market,
         symbol: String,
