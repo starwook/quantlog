@@ -81,6 +81,9 @@ class HoldingSyncService(
         val market = Market.KR
         val name = symbolStrategyService.displayName(market, notice.symbol)
         val row = accountHoldingRepository.findByMarketAndSymbol(market, notice.symbol)
+        // 체결 원장 기록(FillLedger). 사본을 바꾸기 전의 평단을 실어 보내야 한다 — 이 체결의 손익은 그 평단 기준으로 확정한다.
+        // 사본에 종목이 없는 매도(row == null)도 체결은 실제로 일어났으니 기록한다(평단은 null).
+        events.publishEvent(FillAppliedEvent(market, notice.symbol, side, notice.orderNo, quantity, price, row?.avgCost, now))
         val change =
             when (side) {
                 Side.BUY -> {

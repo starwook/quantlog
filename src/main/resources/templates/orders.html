@@ -69,7 +69,7 @@
         .side.BUY { background: var(--buy); }
         .side.SELL { background: var(--sell); }
         .badge { font-size: 12px; font-weight: 700; }
-        .badge.CHECKING, .badge.OPEN { color: var(--warn); }
+        .badge.CHECKING, .badge.OPEN, .badge.PARTIAL { color: var(--warn); }
         .badge.FILLED { color: var(--ok); }
         .reason { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
         .pnl { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--bg); }
@@ -126,8 +126,8 @@
     const market = 'KR';
     const orders = new Map(); // key -> 주문
     let holdings = [];
-    const STATE_TEXT = { CHECKING: '체결 확인중', OPEN: '미체결', FILLED: '체결' };
-    const isWaiting = (o) => o.state === 'CHECKING' || o.state === 'OPEN';
+    const STATE_TEXT = { CHECKING: '체결 확인중', OPEN: '미체결', PARTIAL: '일부 체결', FILLED: '체결' };
+    const isWaiting = (o) => o.state === 'CHECKING' || o.state === 'OPEN' || o.state === 'PARTIAL';
 
     function el(tag, className, text) {
         const e = document.createElement(tag);
@@ -170,7 +170,9 @@
 
     function renderOrder(o, flashKey) {
         const row = el('div', 'order' + (o.key === flashKey ? ' flash' : ''));
-        const badge = el('span', 'badge ' + o.state, STATE_TEXT[o.state]);
+        const label = o.state === 'PARTIAL' ? STATE_TEXT.PARTIAL + ' ' + o.filledQuantity + '/' + o.quantity : STATE_TEXT[o.state];
+        const badge = el('span', 'badge ' + o.state, label);
+        badge.dataset.label = label;
         badge.dataset.waitingSince = isWaiting(o) ? o.placedAtEpochMs : '';
         row.appendChild(line(sideAndName(o.side, o.market, o.symbolName, o.symbol), badge));
 
@@ -229,7 +231,7 @@
             const since = Number(b.dataset.waitingSince);
             if (!since) return;
             const sec = Math.max(0, Math.floor((Date.now() - since) / 1000));
-            b.textContent = (b.classList.contains('OPEN') ? '미체결' : '체결 확인중') + ' · ' + sec + '초';
+            b.textContent = b.dataset.label + ' · ' + sec + '초';
         });
     }
     setInterval(tick, 1000);

@@ -50,6 +50,7 @@ class Trade(
     @Column(name = "branch_no", length = 20)
     val branchNo: String? = null,
     initialOpenConfirmed: Boolean = false,
+    initialFilledQuantity: Int? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -66,6 +67,18 @@ class Trade(
     @Column(name = "filled_price", precision = 19, scale = 6)
     var filledPrice: BigDecimal? = initialFilledPrice
         private set
+
+    /**
+     * 지금까지 체결된 수량(누적). 체결통보로 쌓는다. null 이면 옛 기록 — [filledPrice] 가 있으면 주문수량 전부 체결로 본다.
+     * 주문수량보다 적으면 부분체결 중이다([OrderState.PARTIAL]).
+     */
+    @Column(name = "filled_quantity")
+    var filledQuantity: Int? = initialFilledQuantity
+        private set
+
+    /** 체결이 시작됐지만 주문수량만큼은 아직 안 찬 상태. */
+    val partiallyFilled: Boolean
+        get() = filledPrice != null && (filledQuantity ?: quantity) < quantity
 
     /** 취소된 주문. 체결되지 않았으므로 손익·사이클 계산과 체결가 재확인에서 빠진다. */
     @Column(nullable = false)
@@ -89,17 +102,37 @@ class Trade(
         get() =
             when {
                 canceled -> OrderState.CANCELED
+                partiallyFilled -> OrderState.PARTIAL
                 filledPrice != null -> OrderState.FILLED
                 openConfirmed -> OrderState.OPEN
                 else -> OrderState.CHECKING
             }
 
-    /** 증권사 체결조회 결과를 반영한다. 체결이 확인되면 되돌리지 않는다. 바뀐 게 있으면 true. */
+    /**
+     * 체결통보 누적치를 반영한다. 주문수량만큼 이미 찼거나 옛 기록(수량 null + 체결가 있음)이면 건드리지 않는다.
+     * 수량이 늘었을 때만 바뀌고, 바뀐 게 있으면 true.
+     */
+    fun applyFill(
+        averagePrice: BigDecimal,
+        cumulativeQuantity: Int,
+    ): Boolean {
+        val filled = filledQuantity ?: if (filledPrice != null) quantity else 0
+        if (filled >= quantity || cumulativeQuantity <= filled) return false
+        filledPrice = averagePrice
+        filledQuantity = minOf(cumulativeQuantity, quantity)
+        openConfirmed = false
+        return true
+    }
+
+    /** 증권사 체결조회 결과를 반영한다. 체결이 확인되면 되돌리지 않는다(부분체결이었다면 전량 체결로 올린다). 바뀐 게 있으면 true. */
     fun apply(status: OrderStatus): Boolean =
         when (status) {
             is OrderStatus.Filled ->
-                (filledPrice == null).also {
-                    if (it) filledPrice = status.price
+                (filledPrice == null || partiallyFilled).also {
+                    if (it) {
+                        filledPrice = status.price
+                        filledQuantity = quantity
+                    }
                     openConfirmed = false
                 }
             OrderStatus.Open -> (filledPrice == null && !openConfirmed).also { if (it) openConfirmed = true }
@@ -107,5 +140,8 @@ class Trade(
         }
 }
 
-/** 주문 한 건의 진행 상태. [OPEN] 은 증권사가 미체결로 확인한 것, [CHECKING] 은 아직 체결인지 미체결인지 모르는 것. */
-enum class OrderState { CHECKING, OPEN, FILLED, CANCELED }
+/**
+ * 주문 한 건의 진행 상태. [OPEN] 은 증권사가 미체결로 확인한 것, [CHECKING] 은 아직 체결인지 미체결인지 모르는 것,
+ * [PARTIAL] 은 일부만 체결된 것(나머지는 아직 호가창에 남아 있다).
+ */
+enum class OrderState { CHECKING, OPEN, PARTIAL, FILLED, CANCELED }

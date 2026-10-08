@@ -54,28 +54,26 @@ class TradeService(
         if (!notice.isFill) return
         val price = notice.filledPrice ?: return
         val quantity = notice.filledQuantity ?: return
-        val average =
+        val (average, cumulative) =
             synchronized(fills) {
                 val before = fills[notice.orderNo]
                 val total =
                     Fill((before?.quantity ?: BigDecimal.ZERO) + quantity, (before?.amount ?: BigDecimal.ZERO) + price * quantity)
                 fills[notice.orderNo] = total
-                total.amount.divide(total.quantity, PRICE_SCALE, RoundingMode.HALF_UP)
+                total.amount.divide(total.quantity, PRICE_SCALE, RoundingMode.HALF_UP) to total.quantity.toInt()
             }
         val trade = repository.findFirstByMarketAndOrderNo(Market.KR, notice.orderNo) ?: return
-        if (trade.apply(OrderStatus.Filled(average))) {
+        // 통보는 건별 체결이라 누적해서 반영한다 — 첫 통보로 "전량 체결"이 되면 부분체결 주문이 체결로 보인다(2026-10-08).
+        if (trade.applyFill(average, cumulative)) {
             repository.save(trade)
             events.publishEvent(TradeChangedEvent(trade))
         }
     }
 
-    private fun fillPriceOf(
+    private fun fillOf(
         order: OrderRequest,
         orderNo: String,
-    ): BigDecimal? {
-        val fill = synchronized(fills) { fills[orderNo] } ?: return null
-        return fill.amount.divide(fill.quantity, PRICE_SCALE, RoundingMode.HALF_UP)
-    }
+    ): Fill? = synchronized(fills) { fills[orderNo] }
 
     fun find(id: Long): Trade = repository.findById(id).orElseThrow { IllegalStateException("주문 기록이 없습니다: $id") }
 
@@ -104,7 +102,10 @@ class TradeService(
         filledPrice: BigDecimal? = null,
         openConfirmed: Boolean = false,
     ): Trade {
-        val knownFilledPrice = filledPrice ?: fillPriceOf(order, receipt.orderNo)
+        val noticed = if (filledPrice == null) fillOf(order, receipt.orderNo) else null
+        val knownFilledPrice = filledPrice ?: noticed?.amount?.divide(noticed.quantity, PRICE_SCALE, RoundingMode.HALF_UP)
+        // 호출부가 체결가를 넘겼으면 전량 체결로 본다. 통보에서 온 값이면 지금까지 체결된 수량만큼만이다.
+        val knownFilledQuantity = if (filledPrice != null) order.quantity else noticed?.quantity?.toInt()?.let { minOf(it, order.quantity) }
         val trade =
             repository.save(
                 Trade(
@@ -119,6 +120,7 @@ class TradeService(
                     reason = reason,
                     initialFilledPrice = knownFilledPrice,
                     initialOpenConfirmed = openConfirmed,
+                    initialFilledQuantity = knownFilledQuantity,
                 ),
             )
         notifier.send(

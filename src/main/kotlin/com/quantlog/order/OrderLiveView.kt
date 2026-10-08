@@ -30,6 +30,8 @@ data class OrderLiveView(
     /** 체결가. 체결 전이면 null. */
     val filledPriceText: String?,
     val state: OrderState,
+    /** 지금까지 체결된 수량. [OrderState.PARTIAL] 일 때만 채운다(n/[quantity]주 표시용). */
+    val filledQuantity: Int?,
     val reason: String,
     val placedAtEpochMs: Long,
     /** 체결된 매도 행에만 채운다. 계산이 안 되면 null. */
@@ -56,6 +58,7 @@ data class OrderLiveView(
                 orderPriceText = trade.orderPrice.money(currency),
                 filledPriceText = trade.filledPrice?.money(currency),
                 state = trade.state,
+                filledQuantity = trade.filledQuantity.takeIf { trade.partiallyFilled },
                 reason = trade.reason ?: "",
                 placedAtEpochMs = trade.executedAt.toEpochMilli(),
                 pnlText = pnl?.text(currency),
