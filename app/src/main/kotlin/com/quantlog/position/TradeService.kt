@@ -41,7 +41,7 @@ class TradeService(
 
     /**
      * 체결 한 줄이 보유 현황에 반영되면([HoldingSyncService.applyFill] 과 같은 트랜잭션) 그 주문의 매매 기록을 따라 갱신한다.
-     * - 체결가·체결수량: 원장(`broker_fill`)에서 이 줄까지의 주문별 누적으로 채운다(부분체결은 누적해서 반영 — 2026-10-08).
+     * - 체결가·체결수량: 원장(`kis_broker_fill`)에서 이 줄까지의 주문별 누적으로 채운다(부분체결은 누적해서 반영 — 2026-10-08).
      * - 매도면 체결 직전 평단을 적어 둔다([Trade.avgCostBefore], 손익 기준). 매도는 평단을 바꾸지 않으므로 첫 체결의 값 하나면 된다.
      * 매매 기록이 아직 없으면(주문 응답보다 체결이 먼저 반영됨) [record] 가 저장할 때 원장에서 채운다. 평단은 그때 알 수 없어 잠깐 들고 있는다.
      */
@@ -53,7 +53,7 @@ class TradeService(
             return
         }
         var changed = event.side == Side.SELL && event.avgCostBefore != null && trade.recordAvgCostBefore(event.avgCostBefore)
-        val total = orderFills.upTo(event.orderNo, event.brokerFillId).total()
+        val total = orderFills.upTo(event.orderNo, event.noticeId).total()
         total.averagePrice?.let { if (trade.applyFill(it, total.quantity)) changed = true }
         if (changed) {
             repository.save(trade)

@@ -46,7 +46,7 @@ class PortfolioServiceTest {
 
     private var nextOrderNo = 1
 
-    /** 체결이 원장(`broker_fill`)에 반영된 주문. 매도는 [avg] 가 체결 직전 평단이다. */
+    /** 체결이 원장(`kis_broker_fill`)에 반영된 주문. 매도는 [avg] 가 체결 직전 평단이다. */
     private fun filled(
         side: Side,
         executedAt: Instant,

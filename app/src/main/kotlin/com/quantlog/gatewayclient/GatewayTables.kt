@@ -18,53 +18,26 @@ import java.time.Instant
 // 앱도 ddl-auto 라서 앱이 먼저 뜨면 이 선언으로 테이블이 만들어진다 — 게이트웨이가 IDENTITY 로 insert 하는 테이블은 여기서도 id 를 IDENTITY 로 선언해
 // AUTO_INCREMENT 가 빠지지 않게 한다(빠지면 게이트웨이 insert 가 "Field 'id' doesn't have a default value" 로 실패한다).
 
-/** 체결통보 원장(`broker_fill`) 한 줄 — docs/contracts/broker_fill.md. */
+/** 체결통보 원장(`kis_broker_fill`) 한 줄 — 한투 체결통보 원문(`^` 구분 한 건, 계좌 식별 칸은 비움). docs/contracts/tables.md. */
 @Entity
 @Immutable
-@Table(name = "broker_fill")
-class BrokerFillRow(
+@Table(name = "kis_broker_fill")
+class KisBrokerFillRow(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
     @Column(name = "received_at", nullable = false)
     val receivedAt: Instant = Instant.EPOCH,
-    @Column(nullable = false, length = 20)
-    val symbol: String = "",
-    @Column(name = "order_no", nullable = false, length = 40)
-    val orderNo: String = "",
-    @Column(name = "original_order_no", length = 40)
-    val originalOrderNo: String? = null,
-    @Column(name = "sell_buy_code", nullable = false, length = 8)
-    val sellBuyCode: String = "",
-    @Column(name = "filled_flag", nullable = false, length = 8)
-    val filledFlag: String = "",
-    @Column(name = "accept_flag", length = 8)
-    val acceptFlag: String? = null,
-    @Column(name = "refuse_flag", length = 8)
-    val refuseFlag: String? = null,
-    @Column(name = "filled_quantity", precision = 19, scale = 6)
-    val filledQuantity: BigDecimal? = null,
-    @Column(name = "filled_price", precision = 19, scale = 6)
-    val filledPrice: BigDecimal? = null,
-    @Column(name = "order_quantity", precision = 19, scale = 6)
-    val orderQuantity: BigDecimal? = null,
-    @Column(name = "order_price", precision = 19, scale = 6)
-    val orderPrice: BigDecimal? = null,
-    @Column(name = "notice_time", nullable = false, length = 16)
-    val noticeTime: String = "",
+    @Column(name = "tr_id", nullable = false, length = 20)
+    val trId: String = "",
+    @Column(nullable = false, length = 2000)
+    val body: String = "",
 )
 
-interface BrokerFillRowRepository : JpaRepository<BrokerFillRow, Long> {
-    fun findTop100ByIdGreaterThanOrderByIdAsc(id: Long): List<BrokerFillRow>
+interface KisBrokerFillRowRepository : JpaRepository<KisBrokerFillRow, Long> {
+    fun findTop100ByIdGreaterThanOrderByIdAsc(id: Long): List<KisBrokerFillRow>
 
-    fun findAllByOrderNoAndIdLessThanEqualOrderByIdAsc(
-        orderNo: String,
-        id: Long,
-    ): List<BrokerFillRow>
-
-    fun findAllByIdLessThanEqualOrderByIdAsc(id: Long): List<BrokerFillRow>
-
-    @Query("select max(f.id) from BrokerFillRow f")
+    @Query("select max(n.id) from KisBrokerFillRow n")
     fun maxId(): Long?
 }
 

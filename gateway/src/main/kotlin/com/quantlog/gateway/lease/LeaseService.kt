@@ -11,7 +11,7 @@ import java.util.UUID
 private val log = KotlinLogging.logger {}
 
 /** 앱과 맞추는 계약 버전. 계약은 추가만 하므로 올릴 일이 드물다 — 앱은 이 값이 필요한 값보다 낮으면 매매를 멈춘다. */
-const val CONTRACT_VERSION = 1
+const val CONTRACT_VERSION = 2
 
 /** 이미 다른 게이트웨이 인스턴스가 살아 있다. */
 class GatewayAlreadyRunningException(message: String) : IllegalStateException(message)

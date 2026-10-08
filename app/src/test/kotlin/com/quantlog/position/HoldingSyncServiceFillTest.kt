@@ -19,7 +19,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** 원장(`broker_fill`)의 체결 줄로 보유 수량·평단을 고치는 부분 ([HoldingSyncService.applyFill]). */
+/** 원장(`kis_broker_fill`)의 체결 줄로 보유 수량·평단을 고치는 부분 ([HoldingSyncService.applyFill]). */
 class HoldingSyncServiceFillTest {
     private val symbol = "005930"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)

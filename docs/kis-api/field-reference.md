@@ -50,7 +50,7 @@
 
 ## 3. 실시간 체결통보 WebSocket (국내 H0STCNI0/9, 해외 H0GSCNI0/9)
 
-출처: 공식 샘플 `examples_llm/domestic_stock/ccnl_notice`, `examples_llm/overseas_stock/ccnl_notice`, `examples_llm/kis_auth.py`, `examples_user/domestic_stock/domestic_stock_examples_ws.py` (웹 요약 경유 — **모의 실측 전**). 구현: `broker/kis/KisFillNoticeHandler.kt`.
+출처: 공식 샘플 `examples_llm/domestic_stock/ccnl_notice`, `examples_llm/overseas_stock/ccnl_notice`, `examples_llm/kis_auth.py`, `examples_user/domestic_stock/domestic_stock_examples_ws.py` (웹 요약 경유 — **모의 실측 전**). 구현: 게이트웨이 `gateway` 모듈 `kis/KisFillNoticeHandler.kt` 는 복호화·건수로 나누기·계좌 식별 칸 비우기까지만 하고 원문을 `kis_broker_fill` 에 저장한다. 필드 해석은 앱 `app` 모듈 `broker/KisFillNoticeParser.kt` 가 이 절을 따라 한다(2026-10-08).
 
 - TR ID: 국내 실전 `H0STCNI0` / 모의 `H0STCNI9`, 해외 실전 `H0GSCNI0` / 모의 `H0GSCNI9`. 시세와 같은 연결(키당 1세션)에서 같이 구독한다.
 - 구독: 시세와 같은 요청 형식. 국내 `tr_key` 는 **HTS ID**(샘플: `kws.subscribe(request=ccnl_notice, data=[trenv.my_htsid])`). 해외 `tr_key` 는 샘플 요약에 "종목코드"라고 나왔으나 불확실 — 이 앱은 HTS ID 로 구독한다(**실측 필요**). 체결통보는 구독 한도(41건)에서 건당 1개를 쓴다.

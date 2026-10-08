@@ -6,7 +6,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
 
-/** 게이트웨이 원장(`broker_fill`)의 체결 통보 한 줄. [id] 는 `broker_fill.id`, [filledAt] 은 게이트웨이가 받은 시각이다. */
+/** 게이트웨이 원장(`kis_broker_fill`)의 체결 통보 한 줄. [id] 는 `kis_broker_fill.id`, [filledAt] 은 게이트웨이가 받은 시각이다. */
 data class OrderFill(
     val id: Long,
     val market: Market,
@@ -20,11 +20,11 @@ data class OrderFill(
 )
 
 /**
- * 체결 내역은 게이트웨이 원장(`broker_fill`) 하나뿐이다 — 앱은 사본을 따로 두지 않고 여기서 읽는다(2026-10-08).
+ * 체결 내역은 게이트웨이 원장(`kis_broker_fill`) 하나뿐이다 — 앱은 사본을 따로 두지 않고 여기서 읽는다(2026-10-08).
  * "반영된" 줄은 앱이 보유 현황에 반영을 끝낸 줄(반영 커서까지)이다. 매매 판단은 반영된 줄만 봐야 보유 현황과 어긋나지 않는다.
  */
 interface OrderFills {
-    /** 이 주문의 체결 줄 중 `broker_fill.id` 가 [lastId] 이하인 것(반영 여부와 무관). */
+    /** 이 주문의 체결 줄 중 `kis_broker_fill.id` 가 [lastId] 이하인 것(반영 여부와 무관). */
     fun upTo(
         orderNo: String,
         lastId: Long,

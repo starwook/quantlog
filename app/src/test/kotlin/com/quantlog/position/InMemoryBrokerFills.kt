@@ -8,7 +8,7 @@ import java.math.BigDecimal
 import java.time.Instant
 
 /**
- * 테스트용 메모리 게이트웨이 원장(`broker_fill`). [record] 로 통보를 한 줄씩 쌓고, [projectedUpTo] 까지를 "앱이 반영한 줄"로 본다(기본: 전부).
+ * 테스트용 메모리 게이트웨이 원장(`kis_broker_fill`). [record] 로 통보를 한 줄씩 쌓고, [projectedUpTo] 까지를 "앱이 반영한 줄"로 본다(기본: 전부).
  */
 class InMemoryBrokerFills : OrderFills {
     private class Row(val id: Long, val notice: FillNotice, val receivedAt: Instant)

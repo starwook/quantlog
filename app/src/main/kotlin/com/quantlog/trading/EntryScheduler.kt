@@ -212,7 +212,7 @@ class EntryScheduler(
             val request = OrderRequest(watched.market, watched.symbol, Side.BUY, quantity, limitPrice)
             riskGuard.checkBuy(request)
             val receipt = broker.placeOrder(request)
-            // 체결가 조회를 기다리지 않는다(청산·마틴게일·수동 주문과 같다) — 체결가·수량은 체결 원장(broker_fill)이 반영될 때 채워진다.
+            // 체결가 조회를 기다리지 않는다(청산·마틴게일·수동 주문과 같다) — 체결가·수량은 체결 원장(kis_broker_fill)이 반영될 때 채워진다.
             tradeService.record(request, receipt, reason)
             log.info {
                 "[진입] ${request.market} ${request.symbol} x${request.quantity} @ ${request.limitPrice} " +

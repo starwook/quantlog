@@ -84,7 +84,7 @@ class PortfolioService(
     private fun buildSnapshot(): PortfolioSnapshot {
         val allTrades = tradeRepository.findAll()
         val trades = allTrades.filterNot { it.canceled }.sortedBy { it.executedAt }
-        // 체결 원장(broker_fill)에 체결이 반영된 주문만 손익·횟수에 넣는다. 일부만 체결된 뒤 취소됐어도 체결된 몫은 실제 거래라 넣는다.
+        // 체결 원장(kis_broker_fill)에 체결이 반영된 주문만 손익·횟수에 넣는다. 일부만 체결된 뒤 취소됐어도 체결된 몫은 실제 거래라 넣는다.
         // 매도 손익은 그 매도의 체결 직전 평단으로 확정한다([realizedOf]). 미체결·확인 전 주문은 기록 화면에만 보인다.
         val ledgerOrders = orderFills.projectedAll().map { it.market to it.orderNo }.toSet()
         val filledTrades = allTrades.filter { (it.market to it.orderNo) in ledgerOrders }.sortedBy { it.executedAt }
