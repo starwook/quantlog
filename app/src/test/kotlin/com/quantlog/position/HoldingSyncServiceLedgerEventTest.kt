@@ -6,7 +6,6 @@ import com.quantlog.broker.Side
 import com.quantlog.watchlist.symbolStrategyServiceOf
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
-import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -18,14 +17,14 @@ class HoldingSyncServiceLedgerEventTest {
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
     private val published = mutableListOf<Any>()
+    private val ledger = InMemoryTradeFills()
     private val service =
         HoldingSyncService(
             repository,
             tradeRepository,
+            ledger.repository,
             symbolStrategyServiceOf(),
-            ApplicationEventPublisher {
-                published += it
-            },
+            ledger.publisher(published),
         )
     private val now = Instant.parse("2026-10-08T00:27:51Z")
 

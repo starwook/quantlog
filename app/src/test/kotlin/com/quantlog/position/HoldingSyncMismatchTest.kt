@@ -7,7 +7,6 @@ import com.quantlog.sync.MismatchLog
 import com.quantlog.watchlist.symbolStrategyServiceOf
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
-import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -18,8 +17,9 @@ class HoldingSyncMismatchTest {
     private val symbol = "005930"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
+    private val ledger = InMemoryTradeFills()
     private val service =
-        HoldingSyncService(repository, tradeRepository, symbolStrategyServiceOf(), ApplicationEventPublisher { })
+        HoldingSyncService(repository, tradeRepository, ledger.repository, symbolStrategyServiceOf(), ledger.publisher())
     private val now = Instant.parse("2026-10-08T01:00:00Z")
 
     private fun kis(
