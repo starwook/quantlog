@@ -2,9 +2,13 @@ package com.quantlog.common
 
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // 화면이 같이 쓰는 숫자 표시 규칙. 색은 한국식(상승 빨강 pos, 하락 파랑 neg).
+
+/** 화면에 찍는 짧은 날짜·시각. 예: 10-12 09:31:05 */
+val SHORT_DATE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")
 
 /** 원화는 소수점 없이 천 단위 구분, 그 외는 소수점 둘째 자리까지. */
 fun BigDecimal.money(currency: String): String = String.format(Locale.US, "%,.${if (currency == "KRW") 0 else 2}f", this)
