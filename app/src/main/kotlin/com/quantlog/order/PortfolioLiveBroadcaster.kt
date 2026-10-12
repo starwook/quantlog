@@ -1,6 +1,5 @@
 package com.quantlog.order
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantlog.broker.Market
 import com.quantlog.broker.PriceTick
 import com.quantlog.broker.Side
@@ -22,22 +21,11 @@ import com.quantlog.position.TradeChangedEvent
 import com.quantlog.watchlist.SymbolStrategyService
 import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
-import org.springframework.context.annotation.Configuration
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
 import org.springframework.transaction.event.TransactionalEventListener
-import org.springframework.web.socket.CloseStatus
-import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
-import org.springframework.web.socket.config.annotation.EnableWebSocket
-import org.springframework.web.socket.config.annotation.WebSocketConfigurer
-import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
-import org.springframework.web.socket.handler.TextWebSocketHandler
-import java.math.BigDecimal
-import java.math.MathContext
 import java.time.LocalDate
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.Executors
 
 private val log = KotlinLogging.logger {}
@@ -52,11 +40,9 @@ class PortfolioLiveBroadcaster(
     private val accountHoldingRepository: AccountHoldingRepository,
     private val orderFills: OrderFills,
     private val symbolStrategyService: SymbolStrategyService,
-    private val objectMapper: ObjectMapper,
+    private val sessions: LiveSessions,
+    private val valuation: LiveValuation,
 ) {
-    private val sessions = CopyOnWriteArraySet<WebSocketSession>()
-    private val livePrices = ConcurrentHashMap<String, BigDecimal>()
-
     // 틱 푸시 전용 스레드. 스프링 스케줄러(스레드 하나를 모든 @Scheduled 가 공유)나 KIS 수신 스레드에 얹으면 느린 호출·클라이언트에 막혀 화면이 멎는다.
     private val pushExecutor = Executors.newSingleThreadExecutor { Thread(it, "portfolio-live-push").apply { isDaemon = true } }
 
@@ -80,7 +66,7 @@ class PortfolioLiveBroadcaster(
                 "holdings" to holdingViews(),
                 "summary" to summaryView(snapshot),
             )
-        send(session, snapshotMessage)
+        sessions.send(session, snapshotMessage)
     }
 
     fun disconnect(session: WebSocketSession) {
@@ -133,7 +119,7 @@ class PortfolioLiveBroadcaster(
     @EventListener
     fun onPriceTick(tick: PriceTick) {
         if (tick.market != Market.KR || sessions.isEmpty() || tick.symbol !in heldKr) return
-        livePrices[tick.symbol] = tick.price
+        valuation.record(tick.symbol, tick.price)
         pushExecutor.execute { runCatching { pushPrice(tick.symbol) }.onFailure { log.warn(it) { "[주문 화면] 실시간 현재가 푸시 실패" } } }
     }
 
@@ -144,37 +130,25 @@ class PortfolioLiveBroadcaster(
 
     private fun pushPrice(symbol: String) {
         val holding = heldKr[symbol] ?: return
-        val (amount, percent) = unrealizedOf(heldKr.values)
+        val (amount, percent) = valuation.unrealizedOf(heldKr.values)
         broadcast(
             mapOf(
                 "type" to "price",
-                "holding" to HoldingLiveView.of(holding, symbolStrategyService.displayName(holding.market, symbol), livePrices[symbol]),
+                "holding" to
+                    HoldingLiveView.of(holding, symbolStrategyService.displayName(holding.market, symbol), valuation.priceOf(symbol)),
                 "unrealizedText" to signedMoneyAndPercent(amount, percent, KRW),
                 "unrealizedCss" to pnlCss(amount),
-                "totalValueText" to totalValueOf(heldKr.values).money(KRW),
+                "totalValueText" to valuation.totalValueOf(heldKr.values).money(KRW),
             ),
         )
     }
-
-    /** 보유 국내 종목 전체의 평가손익(금액, 퍼센트). 현재가는 실시간 틱이 있으면 그걸, 없으면 잔고 사본 값을 쓴다. */
-    private fun unrealizedOf(held: Collection<AccountHolding>): Pair<BigDecimal, BigDecimal> {
-        val cost = held.sumOf { it.avgCost.multiply(BigDecimal(it.quantity)) }
-        val value = held.sumOf { (livePrices[it.symbol] ?: it.currentPrice).multiply(BigDecimal(it.quantity)) }
-        val amount = value.subtract(cost)
-        val percent = if (cost.signum() > 0) amount.multiply(BigDecimal(100)).divide(cost, MathContext.DECIMAL64) else BigDecimal.ZERO
-        return amount to percent
-    }
-
-    /** 보유 종목 전체의 총 평가금액. 현재가는 [unrealizedOf] 와 같은 규칙. */
-    private fun totalValueOf(held: Collection<AccountHolding>): BigDecimal =
-        held.sumOf { (livePrices[it.symbol] ?: it.currentPrice).multiply(BigDecimal(it.quantity)) }
 
     /** 국내 화면이므로 원화 요약만 보낸다. 평가손익은 실시간 현재가로 다시 계산한다. */
     private fun summaryView(snapshot: PortfolioSnapshot): PnlSummaryLiveView? {
         val summary = snapshot.summaryByCurrency[KRW] ?: return null
         val held = accountHoldingRepository.findAll().filter { it.market == Market.KR && it.quantity > 0 }
-        val (amount, percent) = unrealizedOf(held)
-        return PnlSummaryLiveView.of(summary, KRW, amount, percent, totalValueOf(held))
+        val (amount, percent) = valuation.unrealizedOf(held)
+        return PnlSummaryLiveView.of(summary, KRW, amount, percent, valuation.totalValueOf(held))
     }
 
     private fun holdingViews(): List<HoldingLiveView> {
@@ -184,7 +158,7 @@ class PortfolioLiveBroadcaster(
             HoldingLiveView.of(
                 it,
                 symbolStrategyService.displayName(it.market, it.symbol),
-                if (it.market == Market.KR) livePrices[it.symbol] else null,
+                if (it.market == Market.KR) valuation.priceOf(it.symbol) else null,
             )
         }
     }
@@ -204,41 +178,10 @@ class PortfolioLiveBroadcaster(
 
     private fun Trade.toView(pnl: RealizedPnl?) = OrderLiveView.of(this, symbolStrategyService.displayName(market, symbol), pnl)
 
-    private fun broadcast(payload: Any) = sessions.forEach { send(it, payload) }
-
-    /** 체결통보 수신 스레드 등 여러 스레드가 부르므로 세션별로 직렬화한다(WebSocketSession 은 동시 전송이 안전하지 않다). */
-    private fun send(
-        session: WebSocketSession,
-        payload: Any,
-    ) {
-        val text = TextMessage(objectMapper.writeValueAsString(payload))
-        runCatching { synchronized(session) { if (session.isOpen) session.sendMessage(text) } }
-            .onFailure {
-                log.warn { "[주문 화면] 전송 실패, 세션을 뺀다: ${it.message}" }
-                sessions.remove(session)
-            }
-    }
+    private fun broadcast(payload: Any) = sessions.broadcast(payload)
 
     private companion object {
         const val HISTORY_LIMIT = 100
         const val KRW = "KRW"
-    }
-}
-
-@Component
-class PortfolioLiveWebSocketHandler(private val broadcaster: PortfolioLiveBroadcaster) : TextWebSocketHandler() {
-    override fun afterConnectionEstablished(session: WebSocketSession) = broadcaster.connect(session)
-
-    override fun afterConnectionClosed(
-        session: WebSocketSession,
-        status: CloseStatus,
-    ) = broadcaster.disconnect(session)
-}
-
-@Configuration
-@EnableWebSocket
-class PortfolioLiveWebSocketConfig(private val handler: PortfolioLiveWebSocketHandler) : WebSocketConfigurer {
-    override fun registerWebSocketHandlers(registry: WebSocketHandlerRegistry) {
-        registry.addHandler(handler, "/ws/portfolio").setAllowedOrigins("*")
     }
 }
