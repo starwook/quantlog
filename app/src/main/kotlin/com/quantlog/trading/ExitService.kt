@@ -21,7 +21,6 @@ import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
 import java.time.ZonedDateTime
-import java.util.concurrent.ConcurrentHashMap
 
 private val log = KotlinLogging.logger {}
 
@@ -61,7 +60,7 @@ class ExitService(
 ) {
     /** 매도 주문은 냈는데 체결 확인이 아직 안 된 종목. */
     private val pending = PendingOrders("청산", broker, tradeService, holdingSync, properties.fillTimeout)
-    private val inFlight = ConcurrentHashMap.newKeySet<String>()
+    private val inFlight = KeyedLock()
 
     /** 보유 종목 전체를 판정한다. [exclude] 가 true 인 종목은 다른 경로(실시간)가 맡고 있으니 건너뛴다. */
     fun checkAll(
@@ -94,13 +93,12 @@ class ExitService(
     ) {
         if (position.quantity <= 0 || !position.market.isTradable(now)) return
         val key = symbolKey(position.market, position.symbol)
-        if (!inFlight.add(key)) return
-        try {
-            checkHolding(position, key)
-        } catch (e: Exception) {
-            log.warn(e) { "[청산 감시] 실패: ${position.market} ${position.symbol}" }
-        } finally {
-            inFlight.remove(key)
+        inFlight.runIfFree(key) {
+            try {
+                checkHolding(position, key)
+            } catch (e: Exception) {
+                log.warn(e) { "[청산 감시] 실패: ${position.market} ${position.symbol}" }
+            }
         }
     }
 
@@ -170,14 +168,6 @@ class ExitService(
 
     /** 주문한 지 [ExitProperties.fillTimeout] 이 지났는데도 체결이 확인되지 않은 매도 주문을 취소한다(주기 호출). */
     fun expirePending(now: ZonedDateTime) {
-        pending.expire(now) { key, action ->
-            if (inFlight.add(key)) {
-                try {
-                    action()
-                } finally {
-                    inFlight.remove(key)
-                }
-            }
-        }
+        pending.expire(now, inFlight)
     }
 }

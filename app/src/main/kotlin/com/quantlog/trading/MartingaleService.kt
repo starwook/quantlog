@@ -45,7 +45,7 @@ class MartingaleService(
 ) {
     /** 주문은 냈는데 체결이 아직 DB 에 반영 안 된 종목. */
     private val pending = PendingOrders("마틴게일", broker, tradeService, holdingSync, properties.fillTimeout)
-    private val inFlight = ConcurrentHashMap.newKeySet<String>()
+    private val inFlight = KeyedLock()
     private val lastFailureAt = ConcurrentHashMap<String, Instant>()
 
     /** [tickPrice] 는 방금 온 체결가. 보유 중이 아니거나 마틴게일이 꺼진 종목, 아직 트리거까지 안 내려온 경우엔 아무것도 하지 않는다. */
@@ -57,12 +57,7 @@ class MartingaleService(
     ) {
         if (!market.isTradable(now)) return
         val key = symbolKey(market, symbol)
-        if (!inFlight.add(key)) return
-        try {
-            check(market, symbol, key, tickPrice, now)
-        } finally {
-            inFlight.remove(key)
-        }
+        inFlight.runIfFree(key) { check(market, symbol, key, tickPrice, now) }
     }
 
     private fun check(
@@ -123,15 +118,7 @@ class MartingaleService(
 
     /** 주문한 지 [EntryProperties.fillTimeout] 이 지났는데도 체결이 반영되지 않은 주문을 취소한다(주기 호출). */
     fun expirePending(now: ZonedDateTime) {
-        pending.expire(now) { key, action ->
-            if (inFlight.add(key)) {
-                try {
-                    action()
-                } finally {
-                    inFlight.remove(key)
-                }
-            }
-        }
+        pending.expire(now, inFlight)
     }
 
     private companion object {
