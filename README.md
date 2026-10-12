@@ -70,6 +70,11 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 - 주문은 항상 `RiskGuard` 를 거친다 (자본 배분 한도). 한도는 `application.yml` 의 `quantlog.risk`.
 - 모의 도메인(`openapivts…`)만 사용한다. 실전 도메인은 코드에 없다.
 
+## 일일 리뷰 (학습 루프, 2026-10-12)
+오늘 체결·보유 현황을 Claude 가 복기해 `playbook/journal/`(일지)과 `playbook/proposals/`(원칙 변경 제안)에 남긴다. 원칙 파일은 바꾸지 않는다.
+- 키: `application-local.yml` 의 `quantlog.review.api-key` (Anthropic 콘솔 API 키 — Claude 구독과 별개로 크레딧 결제).
+- 수동 실행: 앱을 띄운 뒤 `curl -X POST localhost:8080/review/run` (API 비용 발생). 자동: `quantlog.review.enabled=true` → 평일 15:40.
+
 ## 개발
 
 ```bash

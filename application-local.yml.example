@@ -14,6 +14,9 @@ kis:
     log-raw: true             # 첫 연동 확인 때는 true 로 응답 원문을 로그로 본다. 익숙해지면 false
 
 quantlog:
+  review:
+    api-key: "여기에 Anthropic API 키"   # 일일 리뷰(학습 루프)용. 콘솔(console.anthropic.com) 크레딧으로 결제 — Claude 구독과 별개
+    enabled: false           # true 면 평일 15:40 에 자동 리뷰. 수동은 POST /review/run
   notify:
     webhook-url: ""          # Discord/Slack 웹훅 URL. 체결(매수/매도)과 WARN 이상 로그를 알린다. 비우면 꺼짐
   smoke:
