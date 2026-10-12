@@ -64,14 +64,10 @@ class KisBrokerClient(
     }
 
     private fun inquirePrice(symbol: String): JsonNode =
-        call(
+        get(
             "/uapi/domestic-stock/v1/quotations/inquire-price",
             "FHKST01010100",
-            rest.get(
-                "/uapi/domestic-stock/v1/quotations/inquire-price",
-                "FHKST01010100",
-                mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
-            ),
+            mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to symbol),
         )
 
     override fun buyingPower(
@@ -79,21 +75,16 @@ class KisBrokerClient(
         symbol: String,
         price: BigDecimal,
     ): BuyingPower {
-        val path = "/uapi/domestic-stock/v1/trading/inquire-psbl-order"
         val res =
-            call(
-                path,
+            get(
+                "/uapi/domestic-stock/v1/trading/inquire-psbl-order",
                 "VTTC8908R",
-                rest.get(
-                    path,
-                    "VTTC8908R",
-                    mapOf(
-                        "PDNO" to symbol,
-                        "ORD_UNPR" to price.priceText(),
-                        "ORD_DVSN" to "00",
-                        "CMA_EVLU_AMT_ICLD_YN" to "N",
-                        "OVRS_ICLD_YN" to "N",
-                    ),
+                mapOf(
+                    "PDNO" to symbol,
+                    "ORD_UNPR" to price.priceText(),
+                    "ORD_DVSN" to "00",
+                    "CMA_EVLU_AMT_ICLD_YN" to "N",
+                    "OVRS_ICLD_YN" to "N",
                 ),
             )
         val out = res.path("output")
@@ -103,31 +94,21 @@ class KisBrokerClient(
     override fun holdings(market: Market): List<Holding> = KisBalanceParser.parse(balance())
 
     /** 주식잔고조회(VTTC8434R) 응답 원문. 계좌번호는 게이트웨이가 끼운다. */
-    private fun balance(): JsonNode {
-        val path = "/uapi/domestic-stock/v1/trading/inquire-balance"
-        return call(path, "VTTC8434R", rest.get(path, "VTTC8434R", KisBalanceParser.REQUEST_PARAMS))
-    }
+    private fun balance(): JsonNode = get("/uapi/domestic-stock/v1/trading/inquire-balance", "VTTC8434R", KisBalanceParser.REQUEST_PARAMS)
 
     override fun placeOrder(order: OrderRequest): OrderReceipt {
-        val path = "/uapi/domestic-stock/v1/trading/order-cash"
-        val trId = if (order.side == Side.BUY) "VTTC0012U" else "VTTC0011U"
         val res =
-            call(
-                path,
-                trId,
-                rest.post(
-                    path,
-                    trId,
-                    mapOf(
-                        "PDNO" to order.symbol,
-                        "ORD_DVSN" to "00",
-                        "ORD_QTY" to order.quantity.toString(),
-                        "ORD_UNPR" to order.limitPrice.priceText(),
-                        "EXCG_ID_DVSN_CD" to "KRX",
-                        "SLL_TYPE" to if (order.side == Side.SELL) "01" else "",
-                        "CNDT_PRIC" to "",
-                    ),
-                    requestId = UUID.randomUUID().toString(),
+            post(
+                "/uapi/domestic-stock/v1/trading/order-cash",
+                if (order.side == Side.BUY) "VTTC0012U" else "VTTC0011U",
+                mapOf(
+                    "PDNO" to order.symbol,
+                    "ORD_DVSN" to "00",
+                    "ORD_QTY" to order.quantity.toString(),
+                    "ORD_UNPR" to order.limitPrice.priceText(),
+                    "EXCG_ID_DVSN_CD" to "KRX",
+                    "SLL_TYPE" to if (order.side == Side.SELL) "01" else "",
+                    "CNDT_PRIC" to "",
                 ),
             )
         val out = res.path("output")
@@ -140,24 +121,18 @@ class KisBrokerClient(
 
     /** 정정취소 API(docs/kis-api 의 order_rvsecncl 예제)의 취소(02). 모의 TR: VTTC0013U. */
     override fun cancelOrder(request: CancelRequest) {
-        val path = "/uapi/domestic-stock/v1/trading/order-rvsecncl"
-        call(
-            path,
+        post(
+            "/uapi/domestic-stock/v1/trading/order-rvsecncl",
             "VTTC0013U",
-            rest.post(
-                path,
-                "VTTC0013U",
-                mapOf(
-                    "KRX_FWDG_ORD_ORGNO" to request.branchNo,
-                    "ORGN_ODNO" to request.orderNo,
-                    "ORD_DVSN" to "00",
-                    "RVSE_CNCL_DVSN_CD" to "02",
-                    "ORD_QTY" to request.quantity.toString(),
-                    "ORD_UNPR" to "0",
-                    "QTY_ALL_ORD_YN" to "Y",
-                    "EXCG_ID_DVSN_CD" to "KRX",
-                ),
-                requestId = UUID.randomUUID().toString(),
+            mapOf(
+                "KRX_FWDG_ORD_ORGNO" to request.branchNo,
+                "ORGN_ODNO" to request.orderNo,
+                "ORD_DVSN" to "00",
+                "RVSE_CNCL_DVSN_CD" to "02",
+                "ORD_QTY" to request.quantity.toString(),
+                "ORD_UNPR" to "0",
+                "QTY_ALL_ORD_YN" to "Y",
+                "EXCG_ID_DVSN_CD" to "KRX",
             ),
         )
     }
@@ -227,7 +202,7 @@ class KisBrokerClient(
                     ),
                     trCont,
                 )
-            val res = call(path, "VTTC0081R", reply)
+            val res = checked(path, "VTTC0081R", reply)
             rows += res.path("output1").toList()
             if (reply.trCont != "M" && reply.trCont != "F") return rows
             fk = res.path("ctx_area_fk100").asText("").trim()
@@ -237,8 +212,21 @@ class KisBrokerClient(
         return rows
     }
 
+    private fun get(
+        path: String,
+        trId: String,
+        params: Map<String, String>,
+    ): JsonNode = checked(path, trId, rest.get(path, trId, params))
+
+    /** 주문처럼 같은 요청이 두 번 실행되면 안 되는 호출이라 요청마다 새 ID 를 붙인다. */
+    private fun post(
+        path: String,
+        trId: String,
+        params: Map<String, String>,
+    ): JsonNode = checked(path, trId, rest.post(path, trId, params, requestId = UUID.randomUUID().toString()))
+
     /** 한투 응답의 `rt_cd` 가 0 이 아니면 [KisApiException]. 맞으면 응답 본문. */
-    private fun call(
+    private fun checked(
         path: String,
         trId: String,
         reply: KisReply,
