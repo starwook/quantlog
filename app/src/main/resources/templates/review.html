@@ -40,7 +40,19 @@
         .msg.done { color: var(--ok); }
         .msg.error { color: var(--err); }
         details > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
-        pre { white-space: pre-wrap; word-break: break-word; margin: 12px 0 0; font: inherit; font-size: 13px; line-height: 1.6; }
+        .run { flex-wrap: wrap; }
+        input { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; width: 160px; }
+        .md { margin-top: 12px; font-size: 14px; line-height: 1.7; word-break: break-word; }
+        .md h1 { font-size: 16px; margin: 0 0 8px; }
+        .md h2 { font-size: 15px; margin: 20px 0 6px; padding-top: 12px; border-top: 1px solid var(--border); }
+        .md h3 { font-size: 14px; margin: 14px 0 4px; }
+        .md p, .md ul, .md ol { margin: 6px 0; }
+        .md ul, .md ol { padding-left: 20px; }
+        .md code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+        .md pre { background: var(--bg); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+        .md pre code { padding: 0; background: none; }
+        .md table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; }
+        .md th, .md td { border: 1px solid var(--border); padding: 4px 8px; }
         .empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 14px; }
         footer { margin-top: 16px; font-size: 12px; color: var(--muted); }
     </style>
@@ -59,8 +71,9 @@
 
     <form class="card run" method="post" th:action="@{/review/run}"
           onsubmit="const b = this.querySelector('button'); b.disabled = true; b.textContent = '리뷰 만드는 중… (최대 1분)';">
+        <input type="password" name="token" placeholder="실행 비밀번호" th:if="${tokenRequired}" required autocomplete="off">
         <button type="submit">지금 리뷰 실행</button>
-        <span class="note" style="margin: 0;">Claude API 를 한 번 부릅니다(비용 발생). 평일 15:40 자동 실행은 설정으로 켭니다.</span>
+        <span class="note" style="margin: 0;">Claude API 를 한 번 부릅니다(비용 발생).</span>
     </form>
 
     <h2>일지</h2>
@@ -68,7 +81,7 @@
     <div class="card" th:each="journal, stat : ${journals}">
         <details th:open="${stat.first}">
             <summary th:text="${journal.name}"></summary>
-            <pre th:text="${journal.content}"></pre>
+            <div class="md" th:utext="${journal.html}"></div>
         </details>
     </div>
 
@@ -77,7 +90,7 @@
     <div class="card" th:each="proposal : ${proposals}">
         <details>
             <summary th:text="${proposal.name}"></summary>
-            <pre th:text="${proposal.content}"></pre>
+            <div class="md" th:utext="${proposal.html}"></div>
         </details>
     </div>
 </main>
