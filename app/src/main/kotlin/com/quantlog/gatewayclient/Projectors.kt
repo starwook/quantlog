@@ -8,7 +8,8 @@ import com.quantlog.broker.KisFillNoticeParser
 import com.quantlog.broker.KisMinuteChartParser
 import com.quantlog.broker.Market
 import com.quantlog.marketdata.MinuteCandleStore
-import com.quantlog.position.HoldingSyncService
+import com.quantlog.position.HoldingBalanceSync
+import com.quantlog.position.HoldingFillApplier
 import com.quantlog.position.OrderFill
 import com.quantlog.position.OrderFills
 import com.quantlog.position.TradeService
@@ -29,16 +30,16 @@ private const val FILL_CURSOR = "kis_broker_fill"
 /**
  * 게이트웨이가 원문 그대로 기록한 체결통보 원장(`kis_broker_fill`)을 한투 문서대로 읽어([KisFillNoticeParser]) 앱의 보유 현황(`account_holding`)·
  * 매매 기록(`trade`)에 반영한다. 어디까지 처리했는지는 `broker_projection_cursor` 에 둔다 — 앱이 꺼져 있던 동안 쌓인 통보도 재시작 후 그다음 줄부터
- * 이어서 처리한다(같은 통보 중복은 [HoldingSyncService.applyFill] 이 막는다). 체결 내역 자체는 원장에만 있고 앱은 사본을 따로 쓰지 않는다([OrderFills]).
+ * 이어서 처리한다(같은 통보 중복은 [HoldingFillApplier.applyFill] 이 막는다). 체결 내역 자체는 원장에만 있고 앱은 사본을 따로 쓰지 않는다([OrderFills]).
  * 커서가 없으면(처음 켠 때) 지금 있는 마지막 ID 부터 시작한다 — 그 이전 체결은 잔고 스냅샷이 맞춘다.
  *
- * 동기화 불일치 보고 불필요: 증권사와 DB 를 비교하는 게 아니라 원장 행을 옮겨 적는 일이다. 불일치 보고는 [HoldingSyncService] 가 한다.
+ * 동기화 불일치 보고 불필요: 증권사와 DB 를 비교하는 게 아니라 원장 행을 옮겨 적는 일이다. 불일치 보고는 [HoldingBalanceSync] 가 한다.
  */
 @Component
 class FillProjector(
     private val notices: KisBrokerFillRowRepository,
     private val cursors: ProjectionCursorRepository,
-    private val holdingSync: HoldingSyncService,
+    private val holdingSync: HoldingFillApplier,
     private val tradeService: TradeService,
     transactionManager: PlatformTransactionManager,
 ) {
@@ -188,7 +189,7 @@ class KisBrokerFillOrderFills(
 class BalanceProjector(
     private val balances: KisBalanceRowRepository,
     private val cursors: ProjectionCursorRepository,
-    private val holdingSync: HoldingSyncService,
+    private val holdingSync: HoldingBalanceSync,
     private val heldSymbols: HeldSymbolPublisher,
     private val objectMapper: ObjectMapper,
 ) {

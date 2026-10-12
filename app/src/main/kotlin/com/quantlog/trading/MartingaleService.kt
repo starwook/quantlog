@@ -29,7 +29,7 @@ private val log = KotlinLogging.logger {}
  * 호출 없이 끝나는 비교라 틱마다 불러도 가볍고, 조건이 맞을 때만 시세·규칙 판정과 주문으로 들어간다.
  *
  * 추가 매수 수량·가격은 DB 의 보유 수량·평단으로 계산하므로, 주문을 낸 종목은 **그 체결이 DB 에 반영될 때까지** 판정을 건너뛴다
- * ("단계 진행 중"). 반영은 체결통보(체결통보 반영(게이트웨이의 HoldingSyncService.applyFill))가 1~2초 안에 한다. 주문 후 [EntryProperties.fillTimeout] 안에
+ * ("단계 진행 중"). 반영은 체결통보(체결통보 반영(게이트웨이의 HoldingFillApplier.applyFill))가 1~2초 안에 한다. 주문 후 [EntryProperties.fillTimeout] 안에
  * 체결 확인이 안 되면 주문을 취소하고, 다음 틱부터 다시 판정한다(2026-10-07 사용자 결정: 취소 뒤 쿨다운 없이 바로 재판정).
  * 실시간이 커버하지 않는 종목(연결 끊김)은 [EntryScheduler] 의 폴링이 맡는다.
  */
