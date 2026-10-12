@@ -2,11 +2,11 @@ package com.quantlog.position
 
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
+import com.quantlog.common.KST
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 
 /** 게이트웨이 원장(`kis_broker_fill`)의 체결 통보 한 줄. [id] 는 `kis_broker_fill.id`, [filledAt] 은 게이트웨이가 받은 시각이다. */
 data class OrderFill(
@@ -52,8 +52,6 @@ interface OrderFills {
     ): Boolean
 
     companion object {
-        private val KST: ZoneId = ZoneId.of("Asia/Seoul")
-
         fun today(): LocalDate = LocalDate.now(KST)
 
         /** 통보를 받은 시각이 속한 날(KST). 주문번호가 같아도 날이 다르면 다른 주문이다. */

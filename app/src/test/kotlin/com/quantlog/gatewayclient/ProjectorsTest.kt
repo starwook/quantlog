@@ -1,7 +1,7 @@
 package com.quantlog.gatewayclient
 
 import com.quantlog.broker.FillNotice
-import com.quantlog.position.HoldingSyncService
+import com.quantlog.position.HoldingFillApplier
 import com.quantlog.position.TradeService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -33,7 +33,7 @@ class ProjectorsTest {
             Mockito.`when`(it.getTransaction(Mockito.any())).thenReturn(SimpleTransactionStatus())
         }
     private val fills = Mockito.mock(KisBrokerFillRowRepository::class.java)
-    private val holdingSync = Mockito.mock(HoldingSyncService::class.java)
+    private val holdingSync = Mockito.mock(HoldingFillApplier::class.java)
     private val tradeService = Mockito.mock(TradeService::class.java)
     private val projector = FillProjector(fills, cursors, holdingSync, tradeService, tx)
 

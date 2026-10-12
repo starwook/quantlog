@@ -21,7 +21,9 @@ class SymbolStrategyServiceTest {
             Mockito.`when`(repo.save(Mockito.any(WatchSymbolRow::class.java))).thenAnswer { it.arguments[0] }
         }
     private val events = Mockito.mock(ApplicationEventPublisher::class.java)
-    private val service = SymbolStrategyService(repository, watchSymbols, StrategyProperties(), MartingaleProperties(), events)
+    private val defaults = SymbolStrategyDefaults(StrategyProperties(), MartingaleProperties(), watchSymbols)
+    private val service = SymbolStrategyService(repository, watchSymbols, defaults, events)
+    private val seeding = SymbolStrategySeedService(repository, defaults)
 
     @Test
     fun `없는 종목 행만 기본값으로 만들고 코스닥150레버리지만 매수와 마틴게일을 켠다`() {
@@ -30,7 +32,7 @@ class SymbolStrategyServiceTest {
             .thenReturn(symbolStrategy(SeedSymbol.SAMSUNG.market, SeedSymbol.SAMSUNG.symbol, takeProfit = "7"))
         Mockito.`when`(repository.save(Mockito.any(SymbolStrategy::class.java))).thenAnswer { it.arguments[0] }
 
-        service.seedMissing()
+        seeding.seedMissing()
 
         val captor = ArgumentCaptor.forClass(SymbolStrategy::class.java)
         Mockito.verify(repository, Mockito.times(SeedSymbol.entries.size - 1)).save(captor.capture())
@@ -46,7 +48,7 @@ class SymbolStrategyServiceTest {
     fun `행이 하나도 없으면 코스닥150레버리지만 매수와 마틴게일이 켜지고 값은 application yml 기본값`() {
         Mockito.`when`(repository.save(Mockito.any(SymbolStrategy::class.java))).thenAnswer { it.arguments[0] }
 
-        service.seedMissing()
+        seeding.seedMissing()
 
         val captor = ArgumentCaptor.forClass(SymbolStrategy::class.java)
         Mockito.verify(repository, Mockito.times(SeedSymbol.entries.size)).save(captor.capture())
@@ -168,7 +170,7 @@ class SymbolStrategyServiceTest {
         Mockito.`when`(repository.findAll()).thenReturn(listOf(withRow, withoutRow))
         Mockito.`when`(watchSymbols.findByMarketAndSymbol("KR", "005930")).thenReturn(old)
 
-        service.linkWatchSymbols()
+        seeding.linkWatchSymbols()
 
         assertEquals(old, withRow.watchSymbol)
         assertTrue(withoutRow.etf && withoutRow.watchSymbol?.symbol == "091160")

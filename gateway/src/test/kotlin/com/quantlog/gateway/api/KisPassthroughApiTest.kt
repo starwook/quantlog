@@ -1,7 +1,6 @@
 package com.quantlog.gateway.api
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.quantlog.gateway.broker.CallPriority
 import com.quantlog.gateway.kis.KisApiClient
 import com.quantlog.gateway.kis.KisProperties
 import com.quantlog.gateway.record.KisOrder
@@ -39,12 +38,20 @@ class KisPassthroughApiTest {
     private val api =
         Mockito.mock(KisApiClient::class.java).also { api ->
             Mockito.`when`(
-                api.raw(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyMap(), Mockito.any(), Mockito.any()),
+                api.raw(
+                    Mockito.anyString(),
+                    Mockito.anyString(),
+                    Mockito.anyString(),
+                    Mockito.anyMap(),
+                    Mockito.any(),
+                    Mockito.any(),
+                    Mockito.anyBoolean(),
+                ),
             ).thenAnswer {
                 sent +=
                     Sent(
                         it.getArgument(0), it.getArgument(1), it.getArgument(2), it.getArgument<Map<String, String>>(3),
-                        it.getArgument(4), it.getArgument(5), CallPriority.isUrgent(),
+                        it.getArgument(4), it.getArgument(5), it.getArgument(6),
                     )
                 reply
             }

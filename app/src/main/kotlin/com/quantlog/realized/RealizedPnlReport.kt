@@ -2,14 +2,13 @@ package com.quantlog.realized
 
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
+import com.quantlog.common.KST
 import com.quantlog.position.PortfolioSnapshot
 import java.math.BigDecimal
 import java.math.MathContext
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.ZoneId
 
-private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 private val HUNDRED = BigDecimal(100)
 
 /** 실현손익 금액과 그 기준이 된 매수 원가. 수익률(%)은 둘로 구한다. */

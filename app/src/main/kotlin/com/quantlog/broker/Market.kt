@@ -1,5 +1,6 @@
 package com.quantlog.broker
 
+import com.quantlog.common.KST
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.ZoneId
@@ -11,14 +12,14 @@ enum class Market(val currency: String) {
     ;
 
     /** 거래소 현지 시간대. */
-    val zone: ZoneId get() = SEOUL
+    val zone: ZoneId get() = KST
 
     /**
      * 정규장 중인지. 국내 09:00~15:20(15:20 이후는 종가 단일가라 제외).
      * 공휴일은 모른다 — 휴장일엔 증권사가 주문을 거부한다.
      */
     fun isRegularSession(at: ZonedDateTime): Boolean {
-        val local = at.withZoneSameInstant(SEOUL)
+        val local = at.withZoneSameInstant(KST)
         if (local.dayOfWeek == DayOfWeek.SATURDAY || local.dayOfWeek == DayOfWeek.SUNDAY) return false
         val time = local.toLocalTime()
         return !time.isBefore(KR_OPEN) && time.isBefore(KR_CLOSE)
@@ -28,10 +29,15 @@ enum class Market(val currency: String) {
     fun isTradable(at: ZonedDateTime): Boolean = isRegularSession(at)
 
     private companion object {
-        val SEOUL: ZoneId = ZoneId.of("Asia/Seoul")
         val KR_OPEN: LocalTime = LocalTime.of(9, 0)
         val KR_CLOSE: LocalTime = LocalTime.of(15, 20)
     }
 }
 
 enum class Side { BUY, SELL }
+
+/** 종목을 맵·잠금의 키로 쓸 때의 표기. 예: `KR:005930`. */
+fun symbolKey(
+    market: Market,
+    symbol: String,
+): String = "$market:$symbol"

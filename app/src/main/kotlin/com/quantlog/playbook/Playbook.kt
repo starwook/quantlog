@@ -1,26 +1,17 @@
 package com.quantlog.playbook
 
 import org.springframework.boot.context.properties.ConfigurationProperties
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
 import org.springframework.stereotype.Component
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.time.Clock
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @ConfigurationProperties(prefix = "quantlog.playbook")
 data class PlaybookProperties(
     val dir: String = "playbook",
 )
-
-@Configuration
-class PlaybookConfig {
-    @Bean
-    fun clock(): Clock = Clock.system(ZoneId.of("Asia/Seoul"))
-}
 
 /**
  * 봇의 "머릿속" 파일 저장소. 원칙을 읽고, 일지를 쓰고, 원칙 변경안을 제안한다.

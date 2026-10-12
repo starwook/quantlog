@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantlog.broker.CandleUpdated
 import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
+import com.quantlog.broker.symbolKey
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.TextMessage
@@ -21,7 +22,7 @@ class ChartBroadcaster(private val objectMapper: ObjectMapper) {
         market: Market,
         symbol: String,
     ) {
-        sessionsByKey.getOrPut(key(market, symbol)) { ConcurrentHashMap.newKeySet() }.add(session)
+        sessionsByKey.getOrPut(symbolKey(market, symbol)) { ConcurrentHashMap.newKeySet() }.add(session)
     }
 
     fun unsubscribeAll(session: WebSocketSession) {
@@ -36,7 +37,7 @@ class ChartBroadcaster(private val objectMapper: ObjectMapper) {
         symbol: String,
         candle: MinuteCandle,
     ) {
-        val sessions = sessionsByKey[key(market, symbol)]
+        val sessions = sessionsByKey[symbolKey(market, symbol)]
         if (sessions.isNullOrEmpty()) return
         val payload =
             objectMapper.writeValueAsString(
@@ -52,9 +53,4 @@ class ChartBroadcaster(private val objectMapper: ObjectMapper) {
         val message = TextMessage(payload)
         sessions.forEach { session -> runCatching { if (session.isOpen) session.sendMessage(message) } }
     }
-
-    private fun key(
-        market: Market,
-        symbol: String,
-    ) = "$market:$symbol"
 }
