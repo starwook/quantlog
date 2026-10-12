@@ -12,7 +12,7 @@ class MartingaleTickListenerTest {
     private fun listener(
         service: MartingaleService,
         enabled: Boolean = true,
-    ) = MartingaleTickListener(service, EntryProperties(enabled = enabled)).apply { executor = Executor { it.run() } }
+    ) = MartingaleTickListener(service, EntryProperties(enabled = enabled)).apply { worker.executor = Executor { it.run() } }
 
     @Test
     fun `국내 틱이 오면 그 종목을 틱 가격과 함께 마틴게일 판정한다`() {
