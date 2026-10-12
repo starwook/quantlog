@@ -2,7 +2,6 @@ package com.quantlog.gateway.api
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
-import com.quantlog.gateway.broker.CallPriority
 import com.quantlog.gateway.kis.KisApiClient
 import com.quantlog.gateway.kis.KisProperties
 import com.quantlog.gateway.record.KisOrderService
@@ -55,9 +54,9 @@ class KisPassthroughApi(
                     if (account) accountParams() else emptyMap()
             }
         val jsonBody = if (post) withAccount(body, account) else null
-        val send = { api.raw(path, trId, request.method, query, jsonBody, trCont) }
-        val call = { if (requestId.isNullOrBlank()) send() else orders.forward(requestId, trId, path, body.orEmpty(), send) }
-        val response = if (priority.equals(URGENT, ignoreCase = true)) CallPriority.urgent { call() } else call()
+        val urgent = priority.equals(URGENT, ignoreCase = true)
+        val send = { api.raw(path, trId, request.method, query, jsonBody, trCont, urgent) }
+        val response = if (requestId.isNullOrBlank()) send() else orders.forward(requestId, trId, path, body.orEmpty(), send)
         val result = ResponseEntity.status(HttpStatus.valueOf(response.status)).contentType(MediaType.APPLICATION_JSON)
         response.trCont?.let { result.header("tr_cont", it) }
         return result.body(response.body)
