@@ -37,7 +37,7 @@ class TradeService(
     fun findByOrderNo(
         market: Market,
         orderNo: String,
-    ): Trade? = repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(market, orderNo)
+    ): Trade? = repository.findByOrderNo(market, orderNo)
 
     /**
      * 체결 한 줄이 보유 현황에 반영되면([HoldingSyncService.applyFill] 과 같은 트랜잭션) 그 주문의 매매 기록을 따라 갱신한다.
@@ -47,7 +47,7 @@ class TradeService(
      */
     @EventListener
     fun onFillApplied(event: FillAppliedEvent) {
-        val trade = repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(event.market, event.orderNo)
+        val trade = repository.findByOrderNo(event.market, event.orderNo, OrderFills.dayOf(event.filledAt))
         if (trade == null) {
             if (event.side == Side.SELL && event.avgCostBefore != null) sellAvgCostBeforeRecord[event.orderNo] = event.avgCostBefore
             return
@@ -69,13 +69,13 @@ class TradeService(
     fun onOrderNotice(notice: FillNotice) {
         if (notice.isFill || (notice.refuseFlag.isNotBlank() && notice.refuseFlag != NOT_REFUSED)) return
         if (notice.isCancel) {
-            repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(
+            repository.findByOrderNo(
                 Market.KR,
                 notice.originalOrderNo,
             )?.takeIf { !it.canceled }?.let(::markCanceled)
             return
         }
-        val trade = repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, notice.orderNo) ?: return
+        val trade = repository.findByOrderNo(Market.KR, notice.orderNo) ?: return
         if (trade.apply(OrderStatus.Open)) {
             repository.save(trade)
             events.publishEvent(TradeChangedEvent(trade))

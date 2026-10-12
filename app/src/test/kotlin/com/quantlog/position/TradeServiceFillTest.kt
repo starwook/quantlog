@@ -50,7 +50,7 @@ class TradeServiceFillTest {
         service.onFillApplied(
             FillAppliedEvent(
                 Market.KR, notice.symbol, notice.side!!, notice.orderNo, notice.filledQuantity!!.toInt(), notice.filledPrice!!,
-                avgCostBefore, Instant.EPOCH, id,
+                avgCostBefore, Instant.now(), id,
             ),
         )
     }
@@ -66,7 +66,7 @@ class TradeServiceFillTest {
     @Test
     fun `증권사 취소 통보가 오면 원주문 기록을 취소로 바꾼다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"), "A1", "ok")
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
         val cancelNotice = notice(fill = false).copy(orderNo = "A2", originalOrderNo = "A1", acceptFlag = "2")
 
         service.onOrderNotice(cancelNotice)
@@ -78,7 +78,7 @@ class TradeServiceFillTest {
     @Test
     fun `취소 통보가 와도 원주문이 이미 취소로 기록돼 있으면 다시 저장하지 않는다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"), "A1", "ok").also { it.cancel() }
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
 
         service.onOrderNotice(notice(fill = false).copy(orderNo = "A2", originalOrderNo = "A1", acceptFlag = "2"))
 
@@ -88,7 +88,7 @@ class TradeServiceFillTest {
     @Test
     fun `통보가 주문 응답보다 먼저 왔으면 매매 기록을 저장할 때 체결가를 바로 채운다`() {
         val saved = savedTrades()
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(null)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf())
         receive(notice())
 
         service.record(order, receipt, "마틴게일")
@@ -99,7 +99,7 @@ class TradeServiceFillTest {
     @Test
     fun `기록이 먼저 있고 체결이 나중에 반영되면 체결가를 채워 저장한다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"), "A1", "ok")
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
 
         receive(notice())
 
@@ -111,7 +111,7 @@ class TradeServiceFillTest {
     @Test
     fun `이미 체결가가 있는 기록은 덮어쓰지 않는다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"), "A1", "ok", initialFilledPrice = BigDecimal("270000"))
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
 
         receive(notice())
 
@@ -133,7 +133,7 @@ class TradeServiceFillTest {
     @Test
     fun `기록이 있는 주문에 접수 통보가 반영되면 미체결 확인으로 바꾼다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"), "A1", "ok")
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
         assertEquals(OrderState.CHECKING, trade.state)
 
         receive(notice(fill = false))
@@ -145,7 +145,7 @@ class TradeServiceFillTest {
     @Test
     fun `거부된 접수 통보는 미체결 확인으로 보지 않는다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"), "A1", "ok")
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
 
         service.onOrderNotice(notice(fill = false).copy(refuseFlag = "1"))
 
@@ -155,7 +155,7 @@ class TradeServiceFillTest {
     @Test
     fun `부분체결은 체결 누적만큼만 올리고 주문수량이 다 차야 체결로 본다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 44, BigDecimal("69595"), "A1", "ok")
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
 
         receive(notice(quantity = 3, price = "69590", orderQuantity = 44))
 
@@ -171,7 +171,7 @@ class TradeServiceFillTest {
     @Test
     fun `부분체결 도중 앱이 재시작돼도 누적은 원장에서 이어진다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 44, BigDecimal("69595"), "A1", "ok")
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
         receive(notice(quantity = 3, price = "69500", orderQuantity = 44))
 
         // 재시작 = 메모리가 없는 새 서비스. 원장(DB)만 그대로다.
@@ -187,7 +187,7 @@ class TradeServiceFillTest {
     @Test
     fun `통보가 주문 응답보다 먼저 와서 일부만 체결됐으면 저장할 때도 일부 체결로 둔다`() {
         val saved = savedTrades()
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(null)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf())
         receive(notice(quantity = 3, orderQuantity = 10))
 
         service.record(OrderRequest(Market.KR, "005930", Side.BUY, 10, BigDecimal("278500")), receipt, "마틴게일")
@@ -199,7 +199,7 @@ class TradeServiceFillTest {
     @Test
     fun `매도 체결은 체결 직전 평단을 매매 기록에 한 번만 적는다`() {
         val trade = Trade(Market.KR, "005930", Side.SELL, 10, BigDecimal("71000"), "A1", "ok")
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
 
         receive(notice(side = Side.SELL, quantity = 4, price = "71000", orderQuantity = 10), avgCostBefore = BigDecimal("70000"))
         receive(notice(side = Side.SELL, quantity = 6, price = "71000", orderQuantity = 10), avgCostBefore = BigDecimal("69000"))
@@ -210,7 +210,7 @@ class TradeServiceFillTest {
     @Test
     fun `매수 체결은 체결 직전 평단을 적지 않는다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"), "A1", "ok")
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(trade)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
 
         receive(notice(), avgCostBefore = BigDecimal("270000"))
 
@@ -220,7 +220,7 @@ class TradeServiceFillTest {
     @Test
     fun `매도 체결이 주문 응답보다 먼저 반영됐으면 저장할 때 체결 직전 평단을 채운다`() {
         val saved = savedTrades()
-        Mockito.`when`(repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, "A1")).thenReturn(null)
+        Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf())
         receive(notice(side = Side.SELL, quantity = 10, price = "71000", orderQuantity = 10), avgCostBefore = BigDecimal("70000"))
 
         service.record(OrderRequest(Market.KR, "005930", Side.SELL, 10, BigDecimal("71000")), receipt, "청산")

@@ -2,6 +2,7 @@ package com.quantlog.position
 
 import com.quantlog.broker.Market
 import org.springframework.data.jpa.repository.JpaRepository
+import java.time.LocalDate
 
 interface TradeRepository : JpaRepository<Trade, Long> {
     fun findAllByOrderByExecutedAtDesc(): List<Trade>
@@ -18,13 +19,20 @@ interface TradeRepository : JpaRepository<Trade, Long> {
         symbol: String,
     ): Trade?
 
-    /**
-     * 주문번호로 매매 기록을 찾는다(체결통보·주문 취소가 이 기록을 이어 붙일 때 쓴다). **KIS 주문번호는 날마다 다시 시작해서 옛 기록과 겹친다**
-     * (2026-10-12: 10-06 주문과 번호가 같아, 오늘 체결통보가 옛 주문에 붙으려다 무시돼 오늘 주문이 "체결 확인중"에 남았다).
-     * 그래서 같은 번호 중 가장 최근 것을 돌려준다 — 체결통보·취소는 항상 방금 낸 주문에 대한 것이다.
-     */
-    fun findFirstByMarketAndOrderNoOrderByExecutedAtDesc(
+    /** 같은 주문번호의 기록 전부(날이 다른 것 포함). 보통은 [findByOrderNo] 로 날짜까지 맞춰 찾는다. */
+    fun findAllByMarketAndOrderNo(
         market: Market,
         orderNo: String,
-    ): Trade?
+    ): List<Trade>
 }
+
+/**
+ * 주문번호로 그날(KST [day], 기본 오늘)의 매매 기록을 찾는다(체결통보·주문 취소가 이 기록을 이어 붙일 때 쓴다).
+ * **KIS 주문번호는 날마다 다시 시작해서 옛 기록과 겹치므로 번호만으로 찾으면 안 된다**
+ * (2026-10-12: 10-06 주문과 번호가 같아, 오늘 체결통보가 옛 주문에 붙으려다 무시돼 오늘 주문이 "체결 확인중"에 남았다).
+ */
+fun TradeRepository.findByOrderNo(
+    market: Market,
+    orderNo: String,
+    day: LocalDate = OrderFills.today(),
+): Trade? = findAllByMarketAndOrderNo(market, orderNo).lastOrNull { OrderFills.dayOf(it.executedAt) == day }

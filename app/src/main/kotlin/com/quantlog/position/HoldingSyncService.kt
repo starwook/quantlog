@@ -59,8 +59,8 @@ class HoldingSyncService(
      * 재시작해도 같고, 보유 현황에 아직 안 들어간 체결로 대기를 먼저 풀지 않는다.
      */
     override fun isOrderFilled(orderNo: String): Boolean {
-        val trade = tradeRepository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, orderNo) ?: return false
-        return orderFills.projected(orderNo, OrderFills.dayOf(trade.executedAt)).total().quantity >= trade.quantity
+        val trade = tradeRepository.findByOrderNo(Market.KR, orderNo) ?: return false
+        return orderFills.projected(orderNo).total().quantity >= trade.quantity
     }
 
     /**
@@ -80,7 +80,14 @@ class HoldingSyncService(
         val side = notice.side ?: return null
         val price = notice.filledPrice ?: return null
         val reported = notice.filledQuantity?.toInt() ?: return null
-        val quantity = reserveFillQuantity(notice.orderNo, noticeId, reported, orderQuantityOf(notice), OrderFills.dayOf(receivedAt))
+        val quantity =
+            reserveFillQuantity(
+                notice.orderNo,
+                noticeId,
+                reported,
+                orderQuantityOf(notice, OrderFills.dayOf(receivedAt)),
+                OrderFills.dayOf(receivedAt),
+            )
         if (quantity <= 0) return null
 
         val market = Market.KR
@@ -144,10 +151,13 @@ class HoldingSyncService(
      * 주문수량. 체결통보가 주문수량을 0 으로 보내오는 경우가 있다(2026-10-07 실측: 쪼개져 온 매도 체결 두 건 모두 0 → 반영이 통째로 건너뛰어졌다).
      * 0 이하면 우리 매매 기록(Trade)의 수량을 쓰고, 그것도 없으면 상한 없이 체결수량을 그대로 믿는다.
      */
-    private fun orderQuantityOf(notice: FillNotice): Int {
+    private fun orderQuantityOf(
+        notice: FillNotice,
+        day: LocalDate,
+    ): Int {
         val reported = notice.orderQuantity?.toInt() ?: 0
         if (reported > 0) return reported
-        return tradeRepository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, notice.orderNo)?.quantity ?: Int.MAX_VALUE
+        return tradeRepository.findByOrderNo(Market.KR, notice.orderNo, day)?.quantity ?: Int.MAX_VALUE
     }
 
     /**
