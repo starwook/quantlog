@@ -43,7 +43,7 @@ class RealizedPnlReportTest {
         initialAvgCostBefore = avg?.let(::BigDecimal),
     ).also {
         Trade::class.java.getDeclaredField("id").apply { isAccessible = true }.set(it, nextId)
-        ledger.record(fillNotice(side, quantity, price, it.orderNo, symbol = symbol))
+        ledger.record(fillNotice(side, quantity, price, it.orderNo, symbol = symbol), it.executedAt)
     }
 
     private fun snapshot(vararg trades: Trade): com.quantlog.position.PortfolioSnapshot {

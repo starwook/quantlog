@@ -54,7 +54,7 @@ class PortfolioServiceTest {
         avg: String? = null,
     ): Trade {
         val orderNo = "${nextOrderNo++}"
-        ledger.record(fillNotice(side, 1, price, orderNo))
+        ledger.record(fillNotice(side, 1, price, orderNo), executedAt)
         return Trade(
             market = Market.KR,
             symbol = "005930",
