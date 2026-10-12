@@ -4,7 +4,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 
 ## 지금 되는 것
 
-한투(KIS) **모의투자** 연동 + 매매 기록 DB/웹. 국내(KR) 주식 전용(해외 주식은 2026-10-08 제거). 실행하면 `http://localhost:8080`에서 계좌 요약·실현손익·매매 기록을 볼 수 있다 (Thymeleaf, 서버는 계속 떠 있음). 보유 종목은 KIS 잔고를 10초마다(체결이 확인되면 즉시 한 번 더) DB(`account_holding`)에 그대로 동기화(`HoldingSyncScheduler`)해 두고 화면은 그 테이블을 읽는다(화면 조회에 KIS 호출 없음, 증권사 앱에서 직접 거래한 물량 포함).
+한투(KIS) **모의투자** 연동 + 매매 기록 DB/웹. 국내(KR) 주식 전용(해외 주식은 2026-10-08 제거). 실행하면 `http://localhost:8080`에서 주문·실현손익·매매 기록을 볼 수 있다 (Thymeleaf, 서버는 계속 떠 있음). 보유 종목은 KIS 잔고를 10초마다(체결이 확인되면 즉시 한 번 더) DB(`account_holding`)에 그대로 동기화(`HoldingSyncScheduler`)해 두고 화면은 그 테이블을 읽는다(화면 조회에 KIS 호출 없음, 증권사 앱에서 직접 거래한 물량 포함).
 
 | 기능 | 위치 |
 |---|---|
@@ -19,7 +19,7 @@ AI 자동매매 봇 + 판단 과정·수익률 공개 웹서비스. 기획은 [d
 | Oracle Cloud 배포 (로컬 수동 `deploy/deploy.sh` / GitHub push 자동 `.github/workflows/deploy.yml`) | `deploy/` (절차는 `deploy/DEPLOY.md`) |
 | 국내 분봉 수집 (KIS 당일·최근 30건 → `minute_candle` 테이블에 누적) | `marketdata/` |
 | 매매 기록 저장·조회, 체결 원장(게이트웨이 `kis_broker_fill`) 반영·실현손익 계산(체결 직전 평단 기준) | `position/` (MySQL, DB명 `quantlog`, 로컬 root/무비밀번호) |
-| 웹 대시보드 (8080) | `position/TradeController.kt` + `resources/templates/trades.html` |
+| 웹 화면 (8080, `/` → `/orders` 이동) | `order/OrderLiveController.kt` + `resources/templates/orders.html` |
 
 **아직 없는 것**: 자동 매수(진입 판단 규칙 미정), 타임스톱·체결 확인·휴장일 판단, 진입 판단(AI 필요 여부 재검토 중, `docs/기획서.md` 7장), 일일 손실 한도(킬스위치) 코드.
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <body>
-<!-- 공통 상단 메뉴. 사용: <nav th:replace="~{fragments/nav :: menu('account')}"></nav> (active: orders|chart|backtest|settings|errors) -->
+<!-- 공통 상단 메뉴. 사용: <nav th:replace="~{fragments/nav :: menu('orders')}"></nav> (active: orders|chart|backtest|settings|errors) -->
 <nav th:fragment="menu(active)" class="menu">
     <style>
         .menu { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border, #eceef1); overflow-x: auto; }
