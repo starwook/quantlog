@@ -12,13 +12,14 @@ import org.springframework.stereotype.Component
 data class AnthropicProperties(
     /** API 키 (시크릿 — application-local.yml 이나 환경변수에만 적는다). */
     val apiKey: String = "",
+    /** 기본 모델(2026-10-13 사용자 결정: Haiku 5.5). 모델을 바꾸려면 이 값만 고친다. */
+    val model: String = "claude-haiku-5-5",
 )
 
 @ConfigurationProperties(prefix = "quantlog.review")
 data class ReviewProperties(
     /** 스케줄러(장 마감 뒤 자동 리뷰) 켜기. 호출마다 API 비용이 나가므로 기본은 꺼 둔다. 수동 실행(/review/run)은 이 값과 무관하다. */
     val enabled: Boolean = false,
-    val model: String = "claude-opus-5-5",
     /** 일별 요약에 넣을 최근 일수. */
     val days: Int = 7,
 )
@@ -48,7 +49,7 @@ class AnthropicLlmClient(
     ): String {
         val params =
             MessageCreateParams.builder()
-                .model(properties.model)
+                .model(anthropic.model)
                 .maxTokens(16_000L)
                 .system(system)
                 .addUserMessage(user)
