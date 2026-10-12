@@ -52,6 +52,7 @@ quantlog:
     # 학습 루프의 일일 리뷰(기획서 6.4). Claude API 를 부르므로 비용이 나간다 — 스케줄러는 기본 꺼짐, 수동 실행은 POST /review/run.
     enabled: ${QUANTLOG_REVIEW_ENABLED:false}
     days: 7
+    run-token: ${REVIEW_RUN_TOKEN:}   # 수동 실행 비밀번호. 비우면 확인 안 함(로컬). 서버는 .env 에 설정
   playbook:
     dir: playbook   # 원칙·일지·제안 (playbook/README.md)
   strategy:
