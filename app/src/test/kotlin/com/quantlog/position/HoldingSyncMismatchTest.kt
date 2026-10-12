@@ -19,7 +19,7 @@ class HoldingSyncMismatchTest {
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
     private val ledger = InMemoryBrokerFills()
     private val service =
-        HoldingSyncService(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher())
+        HoldingSyncFixture(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher())
     private val now = Instant.parse("2026-10-08T01:00:00Z")
 
     private fun kis(

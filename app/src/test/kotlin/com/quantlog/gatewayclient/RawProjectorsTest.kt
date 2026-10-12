@@ -6,7 +6,7 @@ import com.quantlog.broker.Market
 import com.quantlog.marketdata.MinuteCandleEntity
 import com.quantlog.marketdata.MinuteCandleRepository
 import com.quantlog.marketdata.MinuteCandleStore
-import com.quantlog.position.HoldingSyncService
+import com.quantlog.position.HoldingBalanceSync
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito
@@ -45,7 +45,7 @@ class RawProjectorsTest {
                 """{"rt_cd":"0","output1":[{"pdno":"005930","prdt_name":"삼성전자","hldg_qty":"2","pchs_avg_pric":"70000","prpr":"70500"}]}""",
             ),
         )
-        val holdingSync = Mockito.mock(HoldingSyncService::class.java)
+        val holdingSync = Mockito.mock(HoldingBalanceSync::class.java)
         val held = Mockito.mock(HeldSymbolPublisher::class.java)
         val projector = BalanceProjector(balances, cursors, holdingSync, held, mapper)
 
@@ -62,7 +62,7 @@ class RawProjectorsTest {
     fun `읽을 수 없는 잔고 줄은 건너뛰고 커서만 옮긴다`() {
         val balances = Mockito.mock(KisBalanceRowRepository::class.java)
         Mockito.`when`(balances.findTopByOrderByIdDesc()).thenReturn(balanceRow(3, "not json"))
-        val holdingSync = Mockito.mock(HoldingSyncService::class.java)
+        val holdingSync = Mockito.mock(HoldingBalanceSync::class.java)
 
         assertEquals(
             false,

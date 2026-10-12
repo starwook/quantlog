@@ -2,7 +2,6 @@ package com.quantlog.gateway.kis
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.quantlog.gateway.broker.CallPriority
 import mu.KotlinLogging
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
@@ -60,11 +59,14 @@ class KisApiClient(
     }
 
     /**
-     * 한투 REST 한 번 호출. 토큰·호출 간격·우선순위([CallPriority])는 여기서 처리하지만 요청·응답 내용은 건드리지 않는다.
+     * 한투 REST 한 번 호출. 토큰·호출 간격·우선순위([urgent])는 여기서 처리하지만 요청·응답 내용은 건드리지 않는다.
      * [jsonBody] 는 POST 본문(미리 JSON 문자열로 직렬화해 정확한 바이트 길이를 넘긴다 — Map 을 그대로 넘기면 Content-Length 가 어긋나
      * KIS 게이트웨이가 EGW00202 로 거부한 사례가 있었다. 참고: https://wildeveloperetrain.tistory.com/426).
      * 초당 한도 초과(EGW00201/EGW00215)는 여러 스케줄러가 겹칠 때 실제로 발생한다(2026-09-29 실측: 청산 확인이 한도 초과로 통째로 실패해
      * 다음 30초까지 기다린 사례). 한도 초과일 때만 짧게 쉬었다가 한 번 더 시도하고, 그래도 오류면 그 응답을 그대로 돌려준다.
+     *
+     * 호출 우선순위: 증권사 REST 는 초당 호출 한도가 있어서 모든 호출이 하나의 호출 간격 대기열을 같이 쓴다. [urgent] 호출(앱이 `X-Call-Priority: urgent`
+     * 로 보낸, 사용자가 누른 주문·취소와 주문 흐름의 시세·체결 조회)은 대기 중인 일반 호출(스케줄러의 주기 호출)보다 항상 먼저 나간다.
      */
     fun raw(
         path: String,
@@ -73,10 +75,11 @@ class KisApiClient(
         query: Map<String, String>,
         jsonBody: String?,
         trCont: String?,
+        urgent: Boolean = false,
     ): RawResponse {
         repeat(MAX_ATTEMPTS) { attempt ->
             val waitStart = System.currentTimeMillis()
-            throttle()
+            throttle(urgent)
             val httpStart = System.currentTimeMillis()
             val spec: RestClient.RequestHeadersSpec<*> =
                 if (method == POST) {
@@ -130,11 +133,10 @@ class KisApiClient(
     private fun isRateLimited(body: String): Boolean = body.contains("EGW00201") || body.contains("EGW00215")
 
     /**
-     * 호출 간격을 지킨다. 즉발 호출([CallPriority])이 기다리는 동안엔 일반 호출(스케줄러)이 양보한다 — 우선순위 매뉴얼은 [CallPriority] 참고.
+     * 호출 간격을 지킨다. 즉발 호출이 기다리는 동안엔 일반 호출(스케줄러)이 양보한다.
      * 잠은 잠금 밖에서 잔다(잠금 안에서 자면 즉발 호출도 같이 막힌다).
      */
-    private fun throttle() {
-        val urgent = CallPriority.isUrgent()
+    private fun throttle(urgent: Boolean) {
         if (urgent) urgentWaiting.incrementAndGet()
         try {
             while (true) {

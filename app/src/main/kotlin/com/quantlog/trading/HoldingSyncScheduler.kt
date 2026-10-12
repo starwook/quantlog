@@ -23,7 +23,7 @@ data class HoldingSyncProperties(
  * 현재가도 같이 저장돼 화면은 증권사를 부르지 않는다. 화면을 열어야만 동기화되면 안 된다(2026-09-30 사용자 지적: 화면을 켜두고 앱에서 사면 어긋남).
  * 게이트웨이의 알림(웹소켓)이 오면 바로 돌고, 알림이 없어도 주기적으로 DB 를 확인한다 — 알림은 빠른 신호일 뿐 정본은 DB 다.
  *
- * 동기화 불일치 보고 불필요: 증권사와 DB 를 비교하는 건 [com.quantlog.position.HoldingSyncService] 이고, 불일치 보고도 거기서 한다. 여기는 주기와 스레드만 맡는다.
+ * 동기화 불일치 보고 불필요: 증권사와 DB 를 비교하는 건 [com.quantlog.position.HoldingBalanceSync] 이고, 불일치 보고도 거기서 한다. 여기는 주기와 스레드만 맡는다.
  */
 @Component
 class HoldingSyncScheduler(

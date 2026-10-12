@@ -50,7 +50,7 @@ class SymbolStrategy(
     var martingaleMaxStages: Int,
     /**
      * 옛 ETF 컬럼. ETF 여부는 이제 [watchSymbol] 이 갖는다. 이 컬럼은 NOT NULL 이라 매핑을 지우면 새 행 insert 가 깨져서 남겨 두고,
-     * 외래키 연결([SymbolStrategyService.linkWatchSymbols]) 때 값을 옮기는 데만 읽는다.
+     * 외래키 연결([SymbolStrategySeedService.linkWatchSymbols]) 때 값을 옮기는 데만 읽는다.
      */
     @Column(name = "etf", nullable = false)
     var legacyEtf: Boolean = false,

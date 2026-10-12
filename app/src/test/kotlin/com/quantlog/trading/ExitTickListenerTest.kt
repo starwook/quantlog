@@ -14,7 +14,7 @@ class ExitTickListenerTest {
     private fun listener(
         service: ExitService,
         enabled: Boolean,
-    ) = ExitTickListener(service, ExitProperties(enabled = enabled)).apply { executor = Executor { it.run() } }
+    ) = ExitTickListener(service, ExitProperties(enabled = enabled)).apply { worker.executor = Executor { it.run() } }
 
     @Test
     fun `틱이 오면 그 종목을 청산 판정한다`() {

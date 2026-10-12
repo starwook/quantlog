@@ -62,10 +62,5 @@ interface ErrorLogRepository : JpaRepository<ErrorLog, Long> {
 
     fun findAllByLastSeenAfterOrderByLastSeenDesc(after: Instant): List<ErrorLog>
 
-    fun findAllByLastSeenAfterAndLoggerStartingWithOrderByLastSeenAsc(
-        after: Instant,
-        loggerPrefix: String,
-    ): List<ErrorLog>
-
     fun deleteByLastSeenBefore(before: Instant): Long
 }

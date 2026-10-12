@@ -69,7 +69,8 @@
 | `held_symbol` | **앱** → 게이트웨이 | 지금 보유 중인 종목. `market, symbol`. 게이트웨이는 잔고 원문을 해석하지 않으므로 앱이 잔고를 반영할 때 보유 종목으로 맞춰 쓴다. 구독·분봉 수집에서 `watch_symbol` 보다 앞선다 |
 | `minute_candle` | **앱만** | 분봉. 앱이 실시간 시세로 만든 것과 `kis_minute_chart` 에서 푼 것이 함께 들어간다(게이트웨이는 쓰지 않는다) |
 | `paper_order` | 앱만 | 모킹 체결(`QUANTLOG_BROKER_TYPE=paper`) 기록 |
-| `error_log` | 양쪽 → 앱(화면·알림) | 게이트웨이는 `logger` 가 `com.quantlog.gateway` 로 시작 |
-| `broker_projection_cursor` | 앱 → 앱 | 앱이 원장을 어디까지 처리했는지(`kis_broker_fill`·`kis_balance`·`kis_minute_chart` = 각 테이블의 마지막 처리 id) |
+| `gateway_log` | 게이트웨이 → 앱 | 게이트웨이의 WARN 이상 로그 **원본**(append-only, 묶지 않음). `id, logged_at, level, logger, message, exception_class, exception_message, stack_trace`. 앱 `GatewayLogProjector` 가 읽어 자기 `error_log` 에 묶어 넣고 웹훅으로 알린다. 14일 지난 줄은 게이트웨이가 지운다 |
+| `error_log` | **앱만** | 앱의 WARN 이상 로그와 `gateway_log` 에서 옮겨 온 줄을 같은 종류끼리 묶은 것(/errors 화면) |
+| `broker_projection_cursor` | 앱 → 앱 | 앱이 원장을 어디까지 처리했는지(`kis_broker_fill`·`kis_balance`·`kis_minute_chart`·`gateway_log` = 각 테이블의 마지막 처리 id) |
 
 옛 형식(`broker_fill`, `trade_fill`, `broker_balance`, `broker_balance_meta`, `broker_order`)과 옛 커서 행(`fill`, `balance`)은 쓰지 않는다 — 데이터 초기화 때 지운다.

@@ -36,12 +36,20 @@ class ManualOrderService(
         now: ZonedDateTime = ZonedDateTime.now(),
         limitPrice: BigDecimal? = null,
     ) {
-        require(quantity > 0) { "수량은 1주 이상이어야 합니다" }
-        check(market.isTradable(now)) { "지금은 $market 거래 시간이 아닙니다" }
+        requireOrderable(market, quantity, now)
         val quote = broker.quote(market, symbol)
         val request = OrderRequest(market, symbol, Side.BUY, quantity, limitPrice?.let { validTick(quote, it) } ?: quote.oneTickAbove())
         riskGuard.checkBuy(request)
         place(request, "수동 매수(화면): ${if (limitPrice != null) "지정가 $limitPrice / " else ""}현재 ${quote.price}")
+    }
+
+    private fun requireOrderable(
+        market: Market,
+        quantity: Int,
+        now: ZonedDateTime,
+    ) {
+        require(quantity > 0) { "수량은 1주 이상이어야 합니다" }
+        check(market.isTradable(now)) { "지금은 $market 거래 시간이 아닙니다" }
     }
 
     /** 팔 수 없으면 [IllegalStateException] (메시지는 화면에 그대로 보여준다). [limitPrice] 가 null 이면 즉시 체결가. */
@@ -52,8 +60,7 @@ class ManualOrderService(
         now: ZonedDateTime = ZonedDateTime.now(),
         limitPrice: BigDecimal? = null,
     ) {
-        require(quantity > 0) { "수량은 1주 이상이어야 합니다" }
-        check(market.isTradable(now)) { "지금은 $market 거래 시간이 아닙니다" }
+        requireOrderable(market, quantity, now)
         // 매매 기록 전체를 계산하는 스냅숏 대신 잔고 사본(종목당 1행)만 읽는다 — 수동 주문 응답을 가볍게 유지하려고.
         val holding = accountHoldingRepository.findByMarketAndSymbol(market, symbol)?.takeIf { it.quantity > 0 }
         checkNotNull(holding) { "보유 중이 아닙니다: $symbol" }

@@ -62,7 +62,7 @@ class InMemoryBrokerFills : OrderFills {
 }
 
 /** 원장에 통보를 쌓고 바로 보유 현황에 반영한다 — [com.quantlog.gatewayclient.FillProjector] 가 하는 일을 한 줄로. */
-fun HoldingSyncService.applyRecorded(
+fun HoldingSyncFixture.applyRecorded(
     fills: InMemoryBrokerFills,
     notice: FillNotice,
     now: Instant,
