@@ -44,8 +44,9 @@ quantlog:
   notify:
     # Discord/Slack Incoming Webhook URL (시크릿 — application-local.yml 에만 적는다). 비우면 알림 꺼짐.
     webhook-url: ${QUANTLOG_NOTIFY_WEBHOOK_URL:}
-  # Claude API 키. 시크릿 — application-local.yml 이나 환경변수에만 적는다.
-  api-key: ${ANTHROPIC_API_KEY:}
+  anthropic:
+    # Claude API 키. 시크릿 — application-local.yml 이나 환경변수에만 적는다.
+    api-key: ${ANTHROPIC_API_KEY:}
   review:
     # 학습 루프의 일일 리뷰(기획서 6.4). Claude API 를 부르므로 비용이 나간다 — 스케줄러는 기본 꺼짐, 수동 실행은 POST /review/run.
     enabled: ${QUANTLOG_REVIEW_ENABLED:false}

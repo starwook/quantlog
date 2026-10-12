@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.stereotype.Component
 
 /** Anthropic API 접속 정보. 리뷰뿐 아니라 이후 진입 판단도 같은 키를 쓴다. */
-@ConfigurationProperties(prefix = "quantlog")
+@ConfigurationProperties(prefix = "quantlog.anthropic")
 data class AnthropicProperties(
     /** API 키 (시크릿 — application-local.yml 이나 환경변수에만 적는다). */
     val apiKey: String = "",
@@ -38,7 +38,7 @@ class AnthropicLlmClient(
 ) : LlmClient {
     // 키가 없는 환경(기본)에서도 앱이 떠야 해서 첫 호출 때 만든다.
     private val client: AnthropicClient by lazy {
-        check(anthropic.apiKey.isNotBlank()) { "quantlog.api-key 가 비어 있습니다 (application-local.yml 에 적으세요)" }
+        check(anthropic.apiKey.isNotBlank()) { "quantlog.anthropic.api-key 가 비어 있습니다 (application-local.yml 에 적으세요)" }
         AnthropicOkHttpClient.builder().apiKey(anthropic.apiKey).build()
     }
 
