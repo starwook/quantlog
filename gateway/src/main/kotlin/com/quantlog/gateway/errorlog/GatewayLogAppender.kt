@@ -9,7 +9,10 @@ import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
 import org.slf4j.LoggerFactory
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -18,13 +21,13 @@ import java.util.concurrent.TimeUnit
 private val log = KotlinLogging.logger {}
 
 /**
- * WARN 이상 로그를 DB(error_log)에 쌓는다. 서버 로그를 직접 못 볼 때 오류가 지나쳐지지 않게 하는 기록이다.
- * 매매 흐름을 막지 않도록 전용 스레드 하나가 큐(최대 [QUEUE_SIZE]건, 넘치면 버림)에서 꺼내 쓴다.
+ * WARN 이상 로그를 DB(`gateway_log`)에 원본 그대로 한 줄씩 쌓는다. 게이트웨이는 알림을 보내지 않으므로 앱이 이 줄을 읽어 간다.
+ * 매매·시세 흐름을 막지 않도록 전용 스레드 하나가 큐(최대 [QUEUE_SIZE]건, 넘치면 버림)에서 꺼내 쓴다.
  * DB 쓰기 자체가 내는 로그(Hibernate·Hikari 등)와 이 패키지의 로그는 기록 대상이 아니다 — 쓰기 실패 → 로그 → 쓰기 …로 무한 반복되지 않게.
  */
 @Component
-class ErrorLogAppender(
-    private val recorder: ErrorLogRecorder,
+class GatewayLogAppender(
+    private val repository: GatewayLogRepository,
     private val properties: ErrorLogProperties,
 ) {
     private val executor =
@@ -34,7 +37,7 @@ class ErrorLogAppender(
             0L,
             TimeUnit.MILLISECONDS,
             ArrayBlockingQueue(QUEUE_SIZE),
-            { r -> Thread(r, "error-log").apply { isDaemon = true } },
+            { r -> Thread(r, "gateway-log").apply { isDaemon = true } },
             ThreadPoolExecutor.DiscardPolicy(),
         )
 
@@ -43,10 +46,10 @@ class ErrorLogAppender(
             override fun append(event: ILoggingEvent) {
                 if (!event.level.isGreaterOrEqual(Level.WARN)) return
                 if (IGNORED_LOGGERS.any { event.loggerName.startsWith(it) }) return
-                val record = event.toRecord()
+                val row = event.toRow()
                 executor.execute {
-                    runCatching { recorder.record(record) }
-                        .onFailure { log.debug(it) { "[오류 기록] 저장 실패" } }
+                    runCatching { repository.save(row) }
+                        .onFailure { log.debug(it) { "[게이트웨이 로그] 저장 실패" } }
                 }
             }
         }
@@ -67,22 +70,24 @@ class ErrorLogAppender(
         executor.shutdown()
     }
 
-    private fun ILoggingEvent.toRecord(): LogRecord =
-        LogRecord(
-            at = Instant.ofEpochMilli(timeStamp),
+    private fun ILoggingEvent.toRow() =
+        GatewayLog(
+            loggedAt = Instant.ofEpochMilli(timeStamp),
             level = level.toString(),
-            logger = loggerName,
-            message = formattedMessage,
-            exceptionClass = throwableProxy?.className,
-            exceptionMessage = throwableProxy?.message,
-            stackTrace = throwableProxy?.let { ThrowableProxyUtil.asString(it) },
+            logger = loggerName.take(200),
+            message = formattedMessage.take(MAX_MESSAGE),
+            exceptionClass = throwableProxy?.className?.take(200),
+            exceptionMessage = throwableProxy?.message?.take(500),
+            stackTrace = throwableProxy?.let { ThrowableProxyUtil.asString(it) }?.take(MAX_STACK),
         )
 
     private companion object {
         const val QUEUE_SIZE = 1000
+        const val MAX_MESSAGE = 1000
+        const val MAX_STACK = 6000
         val IGNORED_LOGGERS =
             listOf(
-                "com.quantlog.errorlog",
+                "com.quantlog.gateway.errorlog",
                 "org.hibernate",
                 "com.zaxxer",
                 "com.mysql",
@@ -90,5 +95,20 @@ class ErrorLogAppender(
                 "org.springframework.jdbc",
                 "org.springframework.transaction",
             )
+    }
+}
+
+/** 오래된 게이트웨이 로그를 매일 새벽에 지운다([ErrorLogProperties.retentionDays]). */
+@Component
+class GatewayLogCleaner(
+    private val repository: GatewayLogRepository,
+    private val properties: ErrorLogProperties,
+) {
+    @Scheduled(cron = "0 30 4 * * *", zone = "Asia/Seoul")
+    @Transactional
+    fun purgeOld() {
+        if (!properties.enabled) return
+        val deleted = repository.deleteByLoggedAtBefore(Instant.now().minus(Duration.ofDays(properties.retentionDays)))
+        if (deleted > 0) log.info { "[게이트웨이 로그] ${properties.retentionDays}일 지난 ${deleted}건 삭제" }
     }
 }
