@@ -45,7 +45,8 @@ class PortfolioServiceLedgerTest {
         orderNo: String,
         quantity: Int,
         price: String,
-    ) = ledger.record(fillNotice(side, quantity, price, orderNo, symbol = "233740"))
+        receivedAt: Instant = now,
+    ) = ledger.record(fillNotice(side, quantity, price, orderNo, symbol = "233740"), receivedAt)
 
     @Test
     fun `원장에 체결이 있는 매도는 매매 기록의 체결 직전 평단으로 손익을 확정한다`() {

@@ -19,6 +19,7 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Instant
+import java.time.LocalDate
 
 private val log = KotlinLogging.logger {}
 
@@ -109,9 +110,13 @@ class KisBrokerFillOrderFills(
     override fun upTo(
         orderNo: String,
         lastId: Long,
-    ): List<OrderFill> = ofOrder(orderNo).filter { it.id <= lastId }.mapNotNull { it.toFill() }
+        day: LocalDate,
+    ): List<OrderFill> = ofOrder(orderNo, day).filter { it.id <= lastId }.mapNotNull { it.toFill() }
 
-    override fun projected(orderNo: String): List<OrderFill> = upTo(orderNo, projectedUpTo())
+    override fun projected(
+        orderNo: String,
+        day: LocalDate,
+    ): List<OrderFill> = upTo(orderNo, projectedUpTo(), day)
 
     override fun projectedAll(): List<OrderFill> {
         val upTo = projectedUpTo()
@@ -121,17 +126,23 @@ class KisBrokerFillOrderFills(
         }.mapNotNull { it.toFill() }
     }
 
-    override fun accepted(orderNo: String): Boolean {
+    override fun accepted(
+        orderNo: String,
+        day: LocalDate,
+    ): Boolean {
         val upTo = projectedUpTo()
-        return ofOrder(orderNo).any {
+        return ofOrder(orderNo, day).any {
             it.id <= upTo && !it.notice.isFill && (it.notice.refuseFlag.isBlank() || it.notice.refuseFlag == NOT_REFUSED)
         }
     }
 
     @Synchronized
-    private fun ofOrder(orderNo: String): List<Parsed> {
+    private fun ofOrder(
+        orderNo: String,
+        day: LocalDate,
+    ): List<Parsed> {
         load()
-        return byOrder[orderNo].orEmpty().toList()
+        return byOrder[orderNo].orEmpty().filter { OrderFills.dayOf(it.receivedAt) == day }
     }
 
     /** 아직 안 읽은 원장 줄을 읽어 해석해 둔다. 해석할 수 없는 줄은 건너뛴다([FillProjector] 가 ERROR 로 알린다). */

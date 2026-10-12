@@ -37,7 +37,7 @@ class TradeService(
     fun findByOrderNo(
         market: Market,
         orderNo: String,
-    ): Trade? = repository.findFirstByMarketAndOrderNo(market, orderNo)
+    ): Trade? = repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(market, orderNo)
 
     /**
      * 체결 한 줄이 보유 현황에 반영되면([HoldingSyncService.applyFill] 과 같은 트랜잭션) 그 주문의 매매 기록을 따라 갱신한다.
@@ -47,13 +47,13 @@ class TradeService(
      */
     @EventListener
     fun onFillApplied(event: FillAppliedEvent) {
-        val trade = repository.findFirstByMarketAndOrderNo(event.market, event.orderNo)
+        val trade = repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(event.market, event.orderNo)
         if (trade == null) {
             if (event.side == Side.SELL && event.avgCostBefore != null) sellAvgCostBeforeRecord[event.orderNo] = event.avgCostBefore
             return
         }
         var changed = event.side == Side.SELL && event.avgCostBefore != null && trade.recordAvgCostBefore(event.avgCostBefore)
-        val total = orderFills.upTo(event.orderNo, event.noticeId).total()
+        val total = orderFills.upTo(event.orderNo, event.noticeId, OrderFills.dayOf(event.filledAt)).total()
         total.averagePrice?.let { if (trade.applyFill(it, total.quantity)) changed = true }
         if (changed) {
             repository.save(trade)
@@ -69,10 +69,13 @@ class TradeService(
     fun onOrderNotice(notice: FillNotice) {
         if (notice.isFill || (notice.refuseFlag.isNotBlank() && notice.refuseFlag != NOT_REFUSED)) return
         if (notice.isCancel) {
-            repository.findFirstByMarketAndOrderNo(Market.KR, notice.originalOrderNo)?.takeIf { !it.canceled }?.let(::markCanceled)
+            repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(
+                Market.KR,
+                notice.originalOrderNo,
+            )?.takeIf { !it.canceled }?.let(::markCanceled)
             return
         }
-        val trade = repository.findFirstByMarketAndOrderNo(Market.KR, notice.orderNo) ?: return
+        val trade = repository.findFirstByMarketAndOrderNoOrderByExecutedAtDesc(Market.KR, notice.orderNo) ?: return
         if (trade.apply(OrderStatus.Open)) {
             repository.save(trade)
             events.publishEvent(TradeChangedEvent(trade))

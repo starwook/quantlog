@@ -18,8 +18,12 @@ interface TradeRepository : JpaRepository<Trade, Long> {
         symbol: String,
     ): Trade?
 
-    /** 주문번호로 매매 기록을 찾는다(체결통보·주문 취소가 이 기록을 이어 붙일 때 쓴다). 주문번호는 하루 단위로 유일하다. */
-    fun findFirstByMarketAndOrderNo(
+    /**
+     * 주문번호로 매매 기록을 찾는다(체결통보·주문 취소가 이 기록을 이어 붙일 때 쓴다). **KIS 주문번호는 날마다 다시 시작해서 옛 기록과 겹친다**
+     * (2026-10-12: 10-06 주문과 번호가 같아, 오늘 체결통보가 옛 주문에 붙으려다 무시돼 오늘 주문이 "체결 확인중"에 남았다).
+     * 그래서 같은 번호 중 가장 최근 것을 돌려준다 — 체결통보·취소는 항상 방금 낸 주문에 대한 것이다.
+     */
+    fun findFirstByMarketAndOrderNoOrderByExecutedAtDesc(
         market: Market,
         orderNo: String,
     ): Trade?
