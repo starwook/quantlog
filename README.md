@@ -30,7 +30,7 @@ Gradle 멀티모듈, **서버가 둘**이다(설계·계약은 [docs/서버-분�
 ## 일일 리뷰 (학습 루프, 2026-10-12)
 오늘 체결·보유 현황을 Claude 가 복기해 `playbook/journal/`(일지)과 `playbook/proposals/`(원칙 변경 제안)에 남긴다. 원칙 파일은 바꾸지 않는다.
 - 키: `application-local.yml` 의 `quantlog.anthropic.api-key` (Anthropic 콘솔 API 키 — Claude 구독과 별개로 크레딧 결제).
-- 수동 실행: 앱을 띄운 뒤 `curl -X POST localhost:8080/review/run` (API 비용 발생). 자동: `quantlog.review.enabled=true` → 평일 15:40.
+- 수동 실행: 앱을 띄운 뒤 `/review` 화면(메뉴 "리뷰")의 "지금 리뷰 실행" 버튼 (API 비용 발생). 일지·제안도 이 화면에서 본다. 자동: `quantlog.review.enabled=true` → 평일 15:40.
 
 ## 개발
 

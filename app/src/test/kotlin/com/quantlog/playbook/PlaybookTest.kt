@@ -27,6 +27,22 @@ class PlaybookTest {
     }
 
     @Test
+    fun `최근 일지와 제안을 최신 먼저 돌려주고 폴더가 없으면 빈 목록이다`() {
+        val pb = playbook()
+        assertEquals(emptyList(), pb.recentJournals(5))
+
+        Files.createDirectories(dir.resolve("journal"))
+        Files.writeString(dir.resolve("journal/2026-09-24.md"), "어제")
+        Files.writeString(dir.resolve("journal/2026-09-25.md"), "오늘")
+        Files.writeString(dir.resolve("journal/memo.txt"), "무시")
+        pb.propose("익절 폭 검토", "근거")
+
+        assertEquals(listOf("2026-09-25", "2026-09-24"), pb.recentJournals(5).map { it.name })
+        assertEquals(listOf("2026-09-25"), pb.recentJournals(1).map { it.name })
+        assertTrue(pb.recentProposals(5).single().content.contains("익절 폭 검토"))
+    }
+
+    @Test
     fun `원칙 파일이 없으면 실패한다`() {
         assertFailsWith<IllegalStateException> { playbook().principles() }
     }

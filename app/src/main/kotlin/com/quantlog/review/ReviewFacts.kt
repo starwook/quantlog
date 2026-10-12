@@ -8,6 +8,8 @@ import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
 private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
@@ -28,7 +30,7 @@ object ReviewFacts {
         val todayTrades = byDay[today].orEmpty()
 
         return buildString {
-            appendLine("## 오늘($today) 체결 ${todayTrades.size}건")
+            appendLine("## 오늘($today ${today.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.KOREAN)}요일) 체결 ${todayTrades.size}건")
             if (todayTrades.isEmpty()) appendLine("(체결 없음)")
             todayTrades.forEach { appendLine(line(it, snapshot)) }
 
