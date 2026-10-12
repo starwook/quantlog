@@ -2,14 +2,13 @@ package com.quantlog.position
 
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
+import com.quantlog.common.KST
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.math.MathContext
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 
-private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 private val HUNDRED: BigDecimal = BigDecimal(100)
 
 data class RealizedPnl(

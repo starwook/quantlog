@@ -6,6 +6,7 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
+import com.quantlog.broker.symbolKey
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.FillProgress
 import com.quantlog.position.TradeService
@@ -55,7 +56,7 @@ class MartingaleService(
         now: ZonedDateTime,
     ) {
         if (!market.isTradable(now)) return
-        val key = "$market:$symbol"
+        val key = symbolKey(market, symbol)
         if (!inFlight.add(key)) return
         try {
             check(market, symbol, key, tickPrice, now)

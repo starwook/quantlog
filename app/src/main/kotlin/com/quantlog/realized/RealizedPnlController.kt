@@ -1,7 +1,8 @@
 package com.quantlog.realized
 
-import com.quantlog.order.pnlCss
-import com.quantlog.order.signedMoneyAndPercent
+import com.quantlog.common.KST
+import com.quantlog.common.pnlCss
+import com.quantlog.common.signedMoneyAndPercent
 import com.quantlog.position.PortfolioService
 import com.quantlog.watchlist.SymbolStrategyService
 import org.springframework.stereotype.Controller
@@ -9,7 +10,6 @@ import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestParam
 import java.time.YearMonth
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.util.Locale
@@ -88,7 +88,6 @@ class RealizedPnlController(
     private fun PnlSum.text(currency: String) = signedMoneyAndPercent(amount, percent, currency)
 
     private companion object {
-        val KST: ZoneId = ZoneId.of("Asia/Seoul")
         val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 (E)", Locale.KOREAN)
     }
 }

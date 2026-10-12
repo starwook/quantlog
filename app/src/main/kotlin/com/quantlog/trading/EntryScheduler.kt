@@ -5,6 +5,8 @@ import com.quantlog.broker.CallPriority
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.RealtimePriceFeed
 import com.quantlog.broker.Side
+import com.quantlog.broker.symbolKey
+import com.quantlog.common.KST
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.FillProgress
 import com.quantlog.position.PortfolioService
@@ -26,12 +28,10 @@ import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.concurrent.ConcurrentHashMap
 
 private val log = KotlinLogging.logger {}
-private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 
 @ConfigurationProperties(prefix = "quantlog.entry")
 data class EntryProperties(
@@ -134,7 +134,7 @@ class EntryScheduler(
         now: Instant,
     ) {
         val martingaleRule = MartingaleRule(watched.martingaleProperties())
-        val key = "${watched.market}:${watched.symbol}"
+        val key = symbolKey(watched.market, watched.symbol)
         val lastFailure = lastMartingaleFailureAt[key]
         if (lastFailure != null && Duration.between(lastFailure, now) < properties.cooldown) return
 
@@ -166,7 +166,7 @@ class EntryScheduler(
         held: Boolean,
         now: Instant,
     ) {
-        val key = "${watched.market}:${watched.symbol}"
+        val key = symbolKey(watched.market, watched.symbol)
         val last = lastRebuyCheckAt[key]
         val interval = Duration.ofMinutes(watched.periodicRebuyIntervalMinutes.toLong())
         if (last != null && Duration.between(last, now) < interval) return
@@ -180,7 +180,7 @@ class EntryScheduler(
         watched: SymbolStrategy,
         now: Instant,
     ) {
-        val key = "${watched.market}:${watched.symbol}"
+        val key = symbolKey(watched.market, watched.symbol)
         val last = lastSignalAt[key]
         if (last != null && Duration.between(last, now) < properties.cooldown) return
 

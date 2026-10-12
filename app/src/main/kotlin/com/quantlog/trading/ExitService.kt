@@ -6,6 +6,7 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
+import com.quantlog.broker.symbolKey
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.FillProgress
 import com.quantlog.position.TradeService
@@ -92,7 +93,7 @@ class ExitService(
         now: ZonedDateTime,
     ) {
         if (position.quantity <= 0 || !position.market.isTradable(now)) return
-        val key = "${position.market}:${position.symbol}"
+        val key = symbolKey(position.market, position.symbol)
         if (!inFlight.add(key)) return
         try {
             checkHolding(position, key)
