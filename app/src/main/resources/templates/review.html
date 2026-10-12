@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>일일 리뷰 · quantlog</title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --err: #f04452;
+            --ok: #0f9d58;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 24px 16px 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; }
+        h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+        h2 { font-size: 15px; margin: 24px 0 8px; font-weight: 700; }
+        .note { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+        .card { background: var(--card); border-radius: 16px; margin-bottom: 12px; padding: 16px 20px; }
+        .run { display: flex; align-items: center; gap: 12px; }
+        button {
+            padding: 10px 16px; border: none; border-radius: 10px; background: var(--text); color: #fff;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+        }
+        button:disabled { background: var(--muted); cursor: default; }
+        .msg { padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-size: 14px; background: var(--card); }
+        .msg.done { color: var(--ok); }
+        .msg.error { color: var(--err); }
+        details > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+        pre { white-space: pre-wrap; word-break: break-word; margin: 12px 0 0; font: inherit; font-size: 13px; line-height: 1.6; }
+        .empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+        footer { margin-top: 16px; font-size: 12px; color: var(--muted); }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('review')}"></nav>
+
+    <h1>일일 리뷰</h1>
+    <p class="note">
+        Claude 가 오늘 체결과 보유 현황을 현재 원칙에 비춰 복기한 기록입니다. 원칙은 자동으로 바뀌지 않고, 바꿀 만한 근거가 있으면 아래 "원칙 변경 제안"에 올라옵니다.
+    </p>
+
+    <div class="msg done" th:if="${done}" th:text="${done}"></div>
+    <div class="msg error" th:if="${error}" th:text="${error}"></div>
+
+    <form class="card run" method="post" th:action="@{/review/run}"
+          onsubmit="const b = this.querySelector('button'); b.disabled = true; b.textContent = '리뷰 만드는 중… (최대 1분)';">
+        <button type="submit">지금 리뷰 실행</button>
+        <span class="note" style="margin: 0;">Claude API 를 한 번 부릅니다(비용 발생). 평일 15:40 자동 실행은 설정으로 켭니다.</span>
+    </form>
+
+    <h2>일지</h2>
+    <div class="empty card" th:if="${#lists.isEmpty(journals)}">아직 일지가 없습니다. 위 버튼으로 첫 리뷰를 만들어 보세요.</div>
+    <div class="card" th:each="journal, stat : ${journals}">
+        <details th:open="${stat.first}">
+            <summary th:text="${journal.name}"></summary>
+            <pre th:text="${journal.content}"></pre>
+        </details>
+    </div>
+
+    <h2>원칙 변경 제안</h2>
+    <div class="empty card" th:if="${#lists.isEmpty(proposals)}">아직 제안이 없습니다. 체결이 충분히 쌓이고 근거가 생기면 올라옵니다.</div>
+    <div class="card" th:each="proposal : ${proposals}">
+        <details>
+            <summary th:text="${proposal.name}"></summary>
+            <pre th:text="${proposal.content}"></pre>
+        </details>
+    </div>
+</main>
+<footer>일지는 최근 10일, 제안은 최근 20건만 보여줍니다. 더 오래된 것은 서버 playbook/ 폴더에 있습니다.</footer>
+</body>
+</html>

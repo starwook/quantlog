@@ -13,6 +13,9 @@ data class PlaybookProperties(
     val dir: String = "playbook",
 )
 
+/** 일지·제안서 파일 하나. [name] 은 확장자 없는 파일 이름(날짜로 시작해서 이름순 = 시간순). */
+data class PlaybookNote(val name: String, val content: String)
+
 /**
  * 봇의 "머릿속" 파일 저장소. 원칙을 읽고, 일지를 쓰고, 원칙 변경안을 제안한다.
  * 원칙 파일 자체(principles.md)는 사람과 토론해서만 바꾸므로 여기서 쓰지 않는다. 구조는 playbook/README.md 참고.
@@ -61,6 +64,27 @@ class Playbook(
             StandardOpenOption.CREATE_NEW,
         )
         return file
+    }
+
+    /** 최근 일지 [limit]개, 최신 먼저. 폴더가 아직 없으면 빈 목록. */
+    fun recentJournals(limit: Int): List<PlaybookNote> = recentNotes(JOURNAL_DIR, limit)
+
+    /** 최근 원칙 변경 제안 [limit]개, 최신 먼저. 폴더가 아직 없으면 빈 목록. */
+    fun recentProposals(limit: Int): List<PlaybookNote> = recentNotes(PROPOSALS_DIR, limit)
+
+    private fun recentNotes(
+        dir: String,
+        limit: Int,
+    ): List<PlaybookNote> {
+        val folder = root.resolve(dir)
+        if (!Files.isDirectory(folder)) return emptyList()
+        return Files.list(folder).use { files ->
+            files.filter { it.fileName.toString().endsWith(".md") }
+                .sorted(Comparator.reverseOrder())
+                .limit(limit.toLong())
+                .map { PlaybookNote(it.fileName.toString().removeSuffix(".md"), Files.readString(it)) }
+                .toList()
+        }
     }
 
     private companion object {
