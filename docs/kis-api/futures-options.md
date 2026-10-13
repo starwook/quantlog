@@ -33,3 +33,10 @@
 **`display-board-callput`** (콜·풋 공통 키): `acpr` 행사가 · `optn_shrn_iscd` 옵션 단축코드 · `optn_prpr` 현재가 · `optn_prdy_vrss`/`optn_prdy_ctrt` 전일대비/율 · `prdy_vrss_sign` · `optn_bidp`/`optn_askp` 매수/매도호가 · `acml_vol` 누적거래량 · `acml_tr_pbmn` 누적거래대금 · **`hts_otst_stpl_qty` 미결제약정 수량 · `otst_stpl_qty_icdc` 미결제약정 증감** · `delta_val` `gama` `vega` `theta` `rho` · `hts_ints_vltl` 내재변동성 · `tmvl_val` 시간가치 · `invl_val` 내재가치 · `atm_cls_name` ATM 구분 · `optn_oprc/hgpr/lwpr/mxpr/llam` · `seln_rsqn`/`shnu_rsqn` 잔량 · `total_askp_rsqn`/`total_bidp_rsqn` · `futs_antc_cnpr` 선물예상체결가 · `unch_prpr` 환산 현재가 · `nmix_sdpr` 지수 기준가.
 
 **`inquire-price`**: `hts_kor_isnm` 종목명 · `futs_prpr` 현재가 · `futs_prdy_vrss`/`futs_prdy_ctrt` · `futs_prdy_clpr` 전일종가 · `futs_oprc/hgpr/lwpr/mxpr/llam` · `acml_vol` · `acml_tr_pbmn` · `hts_otst_stpl_qty` 미결제약정 · `otst_stpl_qty_icdc` 증감 · `basis`·`mrkt_basis` 베이시스 · `hts_thpr` 이론가 · `dprt` 괴리율 · `futs_last_tr_date` 최종거래일 · `hts_rmnn_dynu` 잔존일수 · `bstp_nmix_prpr` 업종지수(KOSPI200) 현재가 외.
+
+## 구현 상태 (2026-10-13)
+- 앱 `futures/` 패키지, 화면 `/futures`(메뉴 "선물옵션"). 게이트웨이 수정 없음(`/api/kis/uapi/...` 통로 그대로).
+- `FuturesOptionsClient`: `display-board-callput`(콜·풋 행사가별) → `OptionBoard`(콜/풋 최대 미결제약정 행사가, 맥스페인, 풋/콜 비율), `display-board-futures` → 필드를 해석하지 않고 그대로 표로 보여줌.
+- **가정(실측 전)**: `output1` = 콜, `output2` = 풋. 실측해서 반대면 `OptionBoard.parse` 한 줄만 바꾼다. 선물 전광판 열은 실측 후 필요한 것만 남긴다.
+- 옵션 월물 기본값은 오늘 기준 가장 가까운 월물(만기 = 둘째 목요일, 휴장 보정 없음). 주간옵션은 다루지 않는다.
+- 아직 안 한 것: 야간선물(REST 로 야간값이 나오는지 실측 필요), 선물 종목코드를 받는 현재가(`inquire-price`), 일별 매물대 저장.
