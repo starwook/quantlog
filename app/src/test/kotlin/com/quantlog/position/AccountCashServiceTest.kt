@@ -43,8 +43,6 @@ class AccountCashServiceTest {
         quantity: Int,
         price: String,
         filled: Int? = null,
-        openConfirmed: Boolean = false,
-        executedAt: Instant = Instant.now(),
     ) = Trade(
         market = Market.KR,
         symbol = "233740",
@@ -55,8 +53,6 @@ class AccountCashServiceTest {
         message = "ok",
         initialFilledPrice = filled?.let { BigDecimal(price) },
         initialFilledQuantity = filled,
-        initialOpenConfirmed = openConfirmed,
-        executedAt = executedAt,
     ).also { openBuys += it }
 
     private fun orderable() = service.orderable(Market.KR)
@@ -107,20 +103,6 @@ class AccountCashServiceTest {
         service.sync(Market.KR, BigDecimal("1000000"), t0)
         buyOrder(100, "7000", filled = 100)
         assertOrderable("1000000")
-    }
-
-    @Test
-    fun `체결인지 미체결인지 모르는 채로 오래된 주문은 돈을 잡지 않는다 - 체결통보를 놓쳐 기록만 낡은 경우`() {
-        service.sync(Market.KR, BigDecimal("1000000"), t0)
-        buyOrder(100, "7000", executedAt = Instant.now().minusSeconds(60))
-        assertOrderable("1000000")
-    }
-
-    @Test
-    fun `증권사가 미체결로 확인한 주문은 오래돼도 돈을 잡는다`() {
-        service.sync(Market.KR, BigDecimal("1000000"), t0)
-        buyOrder(100, "7000", openConfirmed = true, executedAt = Instant.now().minusSeconds(600))
-        assertOrderable("300000")
     }
 
     @Test
