@@ -50,6 +50,10 @@ class FuturesController(
             .onSuccess {
                 model.addAttribute("futures", it)
                 addChart(model, it, chart)
+                (model.getAttribute("board") as? OptionBoard)?.let { board ->
+                    val last = (model.getAttribute("candleChart") as? CandleChart)?.candles?.last()?.close
+                    model.addAttribute("levels", board.keyLevels(last))
+                }
             }
             .onFailure {
                 log.warn { "[선물옵션] 선물 전광판 조회 실패: ${it.message}" }
@@ -68,8 +72,8 @@ class FuturesController(
         runCatching { candlesOf(code, unit) }
             .onSuccess { candles ->
                 if (candles.isEmpty()) return@onSuccess
-                val levels = (model.getAttribute("board") as? OptionBoard)?.keyLevels.orEmpty()
-                model.addAttribute("candleChart", CandleChart(candles, levels))
+                val levels = (model.getAttribute("board") as? OptionBoard)?.keyLevels().orEmpty()
+                model.addAttribute("candleChart", CandleChart(candles, levels, runCatching { client.previousClose(code) }.getOrNull()))
             }
             .onFailure {
                 log.warn { "[선물옵션] 캔들 조회 실패: ${it.message}" }

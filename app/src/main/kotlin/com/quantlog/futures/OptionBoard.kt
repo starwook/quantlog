@@ -22,11 +22,12 @@ data class OptionStrike(
     val putOi: Long get() = put?.openInterest ?: 0
 }
 
-/** 가격 사다리에 표시할 핵심 가격. [gapPercent] 는 현재 지수 대비 거리(%), 지수를 모르면 null. */
+/** 가격 사다리에 표시할 핵심 가격. [gapPercent] 는 기준 가격 대비 거리(%), [reference] 는 그 기준 가격인 줄이다(거리를 안 붙인다). */
 data class KeyLevel(
     val label: String,
     val price: BigDecimal,
     val gapPercent: BigDecimal?,
+    val reference: Boolean = false,
 )
 
 /**
@@ -71,20 +72,25 @@ class OptionBoard(
     /** 가격 사다리용: 높은 행사가가 위로 오게 뒤집은 목록. */
     val strikesTopDown: List<OptionStrike> = this.strikes.reversed()
 
-    /** 현재 지수·저항·지지·맥스페인을 높은 가격부터 나열한다. 매수·매도 타점을 가늠하는 기준선. */
-    val keyLevels: List<KeyLevel> =
-        listOfNotNull(
+    /**
+     * 저항·지지·맥스페인·KOSPI200 종가를 높은 가격부터 나열한다. 매수·매도 타점을 가늠하는 기준선.
+     * [futuresPrice](선물 현재가)를 주면 그것이 거리(%)의 기준이고, 없으면 KOSPI200 종가가 기준이다.
+     * 옵션 저장본의 지수는 저장 시점(장 마감) 값이라, 야간에 선물이 움직여도 그대로다.
+     */
+    fun keyLevels(futuresPrice: BigDecimal? = null): List<KeyLevel> {
+        val base = futuresPrice ?: underlying
+        return listOfNotNull(
             callWall?.let { "콜 최대 (저항)" to it.strike },
-            underlying?.let { "현재 KOSPI200" to it },
+            underlying?.let { "KOSPI200 종가" to it },
             maxPain?.let { "맥스페인" to it },
             putWall?.let { "풋 최대 (지지)" to it.strike },
+            futuresPrice?.let { "선물 현재가" to it },
         ).sortedByDescending { it.second }.map { (label, price) ->
+            val reference = if (futuresPrice != null) label == "선물 현재가" else label == "KOSPI200 종가"
             val gap =
-                underlying?.takeIf { it.signum() != 0 }?.let {
-                    (price - it).multiply(
-                        BigDecimal(100),
-                    ).divide(it, 2, RoundingMode.HALF_UP)
-                }
-            KeyLevel(label, price, gap)
+                base?.takeIf { it.signum() != 0 && !reference }
+                    ?.let { (price - it).multiply(BigDecimal(100)).divide(it, 2, RoundingMode.HALF_UP) }
+            KeyLevel(label, price, gap, reference)
         }
+    }
 }

@@ -43,14 +43,28 @@ class OptionBoardTest {
     }
 
     @Test
-    fun `핵심 가격은 높은 가격부터 나열하고 지수 대비 거리를 붙인다`() {
+    fun `핵심 가격은 높은 가격부터 나열하고 KOSPI200 종가 대비 거리를 붙인다`() {
         val board =
             OptionBoard(listOf(strike("340.00", 0, 800), strike("350.00", 100, 200), strike("360.00", 900, 0)), BigDecimal("350.00"))
 
-        assertEquals(listOf("콜 최대 (저항)", "현재 KOSPI200", "맥스페인", "풋 최대 (지지)").size, board.keyLevels.size)
-        assertEquals(BigDecimal("360.00"), board.keyLevels.first().price)
-        assertEquals(BigDecimal("2.86"), board.keyLevels.first().gapPercent)
-        assertEquals(BigDecimal("340.00"), board.keyLevels.last().price)
+        val levels = board.keyLevels()
+
+        assertEquals(listOf("콜 최대 (저항)", "KOSPI200 종가", "맥스페인", "풋 최대 (지지)").size, levels.size)
+        assertEquals(BigDecimal("360.00"), levels.first().price)
+        assertEquals(BigDecimal("2.86"), levels.first().gapPercent)
+        assertEquals(BigDecimal("340.00"), levels.last().price)
+        assertEquals(listOf("KOSPI200 종가"), levels.filter { it.reference }.map { it.label })
+    }
+
+    @Test
+    fun `선물 현재가를 주면 그 가격이 거리의 기준이 된다`() {
+        val board = OptionBoard(listOf(strike("340.00", 0, 800), strike("360.00", 900, 0)), BigDecimal("350.00"))
+
+        val levels = board.keyLevels(BigDecimal("357.00"))
+
+        assertEquals(listOf("선물 현재가"), levels.filter { it.reference }.map { it.label })
+        assertEquals(BigDecimal("0.84"), levels.first { it.label.startsWith("콜") }.gapPercent)
+        assertEquals(BigDecimal("-1.96"), levels.first { it.label == "KOSPI200 종가" }.gapPercent)
     }
 
     @Test

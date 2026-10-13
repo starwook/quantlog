@@ -105,6 +105,14 @@ class FuturesOptionsClient(private val rest: KisRest) {
         }.sortedWith(compareBy({ it.date }, { it.time ?: "" }))
     }
 
+    /** 선물 한 종목의 전일 종가(`inquire-price` 의 `futs_prdy_clpr`). 값이 없으면 null. */
+    fun previousClose(code: String): BigDecimal? =
+        fetch(
+            "/uapi/domestic-futureoption/v1/quotations/inquire-price",
+            "FHMIF10000000",
+            mapOf("FID_COND_MRKT_DIV_CODE" to "F", "FID_INPUT_ISCD" to code),
+        ).path("output1").decimal("futs_prdy_clpr")?.takeIf { it.signum() > 0 }
+
     /** 가장 가까운 월물 선물의 종목코드(전광판 첫 행의 `futs_shrn_iscd`). 없으면 null. */
     fun nearestFuturesCode(): String? = futuresBoard().firstOrNull()?.get("futs_shrn_iscd")?.takeIf { it.isNotBlank() }
 
