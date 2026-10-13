@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.servlet.mvc.support.RedirectAttributes
-import java.math.BigDecimal
 import java.time.Clock
 import java.time.LocalDate
 import java.time.YearMonth
@@ -74,19 +73,12 @@ class FuturesController(
             .onSuccess { candles ->
                 if (candles.isEmpty()) return@onSuccess
                 val levels = (model.getAttribute("board") as? OptionBoard)?.keyLevels().orEmpty()
-                model.addAttribute("candleChart", CandleChart(candles, levels, previousClose(futures.first())))
+                model.addAttribute("candleChart", CandleChart(candles, levels, runCatching { client.previousClose(code) }.getOrNull()))
             }
             .onFailure {
                 log.warn { "[선물옵션] 캔들 조회 실패: ${it.message}" }
                 model.addAttribute("chartError", it.message)
             }
-    }
-
-    /** 전광판 행의 현재가와 전일대비로 구한 전일 종가. 값이 없거나 읽을 수 없으면 null. 부호 코드 4·5 는 하락이다. */
-    private fun previousClose(row: Map<String, String>): BigDecimal? {
-        val price = row["futs_prpr"]?.trim()?.toBigDecimalOrNull() ?: return null
-        val change = row["futs_prdy_vrss"]?.trim()?.toBigDecimalOrNull()?.abs() ?: return null
-        return if (row["prdy_vrss_sign"]?.trim() in setOf("4", "5")) price + change else price - change
     }
 
     /** 일봉은 한투 일봉, 1분봉은 한투 정규장 분봉에 앱이 쌓은 야간장 분봉을 이어 붙인다(한투 분봉은 야간을 주지 않는다). */
