@@ -143,12 +143,7 @@
             <span class="pos" id="pos"></span>
         </div>
     </div>
-    </div>
-
-    <div class="nav" style="margin-top: -4px;">
-        <span></span>
-        <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol}}">백테스트 보기 →</a>
-    </div>
+    <div th:replace="~{fragments/nav :: symbolTabs('chart', ${market}, ${symbol})}"></div>
 
     <div class="banner ok" th:if="${message}" th:text="${message}"></div>
     <div class="banner error" th:if="${error}" th:text="${error}"></div>
