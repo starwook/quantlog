@@ -5,7 +5,7 @@ import java.math.BigDecimal
 
 /**
  * 한투 주식잔고조회(VTTC8434R) 응답에서 보유 종목을 읽는다. 종목별 행은 `output1` — 종목코드 `pdno`, 종목명 `prdt_name`,
- * 보유수량 `hldg_qty`, 매입평균가 `pchs_avg_pric`, 현재가 `prpr`. 수량이 0 인 행은 뺀다.
+ * 보유수량 `hldg_qty`, 매입평균가 `pchs_avg_pric`, 현재가 `prpr`, 당일 누적 매수·매도 수량 `thdt_buyqty`·`thdt_sll_qty`. 수량이 0 인 행은 뺀다.
  * 게이트웨이는 이 응답을 원문 그대로 `kis_balance` 에 쌓고, 칸 이름이 바뀌면 여기만 고친다.
  */
 object KisBalanceParser {
@@ -32,6 +32,12 @@ object KisBalanceParser {
                 quantity = row.decimal("hldg_qty"),
                 averagePrice = row.decimal("pchs_avg_pric"),
                 currentPrice = row.decimal("prpr"),
+                boughtToday = row.decimalOrNull("thdt_buyqty"),
+                soldToday = row.decimalOrNull("thdt_sll_qty"),
             ).takeIf { it.quantity > BigDecimal.ZERO }
         }
 }
+
+/** 칸이 없거나 비어 있으면 null — 0 으로 읽으면 "오늘 거래 없음"으로 착각한다. */
+private fun JsonNode.decimalOrNull(field: String): BigDecimal? =
+    path(field).asText("").trim().takeIf { it.isNotEmpty() }?.toBigDecimalOrNull()

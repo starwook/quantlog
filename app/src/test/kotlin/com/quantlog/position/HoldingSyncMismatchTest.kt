@@ -25,7 +25,7 @@ class HoldingSyncMismatchTest {
     private fun kis(
         quantity: Int,
         average: String,
-    ) = Holding(Market.KR, symbol, "삼성전자", BigDecimal(quantity), BigDecimal(average), BigDecimal("70000"))
+    ) = Holding(Market.KR, symbol, "삼성전자", BigDecimal(quantity), BigDecimal(average), BigDecimal("70000"), BigDecimal.ZERO, BigDecimal.ZERO)
 
     private fun row(
         quantity: Int,
