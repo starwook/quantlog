@@ -127,7 +127,7 @@
         <p class="note" style="margin: 8px 0 0;"><span th:text="${candleChart.from}"></span> ~ <span th:text="${candleChart.to}"></span> (<span th:text="${#lists.size(candleChart.candles)}"></span>봉)</p>
     </div>
 
-    <div class="empty card" th:if="${board == null}">이 월물의 저장본이 아직 없습니다. "지금 모으기"를 누르거나 평일 16:00 자동 수집을 기다리세요.</div>
+    <div class="empty card" th:if="${board == null}">이 월물의 저장본이 아직 없습니다. "지금 모으기"를 누르거나 평일 08:30·16:00 자동 수집을 기다리세요.</div>
 
     <th:block th:if="${board != null}">
         <div class="card summary">

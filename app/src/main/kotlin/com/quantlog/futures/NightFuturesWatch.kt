@@ -23,8 +23,8 @@ class NightFuturesWatch(
     private val client: FuturesOptionsClient,
     private val events: ApplicationEventPublisher,
 ) {
-    /** 앱이 켜진 직후와 그 뒤 한 시간마다 가장 가까운 월물 코드를 확인한다. 실패하면 다음 주기에 다시 한다. */
-    @Scheduled(fixedDelay = 3_600_000, initialDelay = 60_000)
+    /** 앱이 켜진 직후와 그 뒤 하루에 한 번 가장 가까운 월물 코드를 확인한다(만기는 분기에 한 번뿐). 실패하면 다음 주기에 다시 한다. */
+    @Scheduled(fixedDelay = 86_400_000, initialDelay = 60_000)
     fun refresh() {
         runCatching { client.nearestFuturesCode()?.let(::ensure) }
             .onFailure { log.warn { "[야간선물] 구독 종목 확인 실패: ${it.message}" } }
