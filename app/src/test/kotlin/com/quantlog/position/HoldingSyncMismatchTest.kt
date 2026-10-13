@@ -25,7 +25,7 @@ class HoldingSyncMismatchTest {
     private fun kis(
         quantity: Int,
         average: String,
-    ) = Holding(Market.KR, symbol, "삼성전자", BigDecimal(quantity), BigDecimal(average), BigDecimal("70000"))
+    ) = Holding(Market.KR, symbol, "삼성전자", BigDecimal(quantity), BigDecimal(average), BigDecimal("70000"), BigDecimal.ZERO, BigDecimal.ZERO)
 
     private fun row(
         quantity: Int,
@@ -83,6 +83,8 @@ class HoldingSyncMismatchTest {
 
         MismatchLog().use { captured ->
             service.sync(emptyList(), now)
+            assertTrue(captured.messages.isEmpty(), "같은 시점인지 모르는 동안은 보고도 삭제도 하지 않는다")
+            service.sync(emptyList(), now.plusSeconds(60))
 
             val message = captured.messages.single()
             assertTrue("DB=2주" in message && "증권사=보유 없음" in message, message)

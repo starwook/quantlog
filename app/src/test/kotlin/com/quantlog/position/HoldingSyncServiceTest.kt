@@ -28,7 +28,7 @@ class HoldingSyncServiceTest {
         quantity: Int,
         average: String,
         sym: String = symbol,
-    ) = Holding(Market.KR, sym, "KODEX", BigDecimal(quantity), BigDecimal(average), BigDecimal("9000"))
+    ) = Holding(Market.KR, sym, "KODEX", BigDecimal(quantity), BigDecimal(average), BigDecimal("9000"), BigDecimal.ZERO, BigDecimal.ZERO)
 
     private fun row(
         quantity: Int,
@@ -69,7 +69,11 @@ class HoldingSyncServiceTest {
         val existing = row(2, "9000")
         Mockito.`when`(repository.findAll()).thenReturn(listOf(existing))
 
-        val changes = service.sync(emptyList(), now)
+        // 잔고에는 당일 누적이 없어 같은 시점인지 알 수 없다 — 어긋남이 이어질 때까지 기다린 뒤에 지운다
+        assertTrue(service.sync(emptyList(), now).isEmpty())
+        verify(repository, never()).delete(existing)
+
+        val changes = service.sync(emptyList(), now.plusSeconds(60))
 
         verify(repository).delete(existing)
         assertEquals(1, changes.size)
