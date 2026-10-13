@@ -45,7 +45,7 @@ interface OrderFills {
     /** 앱이 반영을 끝낸 체결 줄 전부. */
     fun projectedAll(): List<OrderFill>
 
-    /** 앱이 반영을 끝낸 줄에 이 주문의 접수 통보(거부 아님)가 있는가 — 증권사가 주문을 받았다는 뜻이다. */
+    /** 원장에 이 주문의 접수 통보(거부 아님)가 있는가 — 증권사가 주문을 받았다는 뜻이다. 앱이 반영했는지와 무관하게 원장 전체를 본다. */
     fun accepted(
         orderNo: String,
         day: LocalDate = today(),

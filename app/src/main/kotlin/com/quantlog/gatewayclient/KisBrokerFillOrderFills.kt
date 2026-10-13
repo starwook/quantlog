@@ -47,9 +47,10 @@ class KisBrokerFillOrderFills(
         orderNo: String,
         day: LocalDate,
     ): Boolean {
-        val upTo = projectedUpTo()
+        // 앱이 반영한 줄(커서)까지만 보지 않고 원장에 있는 줄 전부를 본다. 접수통보가 주문 기록보다 먼저 반영되면
+        // 그 통보는 붙을 기록이 없어 버려지는데, 그때 커서가 아직 안 올라가 있으면 여기서도 못 봐서 접수 표시가 영영 빠진다(2026-10-13).
         return ofOrder(orderNo, day).any {
-            it.id <= upTo && !it.notice.isFill && (it.notice.refuseFlag.isBlank() || it.notice.refuseFlag == NOT_REFUSED)
+            !it.notice.isFill && (it.notice.refuseFlag.isBlank() || it.notice.refuseFlag == NOT_REFUSED)
         }
     }
 
