@@ -34,16 +34,26 @@
 
 **`inquire-price`**: `hts_kor_isnm` 종목명 · `futs_prpr` 현재가 · `futs_prdy_vrss`/`futs_prdy_ctrt` · `futs_prdy_clpr` 전일종가 · `futs_oprc/hgpr/lwpr/mxpr/llam` · `acml_vol` · `acml_tr_pbmn` · `hts_otst_stpl_qty` 미결제약정 · `otst_stpl_qty_icdc` 증감 · `basis`·`mrkt_basis` 베이시스 · `hts_thpr` 이론가 · `dprt` 괴리율 · `futs_last_tr_date` 최종거래일 · `hts_rmnn_dynu` 잔존일수 · `bstp_nmix_prpr` 업종지수(KOSPI200) 현재가 외.
 
-## 구현 상태 (2026-10-13)
-- 앱 `futures/` 패키지, 화면 `/futures`(메뉴 "선물옵션"). 게이트웨이 수정 없음(`/api/kis/uapi/...` 통로 그대로).
-- `FuturesOptionsClient`: `display-board-callput`(콜·풋 행사가별) → `OptionBoard`(콜/풋 최대 미결제약정 행사가, 맥스페인, 풋/콜 비율), `display-board-futures` → 필드를 해석하지 않고 그대로 표로 보여줌.
-- **가정(실측 전)**: `output1` = 콜, `output2` = 풋. 실측해서 반대면 `OptionBoard.parse` 한 줄만 바꾼다. 선물 전광판 열은 실측 후 필요한 것만 남긴다.
-- 옵션 월물 기본값은 오늘 기준 가장 가까운 월물(만기 = 둘째 목요일, 휴장 보정 없음). 주간옵션은 다루지 않는다.
-- 아직 안 한 것: 야간선물(REST 로 야간값이 나오는지 실측 필요), 선물 종목코드를 받는 현재가(`inquire-price`), 일별 매물대 저장.
-
 ## 실측 결과 (2026-10-13 14:45, 모의투자 게이트웨이, 장 마감 후)
 - **모의 도메인에서 선물옵션 시세 TR 이 된다**(`FHPIF05030100`·`FHPIF05030200`, 계좌 없이 조회). 필드명은 위 `chk_*.py` 매핑과 일치.
 - **`display-board-callput`: `output1` = 콜(코드 `B01…C..`), `output2` = 풋(`C01…`) 확인.** 월물 `FID_MTRT_CNT` 는 만기일이 지나면 그 달이 **빈 응답**이다(10/8 만기 후 `202610` → 빈 배열, `202611` 정상) → `OptionMaturity.nearest` 가 맞다.
 - **⚠ 한 번에 100행만 오고 연속조회(`tr_cont: N`)·`FID_COND_MRKT_CLS_CODE`(W/M/A) 로도 다음 구간이 안 온다.** 응답은 가장 높은 행사가부터 내려가(예: 1595 → 1347.5) 지수 근처(ATM, 풋 1595 가격으로 역산하면 약 1009)에 닿기 전에 끊긴다 → **ATM 근처 매물대가 빠진다.** 모의 서버 특성인지 실전도 같은지는 미확인. 해결안 후보: 행사가별로 `inquire-price`(옵션 코드, `FID_COND_MRKT_DIV_CODE=O`)를 따로 부른다(호출 수십 번).
 - `display-board-futures`: `FID_COND_MRKT_CLS_CODE=MKI` 는 **미니선물**(`A05611` 등). 코스피200 선물은 `""` 또는 `K2I`(`A01612` = `F 202612` 등 7개 월물). 필드: `futs_shrn_iscd, hts_kor_isnm, futs_prpr, futs_prdy_vrss, prdy_vrss_sign, futs_prdy_ctrt, hts_thpr, acml_vol, futs_askp, futs_bidp, hts_otst_stpl_qty(미결제), futs_hgpr, futs_lwpr, hts_rmnn_dynu, total_askp_rsqn, total_bidp_rsqn, futs_antc_cnpr…`. 앱은 `K2I` 를 쓴다.
 - 모의 시세의 값이 실제 시장과 같은지(선물 ≈ 942 vs 옵션 행사가 1347~1595)는 확인 못 했다 — 모의 데이터가 이상할 수 있다.
+
+## 실측 2 — 행사가별 개별 조회 (2026-10-13 15:00, 모의투자 게이트웨이)
+- **`inquire-price`(`FHMIF10000000`, `FID_COND_MRKT_DIV_CODE=O`, `FID_INPUT_ISCD`=옵션 단축코드)로 옵션 한 종목의 행사가(`acpr`)·현재가(`futs_prpr`)·미결제약정(`hts_otst_stpl_qty`)·증감(`otst_stpl_qty_icdc`)·거래량(`acml_vol`)이 온다.** 이름은 `hts_kor_isnm`(`C 202611 1,000.0`). `output2` = 코스피 종합, **`output3` = KOSPI200 지수**(`bstp_nmix_prpr`).
+- **없는 코드는 오류가 아니라 `rt_cd=0` 에 빈 `output1`**(`hts_kor_isnm` 없음, 가격 0).
+- **옵션 단축코드 규칙**: `B01`(콜)/`C01`(풋) + 연도 끝자리 + 월 2자리(`611` = 2026-11) + 3자리. 3자리는 **1000 미만이면 행사가 정수부**(`997` = 997.5, `950` = 950.0), **1000 이상이면 낮은 행사가부터 순번**(`A01` = 1000.0, `A02` = 1005.0, `A03` = 1010.0, `A04` = 1015.0, … `A40` = 1092.5, `A99` = 1245.0, `B41` = 1347.5, `C41` = 1595.0). 1000 이상은 간격이 일정하지 않아(5 → 2.5) 코드로 행사가를 계산할 수 없고 응답에서 읽는다.
+- 1000 미만 행사가는 2.5 간격으로 빠짐없이 있었다(863~1000 구간 55개 전부 존재).
+- **초당 한도**: 쉬지 않고 이어 부르면 `EGW00201`(HTTP 500, `rt_cd=1`)이 나고 게이트웨이의 잔고 조회까지 한도에 걸렸다. 호출 사이 0.5초를 두면 116회 중 2회만 걸렸고 **전체 287초**가 걸렸다.
+- 결과 예(2026-11월물, 지수 938.16, ±8%): 행사가 57개, 콜 최대 1000.0(1,014), 풋 최대 950.0(3,456).
+
+## 구현 상태 (2026-10-13)
+- 앱 `futures/` 패키지, 화면 `/futures`(메뉴 "선물옵션"). 게이트웨이 수정 없음(`/api/kis/uapi/...` 통로 그대로).
+- **옵션 매물대는 하루 한 번 모아 저장한다**: `OptionChainCollector` 가 지수(KOSPI200) ±8% 안의 행사가를 `inquire-price` 로 하나씩 조회(`OptionCode` 가 코드 생성) → 앱 테이블 `option_open_interest`(날짜·월물·행사가별 콜/풋 가격·미결제약정·증감·거래량, 그때 지수). 평일 16:00 자동(`OptionChainScheduler`, `quantlog.futures.collect-enabled`), 화면의 "지금 모으기"로 수동(뒤에서 실행, 약 5분).
+- 화면은 그 월물의 가장 최근 저장본으로 `OptionBoard`(콜/풋 최대 미결제약정 행사가, 맥스페인, 풋/콜 비율, ATM)를 그린다. 전광판(`display-board-callput`)은 100행 제한 때문에 쓰지 않는다.
+- 코스피200 선물은 `display-board-futures`(`K2I`)를 화면을 열 때마다 조회한다.
+- 옵션 월물 기본값은 오늘 기준 가장 가까운 월물(만기 = 둘째 목요일, 휴장 보정 없음). 주간옵션은 다루지 않는다.
+- 알려진 한계: 수집은 순번 1번(행사가 1000.0) 콜로 지수를 얻는다 — 지수가 1000 에서 크게 멀어져 그 종목이 없어지면 고쳐야 한다. 휴장일에도 평일이면 수집한다(전일 값이 그날 날짜로 한 번 더 저장됨).
+- 아직 안 한 것: 야간선물(REST 로 야간값이 나오는지 야간 시간대 실측 필요), 날짜별 매물대 변화 보기(데이터는 쌓인다).

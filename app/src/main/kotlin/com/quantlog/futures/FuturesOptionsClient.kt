@@ -1,33 +1,47 @@
 package com.quantlog.futures
 
 import com.fasterxml.jackson.databind.JsonNode
-import com.quantlog.broker.CallPriority
 import com.quantlog.broker.KisApiException
 import com.quantlog.broker.KisRest
 import org.springframework.stereotype.Component
-import java.time.YearMonth
+import java.math.BigDecimal
 
-/** 한투 국내선물옵션 시세 조회(주문 없음). 응답을 해석해 [OptionBoard]·행 목록으로 돌려준다. 사양: docs/kis-api/futures-options.md. */
+/** 옵션 한 종목의 현재가 조회 결과. [underlying] 은 같은 응답에 실려 오는 KOSPI200 지수. */
+data class OptionPrice(
+    val strike: BigDecimal,
+    val quote: OptionQuote,
+    val underlying: BigDecimal?,
+)
+
+/**
+ * 한투 국내선물옵션 시세 조회(주문 없음). 사양·실측: docs/kis-api/futures-options.md.
+ * 호출 우선순위는 기본(최후순위)이다 — 수십 번 이어 부르는 수집이 주문 흐름을 막지 않게 한다.
+ */
 @Component
 class FuturesOptionsClient(private val rest: KisRest) {
-    /** 지수옵션 전광판(콜·풋 행사가별). 사용자가 화면을 연 즉발 요청이다. */
-    fun optionBoard(maturity: YearMonth): OptionBoard =
-        OptionBoard.parse(
+    /** 옵션 한 종목 현재가(`inquire-price`). 그 코드의 종목이 없으면 null(한투는 오류 없이 빈 값을 준다). */
+    fun optionPrice(code: String): OptionPrice? {
+        val body =
             fetch(
-                "/uapi/domestic-futureoption/v1/quotations/display-board-callput",
-                "FHPIF05030100",
-                mapOf(
-                    "FID_COND_MRKT_DIV_CODE" to "O",
-                    "FID_COND_SCR_DIV_CODE" to "20503",
-                    "FID_MRKT_CLS_CODE" to "CO",
-                    "FID_MTRT_CNT" to "%04d%02d".format(maturity.year, maturity.monthValue),
-                    "FID_MRKT_CLS_CODE1" to "PO",
-                    "FID_COND_MRKT_CLS_CODE" to "",
-                ),
-            ),
-        )
+                "/uapi/domestic-futureoption/v1/quotations/inquire-price",
+                "FHMIF10000000",
+                mapOf("FID_COND_MRKT_DIV_CODE" to "O", "FID_INPUT_ISCD" to code),
+            )
+        val row = body.path("output1")
+        if (row.path("hts_kor_isnm").asText().isBlank()) return null
+        val strike = row.decimal("acpr") ?: return null
+        val quote =
+            OptionQuote(
+                price = row.decimal("futs_prpr") ?: BigDecimal.ZERO,
+                openInterest = row.long("hts_otst_stpl_qty"),
+                openInterestChange = row.long("otst_stpl_qty_icdc"),
+                volume = row.long("acml_vol"),
+            )
+        // output3 이 KOSPI200(업종코드 2001), output2 는 코스피 종합이다.
+        return OptionPrice(strike, quote, body.path("output3").decimal("bstp_nmix_prpr")?.takeIf { it.signum() > 0 })
+    }
 
-    /** 지수선물 전광판. 응답 필드명이 실측 전이라 값을 해석하지 않고 행(필드명 → 값)으로 돌려준다. */
+    /** 코스피200 지수선물 전광판(월물별). 값을 해석하지 않고 행(필드명 → 값)으로 돌려준다. */
     fun futuresBoard(): List<Map<String, String>> {
         val body =
             fetch(
@@ -35,13 +49,7 @@ class FuturesOptionsClient(private val rest: KisRest) {
                 "FHPIF05030200",
                 mapOf("FID_COND_MRKT_DIV_CODE" to "F", "FID_COND_SCR_DIV_CODE" to "20503", "FID_COND_MRKT_CLS_CODE" to "K2I"),
             )
-        return listOf("output", "output1", "output2").map { body.path(it) }.flatMap { rows ->
-            when {
-                rows.isArray -> rows.toList()
-                rows.isObject -> listOf(rows)
-                else -> emptyList()
-            }
-        }.map { row -> row.fields().asSequence().associate { (k, v) -> k to v.asText() } }
+        return body.path("output").map { row -> row.fields().asSequence().associate { (k, v) -> k to v.asText() } }
     }
 
     private fun fetch(
@@ -49,11 +57,15 @@ class FuturesOptionsClient(private val rest: KisRest) {
         trId: String,
         params: Map<String, String>,
     ): JsonNode {
-        val body = CallPriority.urgent { rest.get(path, trId, params) }.body
+        val body = rest.get(path, trId, params).body
         if (body.path("rt_cd").asText() != "0") {
             val code = body.path("msg_cd").asText()
             throw KisApiException("KIS 오류 $path ($trId): [$code] ${body.path("msg1").asText()}", code)
         }
         return body
     }
+
+    private fun JsonNode.decimal(field: String): BigDecimal? = path(field).asText().trim().toBigDecimalOrNull()
+
+    private fun JsonNode.long(field: String): Long = decimal(field)?.toLong() ?: 0
 }

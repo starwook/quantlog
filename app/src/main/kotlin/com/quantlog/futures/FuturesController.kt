@@ -4,7 +4,9 @@ import mu.KotlinLogging
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.servlet.mvc.support.RedirectAttributes
 import java.time.Clock
 import java.time.LocalDate
 import java.time.YearMonth
@@ -12,10 +14,15 @@ import java.time.format.DateTimeParseException
 
 private val log = KotlinLogging.logger {}
 
-/** 선물옵션 화면: 지수옵션 매물대(행사가별 미결제약정)와 지수선물 전광판. 다음 날 매매 종목을 고를 때 시장 분위기를 보는 용도. */
+/**
+ * 선물옵션 화면: 지수옵션 매물대(행사가별 미결제약정, 하루 한 번 모은 저장본)와 지수선물 전광판(열 때마다 조회).
+ * 다음 날 매매 종목을 고를 때 시장 분위기를 보는 용도.
+ */
 @Controller
 class FuturesController(
     private val client: FuturesOptionsClient,
+    private val store: OptionSnapshotStore,
+    private val collector: OptionChainCollector,
     private val clock: Clock,
 ) {
     @GetMapping("/futures")
@@ -23,16 +30,14 @@ class FuturesController(
         @RequestParam(required = false) maturity: String?,
         model: Model,
     ): String {
-        val month = maturity?.let { parse(it) } ?: OptionMaturity.nearest(LocalDate.now(clock))
+        val month = month(maturity)
         model.addAttribute("maturity", month.toString())
         model.addAttribute("expiry", OptionMaturity.expiry(month))
-        // 두 조회는 서로 독립이라 한쪽이 실패해도 다른 쪽은 보여준다.
-        runCatching { client.optionBoard(month) }
-            .onSuccess { model.addAttribute("board", it) }
-            .onFailure {
-                log.warn { "[선물옵션] 옵션 전광판 조회 실패: ${it.message}" }
-                model.addAttribute("optionError", it.message)
-            }
+        model.addAttribute("collecting", collector.isRunning)
+        store.latest(month)?.let { (date, board) ->
+            model.addAttribute("snapshotDate", date)
+            model.addAttribute("board", board)
+        }
         runCatching { client.futuresBoard() }
             .onSuccess { model.addAttribute("futures", it) }
             .onFailure {
@@ -42,10 +47,25 @@ class FuturesController(
         return "futures"
     }
 
-    private fun parse(text: String): YearMonth? =
+    /** 매물대를 지금 한 번 모은다. 한투 호출 100번 안팎에 5분쯤 걸려 뒤에서 돌린다. */
+    @PostMapping("/futures/collect")
+    fun collect(
+        @RequestParam(required = false) maturity: String?,
+        redirect: RedirectAttributes,
+    ): String {
+        val month = month(maturity)
+        if (collector.collectInBackground(month)) {
+            redirect.addFlashAttribute("done", "$month 월물을 모으기 시작했습니다. 5분쯤 뒤 새로고침하세요.")
+        } else {
+            redirect.addFlashAttribute("error", "이미 모으는 중입니다. 잠시 뒤 새로고침하세요.")
+        }
+        return "redirect:/futures?maturity=$month"
+    }
+
+    private fun month(text: String?): YearMonth =
         try {
-            YearMonth.parse(text)
+            text?.let { YearMonth.parse(it) }
         } catch (e: DateTimeParseException) {
             null
-        }
+        } ?: OptionMaturity.nearest(LocalDate.now(clock))
 }
