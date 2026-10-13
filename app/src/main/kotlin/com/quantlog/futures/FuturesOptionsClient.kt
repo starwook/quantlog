@@ -74,8 +74,9 @@ class FuturesOptionsClient(private val rest: KisRest) {
                         "FID_HOUR_CLS_CODE" to "60",
                         "FID_PW_DATA_INCU_YN" to "N",
                         "FID_FAKE_TICK_INCU_YN" to "N",
-                        "FID_INPUT_DATE_1" to "",
-                        "FID_INPUT_HOUR_1" to "",
+                        // 이 날짜·시각 이전 봉부터 최신순으로 온다. 빈 값은 한투가 거절한다(INVALID FID_INPUT_DATE_1).
+                        "FID_INPUT_DATE_1" to today.format(DateTimeFormatter.BASIC_ISO_DATE),
+                        "FID_INPUT_HOUR_1" to "235959",
                     ),
                 )
             } else {
