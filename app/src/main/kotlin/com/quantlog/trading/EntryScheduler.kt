@@ -39,7 +39,7 @@ data class EntryProperties(
     val enabled: Boolean = false,
     /** 한 번 산 종목은 이 시간 동안 다시 신호를 봐도 사지 않는다. */
     val cooldown: Duration = Duration.ofMinutes(10),
-    /** 마틴게일 틱 주문이 이 시간 안에 체결 확인이 안 되면 취소한다([MartingaleService]). */
+    /** 마틴게일 틱 주문·진입 스케줄러 주문(저점 판단 진입 제외)이 이 시간 안에 체결 확인이 안 되면 취소한다([MartingaleService], [EntryScheduler.expirePending]). */
     val fillTimeout: Duration = Duration.ofSeconds(10),
 )
 
@@ -72,12 +72,21 @@ class EntryScheduler(
     private val lastMartingaleFailureAt = ConcurrentHashMap<String, Instant>()
     private val lastRebuyCheckAt = ConcurrentHashMap<String, Instant>()
 
+    /** 저점 판단 진입을 뺀 진입 주문(주기 재매수·폴링 마틴게일)의 체결 확인 대기. [EntryProperties.fillTimeout] 안에 체결이 안 되면 취소한다. */
+    private val pending = PendingOrders("진입", broker, tradeService, holdingSync, properties.fillTimeout)
+    private val inFlight = KeyedLock()
+
     @Scheduled(
         fixedDelayString = "\${quantlog.entry.interval-millis:30000}",
         initialDelayString = "\${quantlog.entry.initial-delay-millis:20000}",
     )
     fun run() {
         if (properties.enabled) checkEntries(ZonedDateTime.now(KST))
+    }
+
+    /** 주문한 지 [EntryProperties.fillTimeout] 이 지났는데도 체결이 확인되지 않은 진입 주문을 취소한다(주기 호출, [EntryExpiryScheduler]). */
+    fun expirePending(now: ZonedDateTime) {
+        pending.expire(now, inFlight)
     }
 
     fun checkEntries(now: ZonedDateTime) {
@@ -190,7 +199,13 @@ class EntryScheduler(
 
         // 실패해도(리스크 가드 등) 다음 사이클마다 재시도해 로그를 스팸하지 않도록, 신호 시점에 바로 쿨다운을 건다.
         lastSignalAt[key] = now
-        buy(watched, watched.supportBounceQuantity, "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)", widePrice = true)
+        buy(
+            watched,
+            watched.supportBounceQuantity,
+            "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)",
+            widePrice = true,
+            cancelIfUnfilled = false,
+        )
     }
 
     private fun buy(
@@ -198,6 +213,7 @@ class EntryScheduler(
         quantity: Int,
         reason: String,
         widePrice: Boolean = false,
+        cancelIfUnfilled: Boolean = true,
     ) {
         // 주문 흐름 전체(시세→주문)는 스케줄러의 일반 호출보다 먼저 나간다(broker/CallPriority.kt).
         CallPriority.urgent {
@@ -212,6 +228,8 @@ class EntryScheduler(
             val request = OrderRequest(watched.market, watched.symbol, Side.BUY, quantity, limitPrice)
             riskGuard.checkBuy(request)
             val receipt = broker.placeOrder(request)
+            // 저점 판단 진입만 미체결이어도 취소하지 않고 둔다(2026-10-13). 나머지는 fillTimeout 안에 체결 확인이 안 되면 취소한다.
+            if (cancelIfUnfilled) pending.track(symbolKey(watched.market, watched.symbol), request, receipt, Instant.now())
             // 체결가 조회를 기다리지 않는다(청산·마틴게일·수동 주문과 같다) — 체결가·수량은 체결 원장(kis_broker_fill)이 반영될 때 채워진다.
             tradeService.record(request, receipt, reason)
             log.info {

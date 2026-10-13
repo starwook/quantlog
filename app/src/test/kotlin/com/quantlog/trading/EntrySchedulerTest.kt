@@ -2,6 +2,7 @@ package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.BuyingPower
+import com.quantlog.broker.CancelRequest
 import com.quantlog.broker.Holding
 import com.quantlog.broker.Market
 import com.quantlog.broker.OrderReceipt
@@ -35,6 +36,11 @@ import kotlin.test.assertTrue
 class EntrySchedulerTest {
     private class FakeBroker : BrokerClient {
         val orders = mutableListOf<OrderRequest>()
+        val cancels = mutableListOf<CancelRequest>()
+
+        override fun cancelOrder(request: CancelRequest) {
+            cancels += request
+        }
 
         override fun quote(
             market: Market,
@@ -301,6 +307,7 @@ class EntrySchedulerTest {
         rebuyQuantity: Int = 1,
         bounceQuantity: Int = 1,
         intervalMinutes: Int = 5,
+        rebuy: Boolean = true,
     ) = scheduler(
         broker,
         signal,
@@ -312,7 +319,7 @@ class EntrySchedulerTest {
                     Market.KR,
                     "005930",
                     supportBounceEntry = bounce,
-                    periodicRebuy = true,
+                    periodicRebuy = rebuy,
                     periodicRebuyQuantity = rebuyQuantity,
                     periodicRebuyIntervalMinutes = intervalMinutes,
                     supportBounceQuantity = bounceQuantity,
@@ -339,6 +346,27 @@ class EntrySchedulerTest {
     @Test
     fun `마틴게일 폴링 매수도 현재가보다 한 호가 위 지정가`() {
         assertEquals(0, BigDecimal("10010").compareTo(martingale(buy(2, "10100")).orders.single().limitPrice))
+    }
+
+    @Test
+    fun `5분 재매수 주문은 10초 안에 체결이 안 되면 취소한다`() {
+        val broker = FakeBroker()
+        val scheduler = rebuyScheduler(broker, held = false)
+        scheduler.checkEntries(krOpen)
+        scheduler.expirePending(ZonedDateTime.now().plusSeconds(5))
+        assertTrue(broker.cancels.isEmpty())
+        scheduler.expirePending(ZonedDateTime.now().plusSeconds(11))
+        assertEquals(1, broker.cancels.size)
+    }
+
+    @Test
+    fun `저점 판단 진입 주문은 체결이 안 돼도 취소하지 않는다`() {
+        val broker = FakeBroker()
+        val scheduler = rebuyScheduler(broker, held = false, rebuy = false, bounce = true, signal = EntrySignal.BUY)
+        scheduler.checkEntries(krOpen)
+        assertEquals(1, broker.orders.size)
+        scheduler.expirePending(ZonedDateTime.now().plusSeconds(60))
+        assertTrue(broker.cancels.isEmpty())
     }
 
     @Test
