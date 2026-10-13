@@ -75,10 +75,11 @@ class GatewayStreamClientTest {
     }
 
     @Test
-    fun `시세가 아닌 raw 메시지는 무시한다`() {
+    fun `주식 시세가 아닌 raw 메시지는 봉을 만들지 않고 원문 이벤트로만 알린다`() {
         client.handle("""{"type":"raw","data":"0|H0STCNI9|001|a^b"}""")
 
-        assertTrue(published.isEmpty())
+        assertEquals(listOf<Any>(RealtimeRawReceived("0|H0STCNI9|001|a^b")), published)
+        assertTrue(saved.isEmpty())
     }
 
     @Test

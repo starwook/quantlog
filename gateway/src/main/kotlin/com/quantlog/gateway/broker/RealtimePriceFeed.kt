@@ -18,4 +18,7 @@ interface RealtimePriceFeed {
  */
 interface RealtimeSymbolSource {
     fun symbols(market: Market): List<String>
+
+    /** 야간선물(`H0MFCNT0`)로 구독할 선물 종목코드. 앱이 `watch_symbol` 에 market=`NIGHT_FUTURES` 로 써 준 것이다. */
+    fun nightFutures(): List<String>
 }

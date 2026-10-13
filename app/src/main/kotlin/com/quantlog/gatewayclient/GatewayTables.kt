@@ -177,6 +177,8 @@ interface WatchSymbolRowRepository : JpaRepository<WatchSymbolRow, Long> {
         market: String,
         symbol: String,
     ): WatchSymbolRow?
+
+    fun findAllByMarket(market: String): List<WatchSymbolRow>
 }
 
 /** 앱이 체결 원장을 어디까지 처리했는지(`broker_projection_cursor`). 앱이 재시작돼도 이 ID 다음부터 이어서 처리한다. */

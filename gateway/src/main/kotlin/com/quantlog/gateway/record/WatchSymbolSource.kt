@@ -18,4 +18,11 @@ class WatchSymbolSource(
         val watched = watch.findAll().filter { it.market == market.name }.map { it.symbol }
         return (heldSymbols + watched).distinct()
     }
+
+    override fun nightFutures(): List<String> = watch.findAll().filter { it.market == NIGHT_FUTURES_MARKET }.map { it.symbol }.distinct()
+
+    companion object {
+        /** `watch_symbol.market` 값. 주식 종목이 아니라 야간선물 구독 대상이라는 표시(docs/contracts/README.md). */
+        const val NIGHT_FUTURES_MARKET = "NIGHT_FUTURES"
+    }
 }
