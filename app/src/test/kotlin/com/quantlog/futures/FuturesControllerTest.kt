@@ -48,7 +48,7 @@ class FuturesControllerTest {
             .andExpect(content().string(containsString("콜 최대 (저항)")))
             .andExpect(content().string(containsString("939.44")))
             .andExpect(content().string(containsString("2026-10-13")))
-            .andExpect(content().string(containsString("class=\"atm\"")))
+            .andExpect(content().string(containsString("class=\"rung atm\"")))
             .andExpect(content().string(containsString("F 202612")))
     }
 

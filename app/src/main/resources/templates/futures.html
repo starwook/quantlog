@@ -50,10 +50,23 @@
         td.strike { text-align: center; font-weight: 700; }
         td.name { text-align: left; }
         tr.atm td { background: #fff8e1; }
-        .bar { display: inline-block; height: 10px; border-radius: 3px; vertical-align: middle; }
+        .levels { display: flex; flex-direction: column; gap: 6px; }
+        .level { display: flex; justify-content: space-between; font-size: 14px; }
+        .level.now { font-weight: 700; background: #fff8e1; border-radius: 8px; padding: 4px 8px; }
+        .level .gap { color: var(--muted); font-size: 12px; margin-left: 8px; }
+        .legend { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px; }
+        .legend .c { color: var(--call); }
+        .legend .p { color: var(--put); }
+        .ladder { display: flex; flex-direction: column; font-size: 12px; }
+        .rung { display: grid; grid-template-columns: 1fr 64px 1fr; align-items: center; height: 20px; }
+        .rung.atm { background: #fff8e1; }
+        .rung .k { text-align: center; font-weight: 700; }
+        .rung .put { display: flex; justify-content: flex-end; align-items: center; gap: 4px; color: var(--put); }
+        .rung .call { display: flex; align-items: center; gap: 4px; color: var(--call); }
+        .bar { height: 12px; border-radius: 3px; }
         .bar.call { background: var(--call); }
         .bar.put { background: var(--put); }
-        td.putbar { text-align: left; }
+        .badge { font-size: 10px; font-weight: 700; color: #fff; border-radius: 4px; padding: 1px 5px; background: var(--muted); }
         .tag { font-size: 11px; color: var(--muted); }
         .empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 14px; }
     </style>
@@ -87,31 +100,35 @@
 
     <th:block th:if="${board != null}">
         <div class="card summary">
-            <div>콜 최대 (저항)<b th:text="${board.callWall != null} ? ${board.callWall.strike} : '-'"></b></div>
-            <div>풋 최대 (지지)<b th:text="${board.putWall != null} ? ${board.putWall.strike} : '-'"></b></div>
-            <div>맥스페인<b th:text="${board.maxPain != null} ? ${board.maxPain} : '-'"></b></div>
             <div>풋/콜 비율<b th:text="${board.putCallRatio != null} ? ${board.putCallRatio} : '-'"></b></div>
             <div>KOSPI200<b th:text="${board.underlying != null} ? ${board.underlying} : '-'"></b></div>
         </div>
-        <p class="note">저장한 날 <span th:text="${snapshotDate}"></span> · 노란 줄이 지수에 가장 가까운 행사가(ATM)입니다.</p>
+        <div class="card levels">
+            <div class="level" th:each="l : ${board.keyLevels}" th:classappend="${l.label.startsWith('현재')} ? 'now'">
+                <span th:text="${l.label}"></span>
+                <span><b th:text="${l.price}"></b><span class="gap" th:if="${l.gapPercent != null and !l.label.startsWith('현재')}" th:text="(${l.gapPercent.signum() > 0} ? '+' : '') + ${l.gapPercent} + '%'"></span></span>
+            </div>
+        </div>
+        <p class="note">저장한 날 <span th:text="${snapshotDate}"></span> · 위가 높은 가격입니다. 노란 줄이 지수에 가장 가까운 행사가이고, 막대가 긴 가격대일수록 매물이 많이 걸려 있습니다.</p>
 
-        <div class="card scroll">
-            <table>
-                <thead>
-                <tr><th>증감</th><th>콜 미결제</th><th></th><th>행사가</th><th></th><th>풋 미결제</th><th>증감</th></tr>
-                </thead>
-                <tbody>
-                <tr th:each="s : ${board.strikes}" th:classappend="${s.strike == board.atmStrike} ? 'atm'">
-                    <td th:text="${s.call != null} ? ${#numbers.formatInteger(s.call.openInterestChange, 1, 'COMMA')} : ''"></td>
-                    <td th:text="${#numbers.formatInteger(s.callOi, 1, 'COMMA')}"></td>
-                    <td><span class="bar call" th:style="'width:' + ${board.maxOi > 0 ? s.callOi * 100 / board.maxOi : 0} + 'px'"></span></td>
-                    <td class="strike" th:text="${s.strike}"></td>
-                    <td class="putbar"><span class="bar put" th:style="'width:' + ${board.maxOi > 0 ? s.putOi * 100 / board.maxOi : 0} + 'px'"></span></td>
-                    <td th:text="${#numbers.formatInteger(s.putOi, 1, 'COMMA')}"></td>
-                    <td th:text="${s.put != null} ? ${#numbers.formatInteger(s.put.openInterestChange, 1, 'COMMA')} : ''"></td>
-                </tr>
-                </tbody>
-            </table>
+        <div class="card">
+            <div class="legend"><span class="p">◀ 풋 (아래 지지)</span><span class="c">콜 (위 저항) ▶</span></div>
+            <div class="ladder">
+                <div class="rung" th:each="s : ${board.strikesTopDown}" th:classappend="${s.strike == board.atmStrike} ? 'atm'">
+                    <div class="put">
+                        <span th:if="${s.putOi > 0}" th:text="${#numbers.formatInteger(s.putOi, 1, 'COMMA')}"></span>
+                        <span class="bar put" th:style="'width:' + ${board.maxOi > 0 ? s.putOi * 70 / board.maxOi : 0} + '%'"></span>
+                    </div>
+                    <div class="k" th:text="${s.strike}"></div>
+                    <div class="call">
+                        <span class="bar call" th:style="'width:' + ${board.maxOi > 0 ? s.callOi * 70 / board.maxOi : 0} + '%'"></span>
+                        <span th:if="${s.callOi > 0}" th:text="${#numbers.formatInteger(s.callOi, 1, 'COMMA')}"></span>
+                        <span class="badge" th:if="${board.callWall != null and s.strike == board.callWall.strike}">저항</span>
+                        <span class="badge" th:if="${board.maxPain != null and s.strike == board.maxPain}">맥스페인</span>
+                        <span class="badge" th:if="${board.putWall != null and s.strike == board.putWall.strike}">지지</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </th:block>
 

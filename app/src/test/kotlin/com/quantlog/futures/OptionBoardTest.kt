@@ -43,6 +43,17 @@ class OptionBoardTest {
     }
 
     @Test
+    fun `핵심 가격은 높은 가격부터 나열하고 지수 대비 거리를 붙인다`() {
+        val board =
+            OptionBoard(listOf(strike("340.00", 0, 800), strike("350.00", 100, 200), strike("360.00", 900, 0)), BigDecimal("350.00"))
+
+        assertEquals(listOf("콜 최대 (저항)", "현재 KOSPI200", "맥스페인", "풋 최대 (지지)").size, board.keyLevels.size)
+        assertEquals(BigDecimal("360.00"), board.keyLevels.first().price)
+        assertEquals(BigDecimal("2.86"), board.keyLevels.first().gapPercent)
+        assertEquals(BigDecimal("340.00"), board.keyLevels.last().price)
+    }
+
+    @Test
     fun `미결제약정이 없으면 매물대를 계산하지 않는다`() {
         val board = OptionBoard(listOf(strike("350.00", 0, 0)), null)
 
