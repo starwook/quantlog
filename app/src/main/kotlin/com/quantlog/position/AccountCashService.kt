@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.MathContext
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 
@@ -82,17 +81,9 @@ class AccountCashService(
         return cash.subtract(reservedByOpenBuys(market))
     }
 
-    /**
-     * 미체결 매수가 잡고 있는 돈. 증권사가 미체결로 확인했거나 일부 체결된 주문은 늘 센다. 체결인지 미체결인지 아직 모르는 주문
-     * ([OrderState.CHECKING])은 낸 지 [UNKNOWN_HOLD] 안일 때만 센다 — 그 뒤까지 모르는 채로 남은 주문은 체결통보를 놓쳐서 이미 체결됐는데
-     * 기록만 낡은 경우가 대부분이고, 그 돈은 잔고 값에서 이미 빠져 있어 또 빼면 주문가능금액이 마이너스가 된다(2026-10-13 실제로 -190만원).
-     * [UNKNOWN_HOLD] 는 진입 주문을 미체결로 두지 않고 취소하는 시간(`EntryProperties.fillTimeout` 10초)과 같다.
-     */
     private fun reservedByOpenBuys(market: Market): BigDecimal {
         val startOfToday = LocalDate.now(KST).atStartOfDay(KST).toInstant()
-        val unknownSince = Instant.now().minus(UNKNOWN_HOLD)
         return tradeRepository.findAllByMarketAndSideAndCanceledFalseAndExecutedAtGreaterThanEqual(market, Side.BUY, startOfToday)
-            .filter { it.state != OrderState.CHECKING || it.executedAt.isAfter(unknownSince) }
             .fold(BigDecimal.ZERO) { sum, trade -> sum + trade.orderPrice * BigDecimal(trade.unfilledQuantity) }
     }
 
@@ -108,7 +99,6 @@ class AccountCashService(
 
     private companion object {
         val TOLERANCE: BigDecimal = BigDecimal("0.001")
-        val UNKNOWN_HOLD: Duration = Duration.ofSeconds(10)
         const val AREA = "현금 동기화"
     }
 }
