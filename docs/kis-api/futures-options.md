@@ -40,3 +40,10 @@
 - **가정(실측 전)**: `output1` = 콜, `output2` = 풋. 실측해서 반대면 `OptionBoard.parse` 한 줄만 바꾼다. 선물 전광판 열은 실측 후 필요한 것만 남긴다.
 - 옵션 월물 기본값은 오늘 기준 가장 가까운 월물(만기 = 둘째 목요일, 휴장 보정 없음). 주간옵션은 다루지 않는다.
 - 아직 안 한 것: 야간선물(REST 로 야간값이 나오는지 실측 필요), 선물 종목코드를 받는 현재가(`inquire-price`), 일별 매물대 저장.
+
+## 실측 결과 (2026-10-13 14:45, 모의투자 게이트웨이, 장 마감 후)
+- **모의 도메인에서 선물옵션 시세 TR 이 된다**(`FHPIF05030100`·`FHPIF05030200`, 계좌 없이 조회). 필드명은 위 `chk_*.py` 매핑과 일치.
+- **`display-board-callput`: `output1` = 콜(코드 `B01…C..`), `output2` = 풋(`C01…`) 확인.** 월물 `FID_MTRT_CNT` 는 만기일이 지나면 그 달이 **빈 응답**이다(10/8 만기 후 `202610` → 빈 배열, `202611` 정상) → `OptionMaturity.nearest` 가 맞다.
+- **⚠ 한 번에 100행만 오고 연속조회(`tr_cont: N`)·`FID_COND_MRKT_CLS_CODE`(W/M/A) 로도 다음 구간이 안 온다.** 응답은 가장 높은 행사가부터 내려가(예: 1595 → 1347.5) 지수 근처(ATM, 풋 1595 가격으로 역산하면 약 1009)에 닿기 전에 끊긴다 → **ATM 근처 매물대가 빠진다.** 모의 서버 특성인지 실전도 같은지는 미확인. 해결안 후보: 행사가별로 `inquire-price`(옵션 코드, `FID_COND_MRKT_DIV_CODE=O`)를 따로 부른다(호출 수십 번).
+- `display-board-futures`: `FID_COND_MRKT_CLS_CODE=MKI` 는 **미니선물**(`A05611` 등). 코스피200 선물은 `""` 또는 `K2I`(`A01612` = `F 202612` 등 7개 월물). 필드: `futs_shrn_iscd, hts_kor_isnm, futs_prpr, futs_prdy_vrss, prdy_vrss_sign, futs_prdy_ctrt, hts_thpr, acml_vol, futs_askp, futs_bidp, hts_otst_stpl_qty(미결제), futs_hgpr, futs_lwpr, hts_rmnn_dynu, total_askp_rsqn, total_bidp_rsqn, futs_antc_cnpr…`. 앱은 `K2I` 를 쓴다.
+- 모의 시세의 값이 실제 시장과 같은지(선물 ≈ 942 vs 옵션 행사가 1347~1595)는 확인 못 했다 — 모의 데이터가 이상할 수 있다.

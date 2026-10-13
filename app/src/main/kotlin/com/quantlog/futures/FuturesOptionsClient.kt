@@ -33,7 +33,7 @@ class FuturesOptionsClient(private val rest: KisRest) {
             fetch(
                 "/uapi/domestic-futureoption/v1/quotations/display-board-futures",
                 "FHPIF05030200",
-                mapOf("FID_COND_MRKT_DIV_CODE" to "F", "FID_COND_SCR_DIV_CODE" to "20503", "FID_COND_MRKT_CLS_CODE" to "MKI"),
+                mapOf("FID_COND_MRKT_DIV_CODE" to "F", "FID_COND_SCR_DIV_CODE" to "20503", "FID_COND_MRKT_CLS_CODE" to "K2I"),
             )
         return listOf("output", "output1", "output2").map { body.path(it) }.flatMap { rows ->
             when {
