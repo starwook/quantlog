@@ -27,6 +27,9 @@ data class ChartPoint(
     val volume: Long,
 )
 
+/** 야간장(18:00~06:00) 분봉인지. */
+fun isNightBar(c: Candle) = c.time != null && (c.time >= "180000" || c.time < "060000")
+
 /** 차트에 겹쳐 그릴 가격선(저항·지지·맥스페인 등). */
 data class ChartLine(
     val label: String,
@@ -35,20 +38,19 @@ data class ChartLine(
 
 /**
  * 차트 한 장에 필요한 값. [candles] 는 과거 → 최근 순서이고 비어 있으면 안 된다. 그리기와 확대·축소는 브라우저가 한다.
- * [fallbackBase] 는 봉 목록에서 전일 종가를 못 찾을 때 쓰는 전일 종가(정규장 중에만 의미가 있다).
+ * [apiBase] 는 한투 API 가 준 기준 종가(정규장이면 전일 종가, 야간이면 그날 주간 종가)로, 있으면 이것을 쓰고
+ * 없을 때만 봉 목록에서 직접 찾는다.
  */
 class CandleChart(
     val candles: List<Candle>,
     levels: List<KeyLevel>,
-    fallbackBase: BigDecimal? = null,
+    apiBase: BigDecimal? = null,
 ) {
     private val daily = candles.first().time == null
 
-    private fun isNight(c: Candle) = c.time != null && (c.time >= NIGHT_START || c.time < NIGHT_END)
-
     /**
-     * 등락률의 기준 종가. 일봉은 직전 봉 종가, 1분봉은 야간장이면 그날 주간 종가(15:45 마지막 정규장 봉),
-     * 정규장이면 전일 정규장 마지막 봉 종가. 못 찾으면 [fallbackBase], 그래도 없으면 null.
+     * [apiBase] 가 없을 때 봉에서 찾는 기준 종가. 일봉은 직전 봉 종가, 1분봉은 야간장이면 그날 주간 종가(15:45 마지막 정규장 봉),
+     * 정규장이면 전일 정규장 마지막 봉 종가.
      */
     private val baseCandle: Candle? =
         if (daily) {
@@ -59,7 +61,7 @@ class CandleChart(
             candles.lastOrNull { !isNight(it) && it.date < candles.last().date }
         }
 
-    val baseline: Double? = (baseCandle?.close ?: fallbackBase.takeIf { !daily && !isNight(candles.last()) })?.toDouble()
+    val baseline: Double? = (if (daily) baseCandle?.close else apiBase ?: baseCandle?.close)?.toDouble()
 
     val baselineLabel: String = if (!daily && isNight(candles.last())) "주간 종가" else "전일 종가"
 
@@ -79,12 +81,12 @@ class CandleChart(
             LocalDateTime.of(LocalDate.parse(c.date, DATE), java.time.LocalTime.parse(c.time, TIME)).toEpochSecond(ZoneOffset.UTC)
         }
 
+    private fun isNight(c: Candle) = isNightBar(c)
+
     private fun label(c: Candle) = c.date + (c.time?.let { " " + it.take(4).chunked(2).joinToString(":") } ?: "")
 
     private companion object {
         val DATE: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
         val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
-        const val NIGHT_START = "180000"
-        const val NIGHT_END = "060000"
     }
 }

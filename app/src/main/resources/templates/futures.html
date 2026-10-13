@@ -113,6 +113,7 @@
     <div class="card" th:if="${candleChart != null}">
         <div class="quote">
             <b id="last">-</b>
+            <b id="pct"></b>
             <span id="ohlc"></span>
         </div>
         <div id="fchart"></div>
@@ -205,19 +206,22 @@
         lineWidth: 1,
     }));
 
+    // 기준 종가(전일·주간 종가)를 가로선으로도 그려 둔다.
+    if (baseline !== null) candles.createPriceLine({ price: baseline, title: baselineLabel, color: '#191f28', lineStyle: 1, lineWidth: 1 });
+
     const lastEl = document.getElementById('last');
+    const pctEl = document.getElementById('pct');
     const ohlcEl = document.getElementById('ohlc');
     const fmt = (v) => Number(v).toFixed(2);
     function show(p) {
         lastEl.textContent = fmt(p.close);
-        let change = '';
         if (baseline !== null) {
             const diff = p.close - baseline;
-            const cls = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
-            change = ' · <span class="' + cls + '">' + baselineLabel + ' ' + fmt(baseline) + ' 대비 ' + (diff > 0 ? '+' : '') + fmt(diff)
-                + ' (' + (diff > 0 ? '+' : '') + (diff / baseline * 100).toFixed(2) + '%)</span>';
+            pctEl.className = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
+            pctEl.textContent = (diff > 0 ? '+' : '') + fmt(diff) + ' (' + (diff > 0 ? '+' : '') + (diff / baseline * 100).toFixed(2) + '%)';
         }
-        ohlcEl.innerHTML = '시 ' + fmt(p.open) + ' · 고 ' + fmt(p.high) + ' · 저 ' + fmt(p.low) + ' · 종 ' + fmt(p.close) + ' · 거래량 ' + p.volume + change;
+        ohlcEl.textContent = (baseline !== null ? baselineLabel + ' ' + fmt(baseline) + ' · ' : '')
+            + '시 ' + fmt(p.open) + ' · 고 ' + fmt(p.high) + ' · 저 ' + fmt(p.low) + ' · 종 ' + fmt(p.close) + ' · 거래량 ' + p.volume;
     }
     const latest = () => show(points[points.length - 1]);
     latest();

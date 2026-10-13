@@ -62,9 +62,13 @@ class CandleChartTest {
     }
 
     @Test
-    fun `정규장 1분봉의 기준은 전일 정규장 마지막 봉이고 없으면 전광판에서 구한 전일 종가를 쓴다`() {
+    fun `1분봉은 API 가 준 기준 종가를 우선하고 없을 때만 봉에서 찾는다`() {
         val withYesterday = listOf(minute("20261013", "154500", "942"), minute("20261014", "100000", "950"))
-        assertEquals(942.0, CandleChart(withYesterday, emptyList(), BigDecimal("900")).baseline)
+        assertEquals(900.0, CandleChart(withYesterday, emptyList(), BigDecimal("900")).baseline)
+        assertEquals(942.0, CandleChart(withYesterday, emptyList()).baseline)
+
+        val night = listOf(minute("20261013", "154500", "942"), minute("20261014", "020100", "957"))
+        assertEquals(943.0, CandleChart(night, emptyList(), BigDecimal("943")).baseline)
 
         val onlyToday = listOf(minute("20261014", "100000", "950"))
         assertEquals(900.0, CandleChart(onlyToday, emptyList(), BigDecimal("900")).baseline)

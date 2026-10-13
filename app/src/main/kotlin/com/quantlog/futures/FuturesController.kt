@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.servlet.mvc.support.RedirectAttributes
+import java.math.BigDecimal
 import java.time.Clock
 import java.time.LocalDate
 import java.time.YearMonth
@@ -73,12 +74,32 @@ class FuturesController(
             .onSuccess { candles ->
                 if (candles.isEmpty()) return@onSuccess
                 val levels = (model.getAttribute("board") as? OptionBoard)?.keyLevels().orEmpty()
-                model.addAttribute("candleChart", CandleChart(candles, levels, runCatching { client.previousClose(code) }.getOrNull()))
+                model.addAttribute("candleChart", CandleChart(candles, levels, apiBase(code, unit, candles)))
             }
             .onFailure {
                 log.warn { "[선물옵션] 캔들 조회 실패: ${it.message}" }
                 model.addAttribute("chartError", it.message)
             }
+    }
+
+    /**
+     * 등락률 기준 종가를 한투 API 로 구한다(직접 계산하지 않는다). 정규장이면 전일 종가(`inquire-price`),
+     * 야간장이면 그날 주간 종가(한투 일봉에서 마지막 정규장 봉의 날짜 행). 못 구하면 null → 차트가 봉에서 찾는다.
+     */
+    private fun apiBase(
+        code: String,
+        unit: String,
+        candles: List<Candle>,
+    ): BigDecimal? {
+        if (unit == "D") return null
+        return runCatching {
+            if (isNightBar(candles.last())) {
+                val dayDate = candles.lastOrNull { !isNightBar(it) }?.date ?: return@runCatching null
+                client.candles(code, false, LocalDate.now(clock)).lastOrNull { it.date == dayDate }?.close
+            } else {
+                client.previousClose(code)
+            }
+        }.getOrNull()
     }
 
     /** 일봉은 한투 일봉, 1분봉은 한투 정규장 분봉에 앱이 쌓은 야간장 분봉을 이어 붙인다(한투 분봉은 야간을 주지 않는다). */
