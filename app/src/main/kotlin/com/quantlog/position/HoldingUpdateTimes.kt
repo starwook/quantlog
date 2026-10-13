@@ -2,8 +2,12 @@ package com.quantlog.position
 
 import com.quantlog.broker.Market
 import org.springframework.stereotype.Component
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+
+/** 앱이 주문 체결을 기다리는 최대 시간(10초 뒤 취소 시도 + 2분 뒤 포기, `trading/PendingOrders.kt`)보다 넉넉히. 체결통보가 이보다 오래 안 온 주문은 기다리지 않는다. */
+internal val ORDER_IN_FLIGHT_LIMIT: Duration = Duration.ofMinutes(3)
 
 /**
  * 보유 현황을 고치는 두 경로([HoldingFillApplier] 체결 반영, [HoldingBalanceSync] 잔고 동기화)와 그걸 읽는 쪽([FillProgressTracker])이

@@ -6,6 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.time.Clock
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @ConfigurationProperties(prefix = "quantlog.playbook")
@@ -34,16 +35,17 @@ class Playbook(
         return Files.readString(file)
     }
 
-    /** 오늘 일지에 생각 한 토막을 덧붙인다. 파일이 없으면 날짜 제목과 함께 만든다. */
+    /** [day](기본 오늘) 일지에 생각 한 토막을 덧붙인다. 파일이 없으면 날짜 제목과 함께 만든다. */
     @Synchronized
     fun writeJournal(
         title: String,
         body: String,
+        day: LocalDate = clock.instant().atZone(clock.zone).toLocalDate(),
     ): Path {
         val now = clock.instant().atZone(clock.zone)
-        val file = root.resolve(JOURNAL_DIR).resolve("${now.toLocalDate()}.md")
+        val file = root.resolve(JOURNAL_DIR).resolve("$day.md")
         Files.createDirectories(file.parent)
-        val header = if (Files.exists(file)) "" else "# 일지 ${now.toLocalDate()}\n"
+        val header = if (Files.exists(file)) "" else "# 일지 $day\n"
         val entry = "$header\n## ${now.format(TIME)} KST — $title\n\n${body.trim()}\n"
         Files.writeString(file, entry, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
         return file

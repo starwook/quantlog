@@ -30,7 +30,7 @@ object ReviewFacts {
         val todayTrades = byDay[today].orEmpty()
 
         return buildString {
-            appendLine("## 오늘($today ${today.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.KOREAN)}요일) 체결 ${todayTrades.size}건")
+            appendLine("## 리뷰 대상일($today ${today.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.KOREAN)}요일) 체결 ${todayTrades.size}건")
             if (todayTrades.isEmpty()) appendLine("(체결 없음)")
             todayTrades.forEach { appendLine(line(it, snapshot)) }
 

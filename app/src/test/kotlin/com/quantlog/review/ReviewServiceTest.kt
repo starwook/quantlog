@@ -19,7 +19,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -115,5 +117,16 @@ class ReviewServiceTest {
         service(FakeLlm("""{"journal": "x", "proposals": []}""")).run()
 
         assertEquals("# 원칙\n- 롱만 한다", Files.readString(dir.resolve("principles.md")))
+    }
+
+    @Test
+    fun `리뷰 대상일은 마지막으로 장이 마감된 평일이다`() {
+        fun day(time: String) = reviewDay(ZonedDateTime.parse("$time[Asia/Seoul]"))
+
+        assertEquals(LocalDate.of(2026, 10, 12), day("2026-10-13T06:00:00+09:00")) // 화 새벽 → 월
+        assertEquals(LocalDate.of(2026, 10, 13), day("2026-10-13T15:31:00+09:00")) // 화 마감 직후 → 화
+        assertEquals(LocalDate.of(2026, 10, 12), day("2026-10-13T15:30:00+09:00")) // 마감 전 → 월
+        assertEquals(LocalDate.of(2026, 10, 9), day("2026-10-12T06:00:00+09:00")) // 월 새벽 → 금
+        assertEquals(LocalDate.of(2026, 10, 9), day("2026-10-11T12:00:00+09:00")) // 일 → 금
     }
 }

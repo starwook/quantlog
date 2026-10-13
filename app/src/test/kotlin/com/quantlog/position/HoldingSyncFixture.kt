@@ -17,7 +17,7 @@ class HoldingSyncFixture(
 ) {
     private val state = HoldingUpdateTimes()
     private val fillApplier = HoldingFillApplier(repository, tradeRepository, orderFills, symbolNames, events, state)
-    private val balanceSync = HoldingBalanceSync(repository, symbolNames, events, state)
+    private val balanceSync = HoldingBalanceSync(repository, symbolNames, events, state, orderFills, tradeRepository)
     private val progress = FillProgressTracker(tradeRepository, orderFills, state)
 
     fun applyFill(
