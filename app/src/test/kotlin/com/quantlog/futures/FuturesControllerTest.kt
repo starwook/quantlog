@@ -72,10 +72,11 @@ class FuturesControllerTest {
 
         mvc.perform(get("/futures"))
             .andExpect(status().isOk)
-            .andExpect(content().string(containsString("<svg")))
+            .andExpect(content().string(containsString("id=\"fchart\"")))
             .andExpect(content().string(containsString(">20261013 15:45</span>")))
             .andExpect(content().string(containsString(">20261014 02:01</span>")))
             .andExpect(content().string(containsString(">3</span>봉")))
+            .andExpect(content().string(containsString("\"close\":105.0")))
     }
 
     @Test
@@ -86,7 +87,7 @@ class FuturesControllerTest {
 
         mvc.perform(get("/futures"))
             .andExpect(status().isOk)
-            .andExpect(content().string(containsString("<svg")))
+            .andExpect(content().string(containsString("id=\"fchart\"")))
     }
 
     @Test
