@@ -70,14 +70,48 @@ class ReviewServiceTest {
         ledger.record(fillNotice(side, 10, price, it.orderNo, symbol = "005930"), it.executedAt)
     }
 
+    // 저장소 대신 넘겨받은 것을 모아 둔다. 저장소가 id 를 붙여 주는 것처럼 1부터 번호를 매긴다.
+    private class RecordingArchive(clock: Clock) : ReviewArchive(
+        Mockito.mock(ReviewJournalRepository::class.java),
+        Mockito.mock(ReviewProposalRepository::class.java),
+        clock,
+    ) {
+        val journals = mutableListOf<Triple<LocalDate, String, String>>()
+        val proposals = mutableListOf<Triple<LocalDate, String, String>>()
+
+        private fun <T : Any> T.withId(id: Long): T = also { it.javaClass.getDeclaredField("id").apply { isAccessible = true }.set(it, id) }
+
+        override fun saveJournal(
+            day: LocalDate,
+            title: String,
+            body: String,
+        ): ReviewJournal {
+            journals += Triple(day, title, body)
+            return ReviewJournal(day, title, body, Instant.EPOCH).withId(journals.size.toLong())
+        }
+
+        override fun saveProposal(
+            day: LocalDate,
+            title: String,
+            body: String,
+        ): ReviewProposal {
+            proposals += Triple(day, title, body)
+            return ReviewProposal(day, title, body, createdAt = Instant.EPOCH).withId(proposals.size.toLong())
+        }
+    }
+
+    private lateinit var archive: RecordingArchive
+
     private fun service(llm: LlmClient): ReviewService {
+        archive = RecordingArchive(clock)
         Files.writeString(dir.resolve("principles.md"), "# 원칙\n- 롱만 한다")
         val trades = Mockito.mock(TradeRepository::class.java)
         Mockito.`when`(trades.findAll()).thenReturn(listOf(trade(Side.BUY, 10, "100000"), trade(Side.SELL, 11, "100500", avg = "100000")))
         val portfolio = PortfolioService(trades, Mockito.mock(AccountHoldingRepository::class.java), ledger)
         return ReviewService(
             portfolio,
-            Playbook(PlaybookProperties(dir.toString()), clock),
+            Playbook(PlaybookProperties(dir.toString())),
+            archive,
             llm,
             ReviewProperties(),
             clock,
@@ -99,17 +133,18 @@ class ReviewServiceTest {
         assertTrue(llm.user.contains("롱만 한다"))
         assertTrue(llm.user.contains("주기 재매수"))
         assertTrue(llm.user.contains("실현손익 5000 (0.50%)"))
-        assertTrue(Files.readString(result.journal).contains("익절이 의도대로 나갔다."))
-        assertEquals(1, result.proposals.size)
-        assertTrue(Files.readString(result.proposals.single()).contains("익절 폭 검토"))
+        // 리뷰 대상일(2026-10-12 15:40 → 그날)로 일지와 제안이 저장된다.
+        assertEquals(listOf(Triple(LocalDate.of(2026, 10, 12), "일일 리뷰", "익절이 의도대로 나갔다.")), archive.journals)
+        assertEquals(listOf(Triple(LocalDate.of(2026, 10, 12), "익절 폭 검토", "표본 부족, 관찰만")), archive.proposals)
+        assertEquals(1, result.proposalIds.size)
     }
 
     @Test
     fun `응답을 JSON 으로 못 읽으면 원문을 일지에 남기고 제안은 만들지 않는다`() {
         val result = service(FakeLlm("그냥 말로 답함")).run()
 
-        assertTrue(Files.readString(result.journal).contains("그냥 말로 답함"))
-        assertEquals(0, result.proposals.size)
+        assertTrue(archive.journals.single().third.contains("그냥 말로 답함"))
+        assertEquals(0, result.proposalIds.size)
     }
 
     @Test

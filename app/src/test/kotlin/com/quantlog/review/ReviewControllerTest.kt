@@ -1,7 +1,5 @@
 package com.quantlog.review
 
-import com.quantlog.playbook.Playbook
-import com.quantlog.playbook.PlaybookNote
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.springframework.beans.factory.annotation.Autowired
@@ -14,7 +12,8 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import java.nio.file.Path
+import java.time.Instant
+import java.time.LocalDate
 
 @WebMvcTest(ReviewController::class)
 class ReviewControllerTest {
@@ -25,27 +24,95 @@ class ReviewControllerTest {
     lateinit var reviewService: ReviewService
 
     @MockBean
-    lateinit var playbook: Playbook
+    lateinit var archive: ReviewArchive
+
+    private val day = LocalDate.of(2026, 10, 13)
+
+    private fun proposal(
+        id: Long,
+        favorite: Boolean = false,
+    ) = ReviewProposal(day, "익절 폭 검토", "표본 부족", createdAt = Instant.parse("2026-10-13T06:31:00Z")).also {
+        it.javaClass.getDeclaredField("id").apply { isAccessible = true }.set(it, id)
+        it.favorite = favorite
+    }
 
     @Test
-    fun `일지와 제안이 없으면 빈 상태 안내를 보여준다`() {
-        `when`(playbook.recentJournals(10)).thenReturn(emptyList())
-        `when`(playbook.recentProposals(20)).thenReturn(emptyList())
+    fun `일지가 없으면 빈 상태 안내를 보여준다`() {
+        `when`(archive.days(20)).thenReturn(Page(emptyList(), false))
 
         mvc.perform(get("/review"))
             .andExpect(status().isOk)
             .andExpect(content().string(org.hamcrest.Matchers.containsString("아직 일지가 없습니다")))
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("아직 제안이 없습니다")))
     }
 
     @Test
-    fun `최근 일지 내용을 화면에 보여준다`() {
-        `when`(playbook.recentJournals(10)).thenReturn(listOf(PlaybookNote("2026-10-13", "오늘 체결 0건")))
-        `when`(playbook.recentProposals(20)).thenReturn(emptyList())
+    fun `날짜 목록은 날짜와 건수만 보여주고 더 있으면 더 보기를 건다`() {
+        `when`(archive.days(20)).thenReturn(Page(listOf(DaySummary(day, 1, 2, 1)), hasMore = true))
+        `when`(archive.favoriteCount()).thenReturn(1)
 
         mvc.perform(get("/review"))
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("2026-10-13")))
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("오늘 체결 0건")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("2026-10-13 (화)")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("/review/day/2026-10-13")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("/review?limit=40")))
+    }
+
+    @Test
+    fun `날짜를 열면 그날 일지와 제안을 보여준다`() {
+        `when`(archive.journalsOf(day)).thenReturn(
+            listOf(ReviewJournal(day, "일일 리뷰", "## 한 줄 결론\n체결 2건", Instant.parse("2026-10-13T06:31:00Z"))),
+        )
+        `when`(archive.proposalsOf(day)).thenReturn(listOf(proposal(7)))
+        `when`(archive.neighbors(day)).thenReturn(DayNeighbors(LocalDate.of(2026, 10, 12), null))
+
+        mvc.perform(get("/review/day/2026-10-13"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("체결 2건")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("15:31")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("익절 폭 검토")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("/review/proposals/7/favorite")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("/review/day/2026-10-12")))
+    }
+
+    @Test
+    fun `기록이 없는 날은 404 이다`() {
+        `when`(archive.journalsOf(day)).thenReturn(emptyList())
+        `when`(archive.proposalsOf(day)).thenReturn(emptyList())
+
+        mvc.perform(get("/review/day/2026-10-13")).andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `즐겨찾기 화면은 즐겨찾기한 제안과 원본 일지 링크를 보여준다`() {
+        `when`(archive.favorites(20)).thenReturn(Page(listOf(proposal(7, favorite = true)), false))
+        `when`(archive.favoriteCount()).thenReturn(1)
+
+        mvc.perform(get("/review/favorites"))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("익절 폭 검토")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("즐겨찾기 해제")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("/review/day/2026-10-13")))
+    }
+
+    @Test
+    fun `즐겨찾기를 바꾸고 원래 화면으로 돌아간다`() {
+        `when`(archive.setFavorite(7, true)).thenReturn(true)
+
+        mvc.perform(post("/review/proposals/7/favorite").param("favorite", "true").param("backTo", "/review/day/2026-10-13"))
+            .andExpect(redirectedUrl("/review/day/2026-10-13"))
+    }
+
+    @Test
+    fun `돌아갈 곳이 사이트 밖이면 목록으로 보낸다`() {
+        `when`(archive.setFavorite(7, true)).thenReturn(true)
+
+        mvc.perform(post("/review/proposals/7/favorite").param("favorite", "true").param("backTo", "//evil.example"))
+            .andExpect(redirectedUrl("/review"))
+    }
+
+    @Test
+    fun `없는 제안의 즐겨찾기는 404 이다`() {
+        `when`(archive.setFavorite(9, true)).thenReturn(false)
+
+        mvc.perform(post("/review/proposals/9/favorite").param("favorite", "true")).andExpect(status().isNotFound)
     }
 
     @Test
@@ -71,7 +138,7 @@ class ReviewControllerTest {
 
     @Test
     fun `실행하면 결과 메시지와 함께 화면으로 돌아간다`() {
-        `when`(reviewService.run()).thenReturn(ReviewResult(Path.of("j.md"), listOf(Path.of("p.md"))))
+        `when`(reviewService.run()).thenReturn(ReviewResult(1, listOf(2)))
 
         mvc.perform(post("/review/run"))
             .andExpect(redirectedUrl("/review"))

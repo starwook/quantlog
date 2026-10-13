@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>일일 리뷰 · quantlog</title>
+    <style th:replace="~{fragments/review :: style}"></style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('review')}"></nav>
+
+    <div class="daynav">
+        <a th:if="${previousDay != null}" th:href="@{/review/day/{d}(d=${previousDay})}" th:text="'← ' + ${previousDay}"></a>
+        <span th:if="${previousDay == null}"></span>
+        <a href="/review">목록</a>
+        <a th:if="${nextDay != null}" th:href="@{/review/day/{d}(d=${nextDay})}" th:text="${nextDay} + ' →'"></a>
+        <span th:if="${nextDay == null}"></span>
+    </div>
+
+    <h1 th:text="${dayLabel}"></h1>
+
+    <h2>일지</h2>
+    <div class="empty card" th:unless="${hasJournal}">이날은 일지가 없습니다.</div>
+    <div class="card" th:if="${hasJournal}">
+        <div class="md" th:utext="${journalHtml}"></div>
+    </div>
+
+    <h2>원칙 변경 제안</h2>
+    <div class="empty card" th:if="${#lists.isEmpty(proposals)}">이날 나온 제안이 없습니다. 원칙 수치를 바꾸자는 제안은 체결이 50건 이상 쌓여야 나오고, 부족한 데이터를 모으자는 제안은 리뷰 때마다 나올 수 있습니다.</div>
+    <th:block th:each="p : ${proposals}"><div th:replace="~{fragments/review :: proposal(${p}, ${backTo}, false)}"></div></th:block>
+</main>
+</body>
+</html>
