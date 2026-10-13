@@ -20,7 +20,6 @@
         * { box-sizing: border-box; }
         html, body {
             margin: 0;
-            height: 100%;
         }
         body {
             display: flex;
@@ -143,7 +142,6 @@
             <span class="pos" id="pos"></span>
         </div>
     </div>
-    <div th:replace="~{fragments/nav :: symbolTabs('chart', ${market}, ${symbol})}"></div>
 
     <div class="banner ok" th:if="${message}" th:text="${message}"></div>
     <div class="banner error" th:if="${error}" th:text="${error}"></div>
