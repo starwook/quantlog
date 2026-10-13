@@ -4,6 +4,7 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.Side
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
+import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -29,7 +30,7 @@ class AccountCashServiceTest {
                 ),
             ).thenAnswer { openBuys.filter { !it.canceled } }
         }
-    private val service = AccountCashService(repository, tradeRepository)
+    private val service = AccountCashService(repository, tradeRepository, Mockito.mock(ApplicationEventPublisher::class.java))
     private val t0 = Instant.now().minusSeconds(60)
 
     private fun fill(

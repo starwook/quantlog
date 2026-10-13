@@ -7,8 +7,10 @@ import com.quantlog.common.KST
 import com.quantlog.common.money
 import com.quantlog.common.pnlCss
 import com.quantlog.common.signedMoneyAndPercent
+import com.quantlog.position.AccountCashService
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
+import com.quantlog.position.CashChangedEvent
 import com.quantlog.position.FillAppliedEvent
 import com.quantlog.position.HoldingsChangedEvent
 import com.quantlog.position.OrderFills
@@ -42,6 +44,7 @@ class PortfolioLiveBroadcaster(
     private val symbolStrategyService: SymbolStrategyService,
     private val sessions: LiveSessions,
     private val valuation: LiveValuation,
+    private val cash: AccountCashService,
 ) {
     // 틱 푸시 전용 스레드. 스프링 스케줄러(스레드 하나를 모든 @Scheduled 가 공유)나 KIS 수신 스레드에 얹으면 느린 호출·클라이언트에 막혀 화면이 멎는다.
     private val pushExecutor = Executors.newSingleThreadExecutor { Thread(it, "portfolio-live-push").apply { isDaemon = true } }
@@ -75,6 +78,8 @@ class PortfolioLiveBroadcaster(
     @EventListener
     fun onTradeChanged(event: TradeChangedEvent) {
         if (sessions.isEmpty()) return
+        // 주문이 나가고 취소될 때마다 미체결 매수가 잡고 있는 돈이 달라진다.
+        pushOrderable()
         val trade = event.trade
         // 실현손익은 체결된 매도에만 있고 요약 전체를 다시 계산해야 해서 그때만 구한다.
         if (trade.side == Side.SELL && trade.state == OrderState.FILLED) {
@@ -103,6 +108,15 @@ class PortfolioLiveBroadcaster(
         if (event.side == Side.SELL) message["summary"] = summaryView(portfolioService.snapshot())
         broadcast(message)
     }
+
+    /** 현금이 바뀌면(체결 반영·증권사 잔고 보정) 주문가능금액만 다시 보낸다. 커밋된 뒤에 읽어야 해서 트랜잭션이 없으면 바로 실행한다. */
+    @TransactionalEventListener(fallbackExecution = true)
+    fun onCashChanged(event: CashChangedEvent) {
+        if (sessions.isEmpty()) return
+        pushOrderable()
+    }
+
+    private fun pushOrderable() = broadcast(mapOf("type" to "cash", "orderableText" to (cash.orderable(Market.KR)?.money(KRW) ?: "-")))
 
     /** 보유 종목이 바뀌면 전체 목록을 다시 보낸다(종목 수가 적다). 커밋된 뒤에 읽어야 해서 트랜잭션이 없으면 바로 실행한다. */
     @TransactionalEventListener(fallbackExecution = true)
@@ -147,7 +161,7 @@ class PortfolioLiveBroadcaster(
         val summary = snapshot.summaryByCurrency[KRW] ?: return null
         val held = accountHoldingRepository.findAll().filter { it.market == Market.KR && it.quantity > 0 }
         val (amount, percent) = valuation.unrealizedOf(held)
-        return PnlSummaryLiveView.of(summary, KRW, amount, percent, valuation.totalValueOf(held))
+        return PnlSummaryLiveView.of(summary, KRW, amount, percent, valuation.totalValueOf(held), cash.orderable(Market.KR))
     }
 
     private fun holdingViews(): List<HoldingLiveView> {
