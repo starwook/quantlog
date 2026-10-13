@@ -105,6 +105,9 @@ class FuturesOptionsClient(private val rest: KisRest) {
         }.sortedWith(compareBy({ it.date }, { it.time ?: "" }))
     }
 
+    /** 가장 가까운 월물 선물의 종목코드(전광판 첫 행의 `futs_shrn_iscd`). 없으면 null. */
+    fun nearestFuturesCode(): String? = futuresBoard().firstOrNull()?.get("futs_shrn_iscd")?.takeIf { it.isNotBlank() }
+
     private fun fetch(
         path: String,
         trId: String,

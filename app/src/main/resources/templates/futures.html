@@ -107,8 +107,9 @@
 
     <h2>코스피200 선물 차트</h2>
     <div class="tools">
-        <a th:href="@{/futures(maturity=${maturity}, chart='D')}" th:class="${chartUnit != 'M'} ? 'tab on' : 'tab'">일봉</a>
+        <a th:href="@{/futures(maturity=${maturity}, chart='D')}" th:class="${chartUnit != 'M' and chartUnit != 'N'} ? 'tab on' : 'tab'">일봉</a>
         <a th:href="@{/futures(maturity=${maturity}, chart='M')}" th:class="${chartUnit == 'M'} ? 'tab on' : 'tab'">1분봉</a>
+        <a th:href="@{/futures(maturity=${maturity}, chart='N')}" th:class="${chartUnit == 'N'} ? 'tab on' : 'tab'">야간 1분봉</a>
         <span class="note" style="margin: 0;">가로선은 아래 옵션 매물대(점선: 저항·지지·맥스페인)입니다. 옵션 기준 지수와 선물 가격은 조금 다를 수 있습니다.</span>
     </div>
     <div class="msg error" th:if="${chartError}" th:text="'차트 조회 실패: ' + ${chartError}"></div>

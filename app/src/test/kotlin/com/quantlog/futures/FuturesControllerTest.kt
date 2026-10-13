@@ -35,6 +35,9 @@ class FuturesControllerTest {
     @MockBean
     lateinit var collector: OptionChainCollector
 
+    @MockBean
+    lateinit var night: NightFuturesRecorder
+
     private val nov = YearMonth.of(2026, 11)
 
     @Test
@@ -64,6 +67,18 @@ class FuturesControllerTest {
             .andExpect(status().isOk)
             .andExpect(content().string(containsString("<svg")))
             .andExpect(content().string(containsString("20261013")))
+    }
+
+    @Test
+    fun `야간 탭은 앱이 쌓은 야간선물 분봉을 그린다`() {
+        Mockito.`when`(client.futuresBoard()).thenReturn(listOf(mapOf("futs_shrn_iscd" to "A01612", "hts_kor_isnm" to "F 202612")))
+        val candle = Candle("20261014", "020100", BigDecimal("100"), BigDecimal("110"), BigDecimal("90"), BigDecimal("105"), 1)
+        Mockito.`when`(night.recent("A01612")).thenReturn(listOf(candle))
+
+        mvc.perform(get("/futures").param("chart", "N"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(containsString("<svg")))
+            .andExpect(content().string(containsString("20261014 02:01")))
     }
 
     @Test

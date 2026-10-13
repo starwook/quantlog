@@ -23,6 +23,7 @@ class FuturesController(
     private val client: FuturesOptionsClient,
     private val store: OptionSnapshotStore,
     private val collector: OptionChainCollector,
+    private val night: NightFuturesRecorder,
     private val clock: Clock,
 ) {
     @GetMapping("/futures")
@@ -43,7 +44,7 @@ class FuturesController(
         runCatching { client.futuresBoard() }
             .onSuccess {
                 model.addAttribute("futures", it)
-                addChart(model, it, chart == "M")
+                addChart(model, it, chart)
             }
             .onFailure {
                 log.warn { "[선물옵션] 선물 전광판 조회 실패: ${it.message}" }
@@ -56,10 +57,12 @@ class FuturesController(
     private fun addChart(
         model: Model,
         futures: List<Map<String, String>>,
-        minute: Boolean,
+        unit: String,
     ) {
         val code = futures.firstOrNull()?.get("futs_shrn_iscd")?.takeIf { it.isNotBlank() } ?: return
-        runCatching { client.candles(code, minute, LocalDate.now(clock)) }
+        runCatching {
+            if (unit == "N") night.recent(code) else client.candles(code, unit == "M", LocalDate.now(clock))
+        }
             .onSuccess { candles ->
                 if (candles.isEmpty()) return@onSuccess
                 val levels = (model.getAttribute("board") as? OptionBoard)?.keyLevels.orEmpty()
