@@ -26,7 +26,81 @@ data class NoteView(val name: String, val html: String)
 private val markdownParser = Parser.builder().build()
 private val markdownRenderer = HtmlRenderer.builder().escapeHtml(true).build()
 
-private fun PlaybookNote.toView() = NoteView(name, markdownRenderer.render(markdownParser.parse(content)))
+private fun renderMarkdown(markdown: String): String = markdownRenderer.render(markdownParser.parse(markdown))
+
+private fun PlaybookNote.toView() = NoteView(name, renderMarkdown(content))
+
+// 일지 파일은 "# 일지 날짜" 아래에 "## 15:31:46 KST — 일일 리뷰"(생성 시각) 다음 본문 절들이 이어진다. 시각 줄은 절이 아니라 메타 정보다.
+private val ENTRY_HEADING = Regex("""^(\d{2}:\d{2})(?::\d{2})?\s*KST\s*[—-]?\s*(.*)$""")
+
+private data class JournalSection(val tone: String, val order: Int, val title: String, val body: String)
+
+// 절 제목의 키워드 → (색 계열, 보여줄 순서). 일지 형식이 바뀌어도 알려진 절은 항상 이 순서로 나온다.
+private fun toneOf(title: String): Pair<String, Int> =
+    when {
+        "결론" in title || "요약" in title -> "sum" to 0
+        "잘" in title -> "good" to 1
+        "아쉬" in title -> "bad" to 2
+        "규칙" in title || "원칙" in title -> "rule" to 3
+        "데이터" in title -> "data" to 4
+        else -> "plain" to 5
+    }
+
+private fun escape(text: String) = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+/**
+ * 일지(마크다운)를 읽기 좋게 바꾼다: 생성 시각은 맨 위 작은 줄로, 본문 절은 색 계열 클래스를 달아 정해진 순서로 보여준다.
+ * 알려진 절이 하나도 없는 옛 형식이면 그냥 마크다운 그대로 그린다.
+ */
+internal fun renderJournal(markdown: String): String {
+    // 실행(생성 시각) 하나 = 한 묶음. 같은 날 여러 번 돌린 일지도 절이 섞이지 않는다.
+    class Entry(val time: String, val sections: MutableList<JournalSection> = mutableListOf())
+
+    val entries = mutableListOf(Entry(""))
+    var title: String? = null
+    val body = StringBuilder()
+
+    fun flush() {
+        val heading = title
+        if (heading != null && body.isNotBlank()) {
+            val (tone, order) = toneOf(heading)
+            entries.last().sections += JournalSection(tone, order, heading, body.toString())
+        }
+        body.clear()
+    }
+
+    markdown.lineSequence().forEach { line ->
+        when {
+            line.startsWith("# ") -> Unit
+            line.startsWith("## ") -> {
+                flush()
+                val heading = line.removePrefix("## ").trim()
+                val entry = ENTRY_HEADING.matchEntire(heading)
+                if (entry != null) {
+                    entries += Entry(listOf(entry.groupValues[1], entry.groupValues[2]).filter { it.isNotBlank() }.joinToString(" · "))
+                    title = null
+                } else {
+                    title = heading
+                }
+            }
+            else -> body.appendLine(line)
+        }
+    }
+    flush()
+
+    if (entries.none { entry -> entry.sections.any { it.tone != "plain" } }) return renderMarkdown(markdown)
+
+    return buildString {
+        entries.filter { it.sections.isNotEmpty() }.forEach { entry ->
+            append("""<div class="entry">""")
+            if (entry.time.isNotBlank()) append("""<div class="entry-time">${escape(entry.time)}</div>""")
+            entry.sections.sortedBy { it.order }.forEach {
+                append("""<section class="sec sec-${it.tone}"><h3>${escape(it.title)}</h3>${renderMarkdown(it.body)}</section>""")
+            }
+            append("</div>")
+        }
+    }
+}
 
 /** 일일 리뷰 화면: 최근 일지·원칙 변경 제안을 보고, 버튼으로 리뷰를 지금 한 번 돌린다(Claude API 호출 = 비용 발생). */
 @Controller
@@ -39,7 +113,7 @@ class ReviewController(
     @GetMapping("/review")
     fun page(model: Model): String {
         model.addAttribute("tokenRequired", runToken.isNotBlank())
-        model.addAttribute("journals", playbook.recentJournals(JOURNAL_LIMIT).map { it.toView() })
+        model.addAttribute("journals", playbook.recentJournals(JOURNAL_LIMIT).map { NoteView(it.name, renderJournal(it.content)) })
         model.addAttribute("proposals", playbook.recentProposals(PROPOSAL_LIMIT).map { it.toView() })
         return "review"
     }
