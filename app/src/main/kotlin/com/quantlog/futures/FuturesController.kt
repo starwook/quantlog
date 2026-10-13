@@ -28,6 +28,7 @@ class FuturesController(
     @GetMapping("/futures")
     fun page(
         @RequestParam(required = false) maturity: String?,
+        @RequestParam(required = false, defaultValue = "D") chart: String,
         model: Model,
     ): String {
         val month = month(maturity)
@@ -38,13 +39,36 @@ class FuturesController(
             model.addAttribute("snapshotDate", date)
             model.addAttribute("board", board)
         }
+        model.addAttribute("chartUnit", chart)
         runCatching { client.futuresBoard() }
-            .onSuccess { model.addAttribute("futures", it) }
+            .onSuccess {
+                model.addAttribute("futures", it)
+                addChart(model, it, chart == "M")
+            }
             .onFailure {
                 log.warn { "[선물옵션] 선물 전광판 조회 실패: ${it.message}" }
                 model.addAttribute("futuresError", it.message)
             }
         return "futures"
+    }
+
+    /** 가장 가까운 월물 선물의 캔들 차트. 조회가 실패해도 화면은 그대로 열린다. */
+    private fun addChart(
+        model: Model,
+        futures: List<Map<String, String>>,
+        minute: Boolean,
+    ) {
+        val code = futures.firstOrNull()?.get("futs_shrn_iscd")?.takeIf { it.isNotBlank() } ?: return
+        runCatching { client.candles(code, minute, LocalDate.now(clock)) }
+            .onSuccess { candles ->
+                if (candles.isEmpty()) return@onSuccess
+                val levels = (model.getAttribute("board") as? OptionBoard)?.keyLevels.orEmpty()
+                model.addAttribute("candleChart", CandleChart(candles, levels))
+            }
+            .onFailure {
+                log.warn { "[선물옵션] 캔들 조회 실패: ${it.message}" }
+                model.addAttribute("chartError", it.message)
+            }
     }
 
     /** 매물대를 지금 한 번 모은다. 한투 호출 100번 안팎에 5분쯤 걸려 뒤에서 돌린다. */

@@ -50,6 +50,15 @@
         td.strike { text-align: center; font-weight: 700; }
         td.name { text-align: left; }
         tr.atm td { background: #fff8e1; }
+        .tab { padding: 7px 12px; border-radius: 10px; background: var(--card); color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none; }
+        .tab.on { background: var(--text); color: #fff; }
+        .cup { stroke: var(--call); fill: var(--call); }
+        .cdn { stroke: var(--put); fill: var(--put); }
+        .lv { stroke: var(--muted); fill: var(--muted); font-size: 10px; }
+        .lv text { stroke: none; }
+        .lv.res { stroke: var(--call); fill: var(--call); }
+        .lv.sup { stroke: var(--put); fill: var(--put); }
+        .lv .now { stroke: var(--text); stroke-dasharray: none; }
         .levels { display: flex; flex-direction: column; gap: 6px; }
         .level { display: flex; justify-content: space-between; font-size: 14px; }
         .level.now { font-weight: 700; background: #fff8e1; border-radius: 8px; padding: 4px 8px; }
@@ -94,6 +103,27 @@
             <button type="submit" th:disabled="${collecting}" th:text="${collecting} ? '모으는 중… (약 5분)' : '지금 모으기'">지금 모으기</button>
         </form>
         <span class="note" style="margin: 0;">만기일 <span th:text="${expiry}"></span></span>
+    </div>
+
+    <h2>코스피200 선물 차트</h2>
+    <div class="tools">
+        <a th:href="@{/futures(maturity=${maturity}, chart='D')}" th:class="${chartUnit != 'M'} ? 'tab on' : 'tab'">일봉</a>
+        <a th:href="@{/futures(maturity=${maturity}, chart='M')}" th:class="${chartUnit == 'M'} ? 'tab on' : 'tab'">1분봉</a>
+        <span class="note" style="margin: 0;">가로선은 아래 옵션 매물대(점선: 저항·지지·맥스페인)입니다. 옵션 기준 지수와 선물 가격은 조금 다를 수 있습니다.</span>
+    </div>
+    <div class="msg error" th:if="${chartError}" th:text="'차트 조회 실패: ' + ${chartError}"></div>
+    <div class="card" th:if="${candleChart != null}">
+        <svg viewBox="0 0 600 300" style="width:100%; height:auto; display:block;">
+            <g th:each="b : ${candleChart.bars}" th:class="${b.up} ? 'cup' : 'cdn'">
+                <line th:attr="x1=${b.x},x2=${b.x},y1=${b.wickTop},y2=${b.wickBottom}" stroke-width="1"/>
+                <rect th:attr="x=${b.x - b.bodyWidth / 2},y=${b.bodyTop},width=${b.bodyWidth},height=${b.bodyHeight}"/>
+            </g>
+            <g th:each="l : ${candleChart.lines}" th:class="${l.label.startsWith('콜')} ? 'lv res' : (${l.label.startsWith('풋')} ? 'lv sup' : 'lv')">
+                <line th:attr="x1=0,x2=600,y1=${l.y},y2=${l.y}" stroke-dasharray="4 3" th:classappend="${l.label.startsWith('현재')} ? 'now'"/>
+                <text x="598" text-anchor="end" th:attr="y=${l.y - 3}" th:text="${l.label} + ' ' + ${l.price}"></text>
+            </g>
+        </svg>
+        <p class="note" style="margin: 8px 0 0;"><span th:text="${candleChart.from}"></span> ~ <span th:text="${candleChart.to}"></span> (<span th:text="${#lists.size(candleChart.candles)}"></span>봉)</p>
     </div>
 
     <div class="empty card" th:if="${board == null}">이 월물의 저장본이 아직 없습니다. "지금 모으기"를 누르거나 평일 16:00 자동 수집을 기다리세요.</div>
