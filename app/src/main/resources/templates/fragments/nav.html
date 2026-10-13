@@ -1,18 +1,36 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <body>
-<!-- 공통 상단 메뉴. 사용: <nav th:replace="~{fragments/nav :: menu('account')}"></nav> (active: orders|chart|backtest|settings|errors) -->
+<!-- 공통 상단 메뉴(화면 위에 고정). 사용: <nav th:replace="~{fragments/nav :: menu('orders')}"></nav> (active: orders|chart|backtest|settings|errors)
+     자주 쓰는 4개는 왼쪽, 점검용인 오류는 오른쪽 끝에 작게 둔다. -->
 <nav th:fragment="menu(active)" class="menu">
     <style>
-        .menu { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border, #eceef1); overflow-x: auto; }
-        .menu a { padding: 10px 14px; font-size: 14px; font-weight: 600; color: var(--muted, #8b95a1); text-decoration: none; white-space: nowrap; }
-        .menu a.active { color: var(--text, #191f28); border-bottom: 2px solid var(--text, #191f28); }
+        .menu { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 2px; margin: -24px -16px 16px; padding: 0 12px;
+                background: var(--bg, #f2f4f6); border-bottom: 1px solid var(--border, #eceef1); overflow-x: auto; }
+        .menu a { padding: 14px 12px; font-size: 15px; font-weight: 600; color: var(--muted, #8b95a1); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
+        .menu a.active { color: var(--text, #191f28); border-bottom-color: var(--text, #191f28); }
+        .menu .spacer { flex: 1; }
+        .menu a.minor { font-size: 13px; font-weight: 500; }
     </style>
     <a href="/orders" th:classappend="${active == 'orders'} ? 'active'">주문</a>
     <a href="/chart/KR/005930" th:classappend="${active == 'chart'} ? 'active'">관심종목</a>
     <a href="/backtest/KR/005930" th:classappend="${active == 'backtest'} ? 'active'">백테스트</a>
     <a href="/settings" th:classappend="${active == 'settings'} ? 'active'">설정</a>
-    <a href="/errors" th:classappend="${active == 'errors'} ? 'active'">오류</a>
+    <span class="spacer"></span>
+    <a href="/errors" class="minor" th:classappend="${active == 'errors'} ? 'active'">오류</a>
 </nav>
+
+<!-- 한 종목의 화면 3개(차트·진입 백테스트·마틴게일)를 오가는 탭. 종목 선택 바로 아래에 둔다.
+     사용: <div th:replace="~{fragments/nav :: symbolTabs('chart', ${market}, ${symbol})}"></div> (active: chart|backtest|martingale) -->
+<div th:fragment="symbolTabs(active, market, symbol)" class="symbol-tabs">
+    <style>
+        .symbol-tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 16px; background: var(--card, #fff); border-radius: 12px; }
+        .symbol-tabs a { flex: 1; padding: 9px 4px; text-align: center; font-size: 14px; font-weight: 600; color: var(--muted, #8b95a1); text-decoration: none; border-radius: 9px; }
+        .symbol-tabs a.active { background: var(--text, #191f28); color: #fff; }
+    </style>
+    <a th:href="@{'/chart/' + ${market} + '/' + ${symbol}}" th:classappend="${active == 'chart'} ? 'active'">차트·주문</a>
+    <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol}}" th:classappend="${active == 'backtest'} ? 'active'">진입 백테스트</a>
+    <a th:href="@{'/backtest/martingale/' + ${market} + '/' + ${symbol}}" th:classappend="${active == 'martingale'} ? 'active'">마틴게일</a>
+</div>
 </body>
 </html>

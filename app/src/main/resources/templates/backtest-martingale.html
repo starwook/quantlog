@@ -77,10 +77,7 @@
                     th:selected="${s.symbol == symbol and s.market == market}"></option>
         </select>
     </div>
-    <div class="links">
-        <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol}}">← 진입 규칙 백테스트</a>
-        <a th:href="@{'/chart/' + ${market} + '/' + ${symbol}}">차트 보기 →</a>
-    </div>
+    <div th:replace="~{fragments/nav :: symbolTabs('martingale', ${market}, ${symbol})}"></div>
 
     <h1 th:text="${symbolName} + ' 마틴게일 백테스트'"></h1>
     <p class="note">
