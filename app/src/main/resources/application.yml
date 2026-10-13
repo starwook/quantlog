@@ -48,6 +48,11 @@ quantlog:
     # Claude API 키. 시크릿 — application-local.yml 이나 환경변수에만 적는다.
     api-key: ${ANTHROPIC_API_KEY:}
     model: claude-haiku-5-5
+  futures:
+    # 평일 16:00 에 코스피200 옵션 매물대(행사가별 미결제약정)를 모아 option_open_interest 에 저장한다. 한투 조회 100번 안팎(주문 없음).
+    collect-enabled: ${QUANTLOG_FUTURES_COLLECT_ENABLED:true}
+    # 수집 중 한투 호출 사이에 쉬는 시간. 줄이면 초당 한도(EGW00201)에 걸려 잔고 조회까지 밀린다.
+    collect-pause-millis: 500
   review:
     # 학습 루프의 일일 리뷰(기획서 6.4). Claude API 를 부르므로 비용이 나간다 — 스케줄러는 기본 꺼짐, 수동 실행은 POST /review/run.
     enabled: ${QUANTLOG_REVIEW_ENABLED:false}
