@@ -29,19 +29,20 @@ class KisFillNoticeHandler(
 
     private val keys = ConcurrentHashMap<String, AesKey>()
 
-    /** 구독 응답(JSON). 성공이면 body.output 에 암호화 키·IV 가 들어 있다. */
+    /** 구독 응답(JSON). 성공이면 body.output 에 암호화 키·IV 가 들어 있다. 성공(`rt_cd` 0)이면 true. */
     fun onSubscribeResponse(
         trId: String,
         node: JsonNode,
-    ) {
+    ): Boolean {
         val body = node.path("body")
         val output = body.path("output")
         val key = output.path("key").asText("")
         val iv = output.path("iv").asText("")
         if (key.isNotBlank() && iv.isNotBlank()) keys[trId] = AesKey(key, iv)
         val result = body.path("rt_cd").asText()
-        val message = body.path("msg1").asText()
+        val message = maskApprovalKey(body.path("msg1").asText())
         log.info { "[체결통보] 구독 응답 $trId: rt_cd=$result $message (키 수신=${keys.containsKey(trId)})" }
+        return result == "0"
     }
 
     /** [payload] 는 `0|1 | TR_ID | 건수 | payload` 의 네 번째 칸, [recordCount] 는 세 번째 칸(건수). [encrypted] 는 맨 앞 글자가 "1" 인지. */
@@ -84,6 +85,11 @@ class KisFillNoticeHandler(
     }
 
     companion object {
+        private val APPROVAL_KEY_IN_MESSAGE = Regex("(approval\\s*:\\s*)\\S+", RegexOption.IGNORE_CASE)
+
+        /** 한투가 `invalid approval : <접속키>` 처럼 접속키를 응답 문구에 되돌려 준다 — 로그에 남기지 않는다(시크릿 규칙). */
+        fun maskApprovalKey(message: String): String = APPROVAL_KEY_IN_MESSAGE.replace(message, "$1***")
+
         /** 모의투자 TR ID. 실전은 H0STCNI0 (이 앱은 모의 연결만 쓴다). */
         const val DOMESTIC_TR_ID = "H0STCNI9"
         val TR_IDS = setOf(DOMESTIC_TR_ID, "H0STCNI0")

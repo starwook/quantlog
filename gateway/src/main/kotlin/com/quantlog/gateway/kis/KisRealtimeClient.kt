@@ -103,10 +103,10 @@ class KisRealtimeClient(
             }
     }
 
-    private fun scheduleReconnect() {
+    private fun scheduleReconnect(delay: Duration = RECONNECT_DELAY) {
         if (!reconnectScheduled.compareAndSet(false, true)) return
         CompletableFuture
-            .delayedExecutor(RECONNECT_DELAY.toMillis(), TimeUnit.MILLISECONDS)
+            .delayedExecutor(delay.toMillis(), TimeUnit.MILLISECONDS)
             .execute { connect() }
     }
 
@@ -172,6 +172,25 @@ class KisRealtimeClient(
             trId == "PINGPONG" -> webSocket?.sendPong(ByteBuffer.wrap(raw.toByteArray()))
             trId in KisFillNoticeHandler.TR_IDS -> fillNotices.onSubscribeResponse(trId, node)
         }
+        if (trId != "PINGPONG") {
+            val message = node.path("body").path("msg1").asText()
+            if (node.path("body").path("rt_cd").asText() == "1" && message.contains("invalid approval", ignoreCase = true)) {
+                reconnectWithNewApprovalKey(trId)
+            }
+        }
+    }
+
+    /**
+     * 한투가 접속키를 무효로 거절하면(다른 곳에서 같은 앱키로 접속키를 새로 받으면 이쪽이 무효가 된다) 구독이 영영 안 걸려
+     * 체결통보·시세가 끊긴다. 키를 버리고 새로 받아 다시 연결·구독한다. 계속 거절되면 [APPROVAL_RETRY_DELAY] 마다 반복한다.
+     */
+    private fun reconnectWithNewApprovalKey(trId: String) {
+        log.warn { "[실시간 시세] $trId 구독이 접속키 무효로 거절됨 — 접속키를 새로 받아 ${APPROVAL_RETRY_DELAY.seconds}초 후 다시 연결" }
+        tokenProvider.invalidateApprovalKey()
+        connected = false
+        subscribed.clear()
+        runCatching { webSocket?.abort() }
+        scheduleReconnect(APPROVAL_RETRY_DELAY)
     }
 
     /** 시세 메시지는 해석 없이 원문 그대로 내보낸다. 칸 번호가 어긋나도 게이트웨이는 영향이 없다. */
@@ -234,5 +253,8 @@ class KisRealtimeClient(
         const val UNSUBSCRIBE = "2"
         const val REFRESH_INTERVAL_MILLIS = 10_000L
         val RECONNECT_DELAY: Duration = Duration.ofSeconds(5)
+
+        /** 접속키 무효로 거절된 뒤 새 키로 다시 붙기까지. 접속키 발급을 5초마다 두드리지 않게 길게 잡는다. */
+        val APPROVAL_RETRY_DELAY: Duration = Duration.ofSeconds(30)
     }
 }

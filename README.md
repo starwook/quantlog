@@ -14,13 +14,13 @@ Gradle 멀티모듈, **서버가 둘**이다(설계·계약은 [docs/서버-분�
 
 1. KIS Developers → 모의투자 신청 → **모의투자 앱키/시크릿**, **모의계좌번호** 확인.
 2. 로컬 MySQL을 띄우고 DB를 만든다: `mysql -uroot -e "CREATE DATABASE IF NOT EXISTS quantlog;"` (접속 정보는 `application.yml`의 `spring.datasource`).
-3. 템플릿을 복사해 앱키·시크릿·계좌번호를 채운다. **이 파일은 `.gitignore`에 있어 git에 올라가지 않는다.** 증권사 키 파일은 게이트웨이를 띄우는 디렉터리에 둔다.
+3. 템플릿을 복사해 앱키·시크릿·계좌번호를 채운다. **이 파일은 `.gitignore`에 있어 git에 올라가지 않는다.** 이 파일의 증권사 키는 서버로 올리는 원본(`deploy/sync-secrets.sh`)일 뿐, 로컬 게이트웨이를 띄우는 데 쓰지 않는다(아래 4번).
 
    ```bash
    cp application-local.yml.example application-local.yml
    ```
 
-4. 게이트웨이를 먼저, 그다음 앱을 띄운다 (IntelliJ 또는 `./gradlew :gateway:bootRun`, `./gradlew :app:bootRun`).
+4. 앱을 띄운다 (IntelliJ 또는 `./gradlew :app:bootRun`). **증권사 키로 게이트웨이를 로컬에서 띄우지 않는다.** 한투는 같은 앱키로 웹소켓 접속키를 새로 받으면 이전 키를 무효로 만들어, 로컬 게이트웨이가 뜨는 순간 서버 게이트웨이의 체결통보 구독이 끊긴다(2026-10-13 실제 사고). 키가 있는 게이트웨이는 서버(`QUANTLOG_GATEWAY_ALLOW_KIS=true`)가 아니면 시작을 거부한다(`KisRunGuard`). 시세·체결·잔고는 서버의 앱 화면과 DB 로 본다. 키를 비운 채 게이트웨이를 띄우는 것(계약 테스트 등)은 된다.
 
 ### 연동 점검 (`quantlog.smoke.mode`)
 `application-local.yml`의 `quantlog.smoke.mode`를 `READ` → `BUY` → `SELL` 순서로 바꿔 가며 저장하고 재실행한다.
