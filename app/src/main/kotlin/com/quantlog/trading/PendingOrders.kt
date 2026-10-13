@@ -59,6 +59,12 @@ class PendingOrders(
         return false
     }
 
+    /** [keyLock] 으로 종목 판정과 겹치지 않게 [expire] 한다. */
+    fun expire(
+        now: ZonedDateTime,
+        keyLock: KeyedLock,
+    ) = expire(now) { key, action -> keyLock.runIfFree(key, action) }
+
     /**
      * 시간이 지난 미체결 주문을 취소한다(주기 호출). 취소는 같은 종목의 판정과 겹치지 않도록 [withKeyLock] 안에서 한다 —
      * 잠금을 못 잡으면 건너뛰고 다음 주기에 다시 한다.

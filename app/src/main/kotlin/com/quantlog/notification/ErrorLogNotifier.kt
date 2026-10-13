@@ -1,12 +1,11 @@
 package com.quantlog.notification
 
 import ch.qos.logback.classic.Level
-import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.AppenderBase
+import com.quantlog.common.RootLogger
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
 
@@ -30,16 +29,12 @@ class ErrorLogNotifier(private val notifier: Notifier) {
     @PostConstruct
     fun attach() {
         if (!notifier.enabled) return
-        val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
-        appender.context = root.loggerContext
-        appender.start()
-        root.addAppender(appender)
+        RootLogger.attach(appender)
     }
 
     @PreDestroy
     fun detach() {
-        (LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger).detachAppender(appender)
-        appender.stop()
+        RootLogger.detach(appender)
     }
 
     private fun format(event: ILoggingEvent): String {

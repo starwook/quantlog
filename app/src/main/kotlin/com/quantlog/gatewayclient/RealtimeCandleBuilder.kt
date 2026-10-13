@@ -5,6 +5,7 @@ import com.quantlog.broker.LatestPrices
 import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.PriceTick
+import com.quantlog.common.KST
 import com.quantlog.marketdata.MinuteCandleStore
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
@@ -12,10 +13,7 @@ import java.math.BigDecimal
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalTime
-import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
-
-private val KST = ZoneId.of("Asia/Seoul")
 
 /**
  * 실시간 체결 한 건마다 최신가를 기록하고([LatestPrices]) [PriceTick] 을 내고, 1분 단위로 묶어 진행 중인 분봉을 [CandleUpdated] 로 낸다. 끝난 분봉은 DB 에 저장한다

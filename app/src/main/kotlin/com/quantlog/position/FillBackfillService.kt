@@ -2,15 +2,14 @@ package com.quantlog.position
 
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.Market
+import com.quantlog.common.KST
 import com.quantlog.sync.SyncMismatchReporter
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
-import java.time.ZoneId
 
 private val log = KotlinLogging.logger {}
-private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 
 /** [FillBackfillService.backfill] 한 번의 결과. */
 data class BackfillResult(

@@ -1,6 +1,10 @@
 package com.quantlog.backtest
 
 import com.quantlog.broker.Market
+import com.quantlog.common.KST
+import com.quantlog.common.money
+import com.quantlog.common.pnlCss
+import com.quantlog.common.signedPercent
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.watchlist.SymbolStrategyService
 import org.springframework.stereotype.Controller
@@ -9,9 +13,6 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestParam
 import java.time.LocalDate
-import java.time.ZoneId
-
-private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 
 data class SimulatedTradeView(
     val entryTime: String,

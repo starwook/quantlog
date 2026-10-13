@@ -1,15 +1,14 @@
 package com.quantlog.errorlog
 
+import com.quantlog.common.KST
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestParam
 import java.time.Duration
 import java.time.Instant
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss").withZone(KST)
 private const val MAX_ROWS = 200
 private val PERIOD_DAYS = listOf(1L, 7L, 14L)

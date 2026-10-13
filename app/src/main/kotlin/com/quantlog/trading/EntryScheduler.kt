@@ -5,6 +5,8 @@ import com.quantlog.broker.CallPriority
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.RealtimePriceFeed
 import com.quantlog.broker.Side
+import com.quantlog.broker.symbolKey
+import com.quantlog.common.KST
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.FillProgress
 import com.quantlog.position.PortfolioService
@@ -26,12 +28,10 @@ import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.concurrent.ConcurrentHashMap
 
 private val log = KotlinLogging.logger {}
-private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 
 @ConfigurationProperties(prefix = "quantlog.entry")
 data class EntryProperties(
@@ -39,7 +39,7 @@ data class EntryProperties(
     val enabled: Boolean = false,
     /** 한 번 산 종목은 이 시간 동안 다시 신호를 봐도 사지 않는다. */
     val cooldown: Duration = Duration.ofMinutes(10),
-    /** 마틴게일 틱 주문이 이 시간 안에 체결 확인이 안 되면 취소한다([MartingaleService]). */
+    /** 마틴게일 틱 주문·진입 스케줄러 주문(저점 판단 진입 제외)이 이 시간 안에 체결 확인이 안 되면 취소한다([MartingaleService], [EntryScheduler.expirePending]). */
     val fillTimeout: Duration = Duration.ofSeconds(10),
 )
 
@@ -51,7 +51,7 @@ data class EntryProperties(
  * 매매는 그중 DB 설정의 매수 옵션이 켜진 종목만 마틴게일(보유 중 추가 매수) / 주기 재매수(보유 0주일 때 종목별 n분마다 설정 수량) /
  * 저점 판단 진입(보유 수량 무관, 신호 시 1주)을 각자 켜진 대로 독립 실행한다([checkMartingale]·[checkPeriodicRebuy]·[checkTarget]).
  * 주문은
- * SmokeTestRunner/ExitScheduler 와 같은 RiskGuard.checkBuy(자본 배분 포함) →
+ * SmokeTestRunner/ExitScheduler 와 같은 RiskGuard.checkBuy(주문가능금액 포함) →
  * 주문 → 매매 기록 순서를 거친다. "이미 보유 중인지"는 REST 잔고 조회 대신 PortfolioService(우리
  * 매매 기록 DB)로 본다 — ExitScheduler 와 같은 이유(초당 요청 한도 없이 스케줄 주기를 1초로 줄이기 위함).
  */
@@ -69,8 +69,11 @@ class EntryScheduler(
     private val properties: EntryProperties,
 ) {
     private val lastSignalAt = ConcurrentHashMap<String, Instant>()
-    private val lastMartingaleFailureAt = ConcurrentHashMap<String, Instant>()
     private val lastRebuyCheckAt = ConcurrentHashMap<String, Instant>()
+
+    /** 저점 판단 진입을 뺀 진입 주문(주기 재매수·폴링 마틴게일)의 체결 확인 대기. [EntryProperties.fillTimeout] 안에 체결이 안 되면 취소한다. */
+    private val pending = PendingOrders("진입", broker, tradeService, holdingSync, properties.fillTimeout)
+    private val inFlight = KeyedLock()
 
     @Scheduled(
         fixedDelayString = "\${quantlog.entry.interval-millis:30000}",
@@ -78,6 +81,11 @@ class EntryScheduler(
     )
     fun run() {
         if (properties.enabled) checkEntries(ZonedDateTime.now(KST))
+    }
+
+    /** 주문한 지 [EntryProperties.fillTimeout] 이 지났는데도 체결이 확인되지 않은 진입 주문을 취소한다(주기 호출, [EntryExpiryScheduler]). */
+    fun expirePending(now: ZonedDateTime) {
+        pending.expire(now, inFlight)
     }
 
     fun checkEntries(now: ZonedDateTime) {
@@ -107,7 +115,7 @@ class EntryScheduler(
                 watched.martingale && held && !realtimeFeed.isLive(watched.market, watched.symbol) &&
                     !holdingSync.hasUnsyncedTrade(watched.market, watched.symbol)
             if (polledMartingale) {
-                runCatching { checkMartingale(watched, snapshot, now.toInstant()) }
+                runCatching { checkMartingale(watched, snapshot) }
                     .onFailure { log.warn(it) { "[마틴게일] 실패: ${watched.market} ${watched.symbol}" } }
             }
             if (watched.periodicRebuy) {
@@ -125,19 +133,14 @@ class EntryScheduler(
      * 마틴게일: 보유 중일 때만, 평단 -0.5% 에 닿으면 보유 수량이 2배가 되게 추가 매수하고 최대 단계면 더 사지 않는다(손절은 ExitScheduler).
      * 단계는 매매 기록에서, 보유 수량·평단은 KIS 잔고 테이블에서 온다([MartingaleCycle]). 첫 진입·매도 뒤 재진입은 하지 않는다(2026-10-02 폐기).
      * 가격 조건이라 성공한 매수 뒤엔 쿨다운이 필요 없다(다음 트리거는 또 -0.5%가 필요해서 자연히 걸러짐).
-     * 실패(리스크 가드 거부 등)했을 땐 매초 재시도·로그 스팸을 막으려고 쿨다운을 건다.
+     * 실패(리스크 가드 거부 등)해도 쿨다운 없이 다음 주기에 다시 판정한다(2026-10-13).
      * 평단은 체결가가 아직 안 채워졌으면 지정가(현재가 한 호가 위)라 한 호가 어긋날 수 있다.
      */
     private fun checkMartingale(
         watched: SymbolStrategy,
         snapshot: PortfolioSnapshot,
-        now: Instant,
     ) {
         val martingaleRule = MartingaleRule(watched.martingaleProperties())
-        val key = "${watched.market}:${watched.symbol}"
-        val lastFailure = lastMartingaleFailureAt[key]
-        if (lastFailure != null && Duration.between(lastFailure, now) < properties.cooldown) return
-
         val held =
             snapshot.summaryByCurrency[watched.market.currency]?.holdings
                 ?.firstOrNull { it.market == watched.market && it.symbol == watched.symbol }
@@ -150,11 +153,7 @@ class EntryScheduler(
                 "${cycle.stage + 1}단계 — 평단 $average 대비 " +
                 "${martingaleRule.addOnTriggerPrice(average, quote)} 이하로 하락 → 보유 ${cycle.quantity}주 기준 ${quantity}주 " +
                 "추가 매수 (MartingaleRule)"
-        runCatching { buy(watched, quantity, reason) }
-            .onFailure {
-                lastMartingaleFailureAt[key] = now
-                throw it
-            }
+        buy(watched, quantity, reason)
     }
 
     /**
@@ -166,7 +165,7 @@ class EntryScheduler(
         held: Boolean,
         now: Instant,
     ) {
-        val key = "${watched.market}:${watched.symbol}"
+        val key = symbolKey(watched.market, watched.symbol)
         val last = lastRebuyCheckAt[key]
         val interval = Duration.ofMinutes(watched.periodicRebuyIntervalMinutes.toLong())
         if (last != null && Duration.between(last, now) < interval) return
@@ -180,7 +179,7 @@ class EntryScheduler(
         watched: SymbolStrategy,
         now: Instant,
     ) {
-        val key = "${watched.market}:${watched.symbol}"
+        val key = symbolKey(watched.market, watched.symbol)
         val last = lastSignalAt[key]
         if (last != null && Duration.between(last, now) < properties.cooldown) return
 
@@ -190,7 +189,13 @@ class EntryScheduler(
 
         // 실패해도(리스크 가드 등) 다음 사이클마다 재시도해 로그를 스팸하지 않도록, 신호 시점에 바로 쿨다운을 건다.
         lastSignalAt[key] = now
-        buy(watched, watched.supportBounceQuantity, "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)", widePrice = true)
+        buy(
+            watched,
+            watched.supportBounceQuantity,
+            "진입 스케줄러: 당일 저점 근접+반등 신호 (SupportBounceEntryRule, 검증 전)",
+            widePrice = true,
+            cancelIfUnfilled = false,
+        )
     }
 
     private fun buy(
@@ -198,6 +203,7 @@ class EntryScheduler(
         quantity: Int,
         reason: String,
         widePrice: Boolean = false,
+        cancelIfUnfilled: Boolean = true,
     ) {
         // 주문 흐름 전체(시세→주문)는 스케줄러의 일반 호출보다 먼저 나간다(broker/CallPriority.kt).
         CallPriority.urgent {
@@ -212,6 +218,8 @@ class EntryScheduler(
             val request = OrderRequest(watched.market, watched.symbol, Side.BUY, quantity, limitPrice)
             riskGuard.checkBuy(request)
             val receipt = broker.placeOrder(request)
+            // 저점 판단 진입만 미체결이어도 취소하지 않고 둔다(2026-10-13). 나머지는 fillTimeout 안에 체결 확인이 안 되면 취소한다.
+            if (cancelIfUnfilled) pending.track(symbolKey(watched.market, watched.symbol), request, receipt, Instant.now())
             // 체결가 조회를 기다리지 않는다(청산·마틴게일·수동 주문과 같다) — 체결가·수량은 체결 원장(kis_broker_fill)이 반영될 때 채워진다.
             tradeService.record(request, receipt, reason)
             log.info {

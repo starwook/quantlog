@@ -19,14 +19,14 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** 원장(`kis_broker_fill`)의 체결 줄로 보유 수량·평단을 고치는 부분 ([HoldingSyncService.applyFill]). */
+/** 원장(`kis_broker_fill`)의 체결 줄로 보유 수량·평단을 고치는 부분 ([HoldingFillApplier.applyFill]). */
 class HoldingSyncServiceFillTest {
     private val symbol = "005930"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
     private val ledger = InMemoryBrokerFills()
     private val service =
-        HoldingSyncService(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher())
+        HoldingSyncFixture(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher())
     private val now = Instant.parse("2026-10-07T00:24:00Z")
 
     private fun row(
@@ -121,7 +121,7 @@ class HoldingSyncServiceFillTest {
         val existing = row(100, "8320")
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(existing)
         val trade = Trade(Market.KR, symbol, Side.SELL, 100, BigDecimal("8330"), "0000027523", "ok")
-        Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "0000027523")).thenReturn(trade)
+        Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "0000027523")).thenReturn(listOf(trade))
 
         // 실측: 44주 + 56주로 쪼개져 오고 둘 다 주문수량 0
         service.applyRecorded(ledger, notice(Side.SELL, 44, "8335", orderNo = "0000027523", orderQuantity = 0), now)
@@ -138,13 +138,16 @@ class HoldingSyncServiceFillTest {
         Mockito.`when`(repository.findAll()).thenReturn(listOf(existing))
         service.applyRecorded(ledger, notice(Side.BUY, 2, "9000"), now)
         assertEquals(5, existing.quantity)
-        val staleKis = listOf(Holding(Market.KR, symbol, "삼성전자", BigDecimal(3), BigDecimal("9000"), BigDecimal("9000")))
+        val staleKis =
+            listOf(
+                Holding(Market.KR, symbol, "삼성전자", BigDecimal(3), BigDecimal("9000"), BigDecimal("9000"), BigDecimal(2), BigDecimal.ZERO),
+            )
 
         // 체결 반영(now) 이전에 시작한 조회(체결 전 잔고 3주)는 무시된다
         service.sync(staleKis, now.minusSeconds(1))
         assertEquals(5, existing.quantity)
 
-        // 반영 뒤에 시작한 조회는 KIS 값이 정답이다
+        // 반영 뒤에 시작한 조회는 당일 누적(매수 2주)이 원장과 같으면 같은 시점이라 KIS 값이 정답이다
         service.sync(staleKis, now.plusSeconds(1))
         assertEquals(3, existing.quantity)
     }
@@ -165,7 +168,7 @@ class HoldingSyncServiceFillTest {
     fun `주문수량만큼 다 반영해야 체결 완료이고 일부만 반영된 주문은 아직이다`() {
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(row(10, "9000"))
         val trade = Trade(Market.KR, symbol, Side.BUY, 5, BigDecimal("9000"), "P1", "ok")
-        Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "P1")).thenReturn(trade)
+        Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "P1")).thenReturn(listOf(trade))
 
         service.applyRecorded(ledger, notice(Side.BUY, 3, "9000", orderNo = "P1", orderQuantity = 5), now)
         assertFalse(service.isOrderFilled("P1"))
@@ -179,14 +182,14 @@ class HoldingSyncServiceFillTest {
     fun `주문을 체결통보로 다 반영했으면 잔고 동기화를 기다리지 않아도 된다`() {
         val synced = Instant.parse("2026-10-07T00:00:00Z")
         service.sync(emptyList(), synced)
-        val trade = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("278500"), "0000008775", "ok", executedAt = now)
+        val trade = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("278500"), "0000008775", "ok", executedAt = Instant.now())
         Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(trade)
-        Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "0000008775")).thenReturn(trade)
+        Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "0000008775")).thenReturn(listOf(trade))
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(null)
 
         assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
 
-        service.applyRecorded(ledger, notice(Side.BUY, 1, "277500", orderNo = "0000008775"), now)
+        service.applyRecorded(ledger, notice(Side.BUY, 1, "277500", orderNo = "0000008775"), Instant.now())
 
         assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
     }
@@ -194,7 +197,7 @@ class HoldingSyncServiceFillTest {
     @Test
     fun `원장에 기록됐어도 앱이 아직 반영하지 않은 체결로는 체결 완료로 보지 않는다`() {
         val trade = Trade(Market.KR, symbol, Side.BUY, 2, BigDecimal("9000"), "P2", "ok")
-        Mockito.`when`(tradeRepository.findFirstByMarketAndOrderNo(Market.KR, "P2")).thenReturn(trade)
+        Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "P2")).thenReturn(listOf(trade))
         val id = ledger.record(notice(Side.BUY, 2, "9000", orderNo = "P2"), now)
 
         ledger.projectedUpTo = id - 1

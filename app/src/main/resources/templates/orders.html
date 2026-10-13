@@ -75,6 +75,17 @@
         .pnl { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--bg); }
         .pnl .amount { font-size: 16px; font-weight: 800; }
         .pnl .detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+        .chips[hidden] { display: none; }
+        .chips { display: flex; gap: 8px; padding: 8px 0 4px; }
+        .chips.sub-chips { padding: 0 0 12px 12px; }
+        .chip { flex: none; min-height: 36px; padding: 0 16px; border-radius: 18px; border: 1px solid var(--border); background: var(--card); font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; }
+        .sub-chips .chip { min-height: 32px; padding: 0 12px; font-size: 13px; background: var(--bg); }
+        .chip .n { margin-left: 4px; font-weight: 700; }
+        .chip.active { background: var(--text); color: #fff; border-color: var(--text); }
+        .sub-chips .chip.WIN.active { background: var(--buy); border-color: var(--buy); }
+        .sub-chips .chip.LOSS.active { background: var(--sell); border-color: var(--sell); }
+        .chips + .chips { margin-top: -4px; }
+        .more { display: block; width: 100%; min-height: 44px; margin: 8px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; }
         .empty { padding: 20px 0; text-align: center; font-size: 14px; color: var(--muted); }
     </style>
 </head>
@@ -86,8 +97,10 @@
             <a href="/realized" class="today-link"><div class="label">오늘 실현손익 <span class="sub">(매도 확정분)</span> ›</div><div class="big" id="sumToday"></div></a>
             <div><div class="label">현재 평가손익</div><div class="big" id="sumUnrealized"></div></div>
         </div>
-        <div class="label">총 평가금액 <span class="sub">(보유 종목 합계)</span></div>
-        <div class="big" id="sumTotalValue"></div>
+        <div class="top">
+            <div><div class="label">총 평가금액 <span class="sub">(보유 종목 합계)</span></div><div class="big" id="sumTotalValue"></div></div>
+            <div><div class="label">주문가능금액 <span class="sub">(미체결 매수 제외)</span></div><div class="big" id="sumOrderable"></div></div>
+        </div>
         <div class="stats">
             <div class="stat"><div class="label">승률 (승 / 패)</div><div class="v" id="sumWinRate"></div></div>
             <div class="stat"><div class="label">매수 회수</div><div class="v" id="sumBuy"></div></div>
@@ -115,7 +128,9 @@
     </section>
 
     <section class="card">
-        <h2>체결 내역</h2>
+        <h2>체결 내역 <span class="sub">오늘 <span id="fillTotal">0</span>건</span></h2>
+        <div class="chips" id="fillChips" role="tablist" aria-label="체결 내역 필터"></div>
+        <div class="chips sub-chips" id="fillSubChips" role="tablist" aria-label="매도 결과 필터" hidden></div>
         <div id="done"></div>
     </section>
 </main>
@@ -126,7 +141,23 @@
     const market = 'KR';
     const orders = new Map(); // key -> 주문
     let fills = []; // 체결 내역(체결통보 1건 = 1줄), 최근 순
-    const MAX_FILLS = 100;
+    const PAGE = 100; // 한 번에 보여 주는 체결 줄 수. 하루치 전부를 받아 두고 "더 보기"로 늘린다.
+    let shownLimit = PAGE;
+    // 체결 내역 필터는 2단이다. 위: 전체·매수·매도, 매도를 고르면 아래에 수익·손실이 나타난다. 수익/손실은 매도 중 실현손익이 +/- 인 것(pnlCss 가 pos/neg)이고
+    // 한국 시장 색(수익 빨강, 손실 파랑)을 칩에도 쓴다. 선택은 브라우저에 기억한다.
+    const SIDE_FILTERS = [
+        { id: 'ALL', label: '전체', match: () => true, empty: '체결 내역이 없습니다.' },
+        { id: 'BUY', label: '매수', match: (f) => f.side === 'BUY', empty: '매수 체결이 없습니다.' },
+        { id: 'SELL', label: '매도', match: (f) => f.side === 'SELL', empty: '매도 체결이 없습니다.' },
+    ];
+    const RESULT_FILTERS = [
+        { id: 'ALL', label: '모두', match: () => true, empty: '매도 체결이 없습니다.' },
+        { id: 'WIN', label: '수익', match: (f) => f.pnlCss === 'pos', empty: '수익으로 끝난 매도가 없습니다.' },
+        { id: 'LOSS', label: '손실', match: (f) => f.pnlCss === 'neg', empty: '손실로 끝난 매도가 없습니다.' },
+    ];
+    const saved = (key, list) => (list.some((x) => x.id === localStorage.getItem(key)) ? localStorage.getItem(key) : 'ALL');
+    let sideFilter = saved('fillSideFilter', SIDE_FILTERS);
+    let resultFilter = sideFilter === 'SELL' ? saved('fillResultFilter', RESULT_FILTERS) : 'ALL';
     let holdings = [];
     const STATE_TEXT = { CHECKING: '체결 확인중', OPEN: '미체결', PARTIAL: '일부 체결', FILLED: '체결' };
     const isWaiting = (o) => o.state === 'CHECKING' || o.state === 'OPEN' || o.state === 'PARTIAL';
@@ -214,10 +245,48 @@
         set('sumToday', sm.todayText, sm.todayCss);
         set('sumUnrealized', sm.unrealizedText, sm.unrealizedCss);
         set('sumTotalValue', sm.totalValueText);
+        set('sumOrderable', sm.orderableText);
         set('sumWinRate', sm.winRateText + ' (' + sm.win + '승 ' + sm.loss + '패)');
         set('sumBuy', sm.buyCount + '회');
         set('sumSell', sm.sellCount + '회');
         if (flash) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
+    }
+
+    // 필터 칩: 누르면 바로 바뀌고(다시 불러오지 않는다) 칩마다 해당 건수를 보여줘서 눌러 보지 않아도 어디에 뭐가 있는지 보인다.
+    function renderChipRow(box, filters, selected, rows, onPick) {
+        box.replaceChildren();
+        filters.forEach((x) => {
+            const b = el('button', 'chip ' + x.id + (x.id === selected ? ' active' : ''), x.label);
+            b.type = 'button';
+            b.setAttribute('role', 'tab');
+            b.setAttribute('aria-selected', x.id === selected);
+            b.appendChild(el('span', 'n', rows.filter(x.match).length));
+            b.onclick = () => onPick(x.id);
+            box.appendChild(b);
+        });
+    }
+
+    function pickSide(id) {
+        sideFilter = id;
+        shownLimit = PAGE;
+        resultFilter = 'ALL'; // 매도를 벗어나면 수익/손실 선택은 초기화한다
+        localStorage.setItem('fillSideFilter', id);
+        localStorage.setItem('fillResultFilter', 'ALL');
+        render();
+    }
+
+    function pickResult(id) {
+        resultFilter = id;
+        shownLimit = PAGE;
+        localStorage.setItem('fillResultFilter', id);
+        render();
+    }
+
+    function renderFillFilters(myFills) {
+        renderChipRow(document.getElementById('fillChips'), SIDE_FILTERS, sideFilter, myFills, pickSide);
+        const sub = document.getElementById('fillSubChips');
+        sub.hidden = sideFilter !== 'SELL';
+        if (!sub.hidden) renderChipRow(sub, RESULT_FILTERS, resultFilter, myFills.filter((f) => f.side === 'SELL'), pickResult);
     }
 
     function renderList(container, list, renderRow, emptyText) {
@@ -240,7 +309,19 @@
         renderHoldings();
         renderList(document.getElementById('waiting'), waiting, (o) => renderOrder(o, flashKey), '대기 중인 주문이 없습니다.');
         const myFills = fills.filter((f) => f.market === market);
-        renderList(document.getElementById('done'), myFills, (f) => renderFill(f, flashKey), '체결 내역이 없습니다.');
+        const side = SIDE_FILTERS.find((x) => x.id === sideFilter);
+        const result = RESULT_FILTERS.find((x) => x.id === resultFilter);
+        renderFillFilters(myFills);
+        const shown = myFills.filter(side.match).filter(sideFilter === 'SELL' ? result.match : () => true);
+        document.getElementById('fillTotal').textContent = myFills.length;
+        const done = document.getElementById('done');
+        renderList(done, shown.slice(0, shownLimit), (f) => renderFill(f, flashKey), sideFilter === 'SELL' ? result.empty : side.empty);
+        if (shown.length > shownLimit) {
+            const more = el('button', 'more', '더 보기 (' + (shown.length - shownLimit) + '건 남음)');
+            more.type = 'button';
+            more.onclick = () => { shownLimit += PAGE; render(); };
+            done.appendChild(more);
+        }
         tick();
     }
 
@@ -275,7 +356,7 @@
                 renderSummary(msg.summary, true);
                 render(msg.order.key);
             } else if (msg.type === 'fill') {
-                if (!fills.some((f) => f.key === msg.fill.key)) fills = [msg.fill, ...fills].slice(0, MAX_FILLS);
+                if (!fills.some((f) => f.key === msg.fill.key)) fills = [msg.fill, ...fills];
                 if (msg.summary) renderSummary(msg.summary, true);
                 render(msg.fill.key);
             } else if (msg.type === 'price') {
@@ -286,6 +367,8 @@
                 const sum = document.getElementById('sumUnrealized');
                 sum.textContent = msg.unrealizedText;
                 sum.className = sum.className.replace(/\b(pos|neg|zero)\b/g, '').trim() + ' ' + msg.unrealizedCss;
+            } else if (msg.type === 'cash') {
+                document.getElementById('sumOrderable').textContent = msg.orderableText;
             } else if (msg.type === 'holdings') {
                 holdings = msg.holdings;
                 renderSummary(msg.summary, false);

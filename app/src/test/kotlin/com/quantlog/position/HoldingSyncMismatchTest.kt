@@ -19,13 +19,13 @@ class HoldingSyncMismatchTest {
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
     private val ledger = InMemoryBrokerFills()
     private val service =
-        HoldingSyncService(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher())
+        HoldingSyncFixture(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher())
     private val now = Instant.parse("2026-10-08T01:00:00Z")
 
     private fun kis(
         quantity: Int,
         average: String,
-    ) = Holding(Market.KR, symbol, "삼성전자", BigDecimal(quantity), BigDecimal(average), BigDecimal("70000"))
+    ) = Holding(Market.KR, symbol, "삼성전자", BigDecimal(quantity), BigDecimal(average), BigDecimal("70000"), BigDecimal.ZERO, BigDecimal.ZERO)
 
     private fun row(
         quantity: Int,

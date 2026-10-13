@@ -2,9 +2,11 @@ package com.quantlog.position
 
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
+import com.quantlog.common.KST
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
+import java.time.LocalDate
 
 /** 게이트웨이 원장(`kis_broker_fill`)의 체결 통보 한 줄. [id] 는 `kis_broker_fill.id`, [filledAt] 은 게이트웨이가 받은 시각이다. */
 data class OrderFill(
@@ -24,20 +26,37 @@ data class OrderFill(
  * "반영된" 줄은 앱이 보유 현황에 반영을 끝낸 줄(반영 커서까지)이다. 매매 판단은 반영된 줄만 봐야 보유 현황과 어긋나지 않는다.
  */
 interface OrderFills {
-    /** 이 주문의 체결 줄 중 `kis_broker_fill.id` 가 [lastId] 이하인 것(반영 여부와 무관). */
+    /**
+     * 이 주문의 체결 줄 중 `kis_broker_fill.id` 가 [lastId] 이하인 것(반영 여부와 무관).
+     * **주문번호는 날마다 다시 시작해서 옛 날의 같은 번호와 겹치므로, 통보를 받은 날(KST)이 [day] 인 줄만 본다.** 기본은 오늘(방금 낸 주문).
+     */
     fun upTo(
         orderNo: String,
         lastId: Long,
+        day: LocalDate = today(),
     ): List<OrderFill>
 
-    /** 이 주문의 체결 줄 중 앱이 반영을 끝낸 것. */
-    fun projected(orderNo: String): List<OrderFill>
+    /** 이 주문의 체결 줄 중 앱이 반영을 끝낸 것. [day] 는 [upTo] 와 같다. */
+    fun projected(
+        orderNo: String,
+        day: LocalDate = today(),
+    ): List<OrderFill>
 
     /** 앱이 반영을 끝낸 체결 줄 전부. */
     fun projectedAll(): List<OrderFill>
 
-    /** 앱이 반영을 끝낸 줄에 이 주문의 접수 통보(거부 아님)가 있는가 — 증권사가 주문을 받았다는 뜻이다. */
-    fun accepted(orderNo: String): Boolean
+    /** 원장에 이 주문의 접수 통보(거부 아님)가 있는가 — 증권사가 주문을 받았다는 뜻이다. 앱이 반영했는지와 무관하게 원장 전체를 본다. */
+    fun accepted(
+        orderNo: String,
+        day: LocalDate = today(),
+    ): Boolean
+
+    companion object {
+        fun today(): LocalDate = LocalDate.now(KST)
+
+        /** 통보를 받은 시각이 속한 날(KST). 주문번호가 같아도 날이 다르면 다른 주문이다. */
+        fun dayOf(instant: Instant): LocalDate = instant.atZone(KST).toLocalDate()
+    }
 }
 
 /** 한 주문이 지금까지 체결된 합계. 같은 통보가 중복으로 기록됐으면 합계가 주문수량을 넘을 수 있어, 쓰는 쪽이 주문수량으로 자른다. */

@@ -6,6 +6,7 @@ import com.quantlog.broker.Side
 import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.LocalDate
 
 /**
  * 테스트용 메모리 게이트웨이 원장(`kis_broker_fill`). [record] 로 통보를 한 줄씩 쌓고, [projectedUpTo] 까지를 "앱이 반영한 줄"로 본다(기본: 전부).
@@ -30,14 +31,20 @@ class InMemoryBrokerFills : OrderFills {
     override fun upTo(
         orderNo: String,
         lastId: Long,
+        day: LocalDate,
     ): List<OrderFill> = rows.filter { it.id <= lastId && it.notice.orderNo == orderNo }.mapNotNull { it.toFill() }
 
-    override fun projected(orderNo: String): List<OrderFill> = upTo(orderNo, projectedUpTo)
+    override fun projected(
+        orderNo: String,
+        day: LocalDate,
+    ): List<OrderFill> = upTo(orderNo, projectedUpTo, day)
 
     override fun projectedAll(): List<OrderFill> = rows.filter { it.id <= projectedUpTo }.mapNotNull { it.toFill() }
 
-    override fun accepted(orderNo: String): Boolean =
-        rows.any { it.id <= projectedUpTo && it.notice.orderNo == orderNo && !it.notice.isFill && it.notice.refuseFlag == "0" }
+    override fun accepted(
+        orderNo: String,
+        day: LocalDate,
+    ): Boolean = rows.any { it.id <= projectedUpTo && it.notice.orderNo == orderNo && !it.notice.isFill && it.notice.refuseFlag == "0" }
 
     private fun Row.toFill(): OrderFill? {
         if (!notice.isFill) return null
@@ -55,7 +62,7 @@ class InMemoryBrokerFills : OrderFills {
 }
 
 /** 원장에 통보를 쌓고 바로 보유 현황에 반영한다 — [com.quantlog.gatewayclient.FillProjector] 가 하는 일을 한 줄로. */
-fun HoldingSyncService.applyRecorded(
+fun HoldingSyncFixture.applyRecorded(
     fills: InMemoryBrokerFills,
     notice: FillNotice,
     now: Instant,

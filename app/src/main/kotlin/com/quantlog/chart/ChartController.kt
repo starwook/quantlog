@@ -2,6 +2,7 @@ package com.quantlog.chart
 
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.Market
+import com.quantlog.common.KST
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.TradeRepository
@@ -14,11 +15,9 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.ResponseBody
 import java.math.BigDecimal
 import java.time.Instant
-import java.time.ZoneId
 import java.time.ZoneOffset
 
 private val log = KotlinLogging.logger {}
-private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 
 /** 차트 라이브러리(lightweight-charts)가 요구하는 초 단위 timestamp. KST 벽시계 값을 그대로 UTC로 찍어서,
  * 브라우저의 기본(UTC) 포맷터가 그대로 한국 시각처럼 보이게 한다(별도 타임존 설정 없이 맞추는 트릭).

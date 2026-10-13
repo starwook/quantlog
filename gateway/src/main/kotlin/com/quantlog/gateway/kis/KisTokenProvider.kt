@@ -67,6 +67,15 @@ class KisTokenProvider(
         return key
     }
 
+    /**
+     * 캐시한 접속키를 버려 다음 [approvalKey] 가 새로 받게 한다. 한투가 구독을 `invalid approval` 로 거절했을 때 쓴다.
+     * 같은 앱키로 다른 곳에서 접속키를 새로 받으면 이쪽 키가 무효가 되는 것으로 보인다(2026-10-13 서버 게이트웨이 체결통보 중단).
+     */
+    @Synchronized
+    fun invalidateApprovalKey() {
+        wsApprovalKey = null
+    }
+
     private fun issue(): Pair<String, Instant> {
         val body =
             mapOf(

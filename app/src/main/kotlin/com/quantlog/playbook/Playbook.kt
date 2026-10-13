@@ -1,14 +1,12 @@
 package com.quantlog.playbook
 
 import org.springframework.boot.context.properties.ConfigurationProperties
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
 import org.springframework.stereotype.Component
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.time.Clock
-import java.time.ZoneId
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @ConfigurationProperties(prefix = "quantlog.playbook")
@@ -16,11 +14,8 @@ data class PlaybookProperties(
     val dir: String = "playbook",
 )
 
-@Configuration
-class PlaybookConfig {
-    @Bean
-    fun clock(): Clock = Clock.system(ZoneId.of("Asia/Seoul"))
-}
+/** 일지·제안서 파일 하나. [name] 은 확장자 없는 파일 이름(날짜로 시작해서 이름순 = 시간순). */
+data class PlaybookNote(val name: String, val content: String)
 
 /**
  * 봇의 "머릿속" 파일 저장소. 원칙을 읽고, 일지를 쓰고, 원칙 변경안을 제안한다.
@@ -40,16 +35,17 @@ class Playbook(
         return Files.readString(file)
     }
 
-    /** 오늘 일지에 생각 한 토막을 덧붙인다. 파일이 없으면 날짜 제목과 함께 만든다. */
+    /** [day](기본 오늘) 일지에 생각 한 토막을 덧붙인다. 파일이 없으면 날짜 제목과 함께 만든다. */
     @Synchronized
     fun writeJournal(
         title: String,
         body: String,
+        day: LocalDate = clock.instant().atZone(clock.zone).toLocalDate(),
     ): Path {
         val now = clock.instant().atZone(clock.zone)
-        val file = root.resolve(JOURNAL_DIR).resolve("${now.toLocalDate()}.md")
+        val file = root.resolve(JOURNAL_DIR).resolve("$day.md")
         Files.createDirectories(file.parent)
-        val header = if (Files.exists(file)) "" else "# 일지 ${now.toLocalDate()}\n"
+        val header = if (Files.exists(file)) "" else "# 일지 $day\n"
         val entry = "$header\n## ${now.format(TIME)} KST — $title\n\n${body.trim()}\n"
         Files.writeString(file, entry, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
         return file
@@ -70,6 +66,27 @@ class Playbook(
             StandardOpenOption.CREATE_NEW,
         )
         return file
+    }
+
+    /** 최근 일지 [limit]개, 최신 먼저. 폴더가 아직 없으면 빈 목록. */
+    fun recentJournals(limit: Int): List<PlaybookNote> = recentNotes(JOURNAL_DIR, limit)
+
+    /** 최근 원칙 변경 제안 [limit]개, 최신 먼저. 폴더가 아직 없으면 빈 목록. */
+    fun recentProposals(limit: Int): List<PlaybookNote> = recentNotes(PROPOSALS_DIR, limit)
+
+    private fun recentNotes(
+        dir: String,
+        limit: Int,
+    ): List<PlaybookNote> {
+        val folder = root.resolve(dir)
+        if (!Files.isDirectory(folder)) return emptyList()
+        return Files.list(folder).use { files ->
+            files.filter { it.fileName.toString().endsWith(".md") }
+                .sorted(Comparator.reverseOrder())
+                .limit(limit.toLong())
+                .map { PlaybookNote(it.fileName.toString().removeSuffix(".md"), Files.readString(it)) }
+                .toList()
+        }
     }
 
     private companion object {

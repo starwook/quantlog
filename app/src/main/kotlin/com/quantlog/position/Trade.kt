@@ -92,6 +92,10 @@ class Trade(
     val partiallyFilled: Boolean
         get() = filledPrice != null && (filledQuantity ?: quantity) < quantity
 
+    /** 아직 체결되지 않은 수량. 취소된 주문은 0 이다. */
+    val unfilledQuantity: Int
+        get() = if (canceled) 0 else quantity - (filledQuantity ?: if (filledPrice != null) quantity else 0)
+
     /** 체결 정보가 어디까지 채워져 있나. 동기화 불일치 보고용 문구다. */
     fun fillStateText(): String =
         when {

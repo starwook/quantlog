@@ -1,7 +1,9 @@
 package com.quantlog.gatewayclient
 
+import com.quantlog.position.OrderFills
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
+import java.time.Duration
 import java.time.Instant
 import java.util.Optional
 import kotlin.test.assertEquals
@@ -27,6 +29,7 @@ class KisBrokerFillOrderFillsTest {
         orderNo: String,
         quantity: Int,
         fill: Boolean = true,
+        receivedAt: Instant = Instant.now(),
     ) {
         val f = MutableList(23) { "" }
         f[2] = orderNo
@@ -37,7 +40,7 @@ class KisBrokerFillOrderFillsTest {
         f[12] = "0"
         f[13] = if (fill) "2" else "1"
         f[16] = "10"
-        rows += KisBrokerFillRow(id = rows.size + 1L, receivedAt = Instant.EPOCH, trId = "H0STCNI9", body = f.joinToString("^"))
+        rows += KisBrokerFillRow(id = rows.size + 1L, receivedAt = receivedAt, trId = "H0STCNI9", body = f.joinToString("^"))
     }
 
     @Test
@@ -55,6 +58,15 @@ class KisBrokerFillOrderFillsTest {
     }
 
     @Test
+    fun `접수 통보는 앱이 아직 반영하지 않은 줄이어도 접수로 본다`() {
+        add("A", 0, fill = false)
+        cursor = 0
+
+        assertTrue(fills.accepted("A"))
+        assertTrue(fills.projected("A").isEmpty())
+    }
+
+    @Test
     fun `새로 쌓인 줄은 다음 조회 때 이어서 읽는다`() {
         add("A", 3)
         cursor = 1
@@ -64,5 +76,19 @@ class KisBrokerFillOrderFillsTest {
         cursor = 2
 
         assertEquals(listOf(3, 4), fills.projected("A").map { it.quantity })
+    }
+
+    @Test
+    fun `주문번호가 같아도 다른 날 통보는 세지 않는다`() {
+        add("A", 5, receivedAt = Instant.now().minus(Duration.ofDays(3)))
+        add("A", 2)
+        cursor = 2
+
+        assertEquals(listOf(2), fills.projected("A").map { it.quantity })
+        assertEquals(listOf(2), fills.upTo("A", Long.MAX_VALUE).map { it.quantity })
+        assertEquals(
+            listOf(5),
+            fills.upTo("A", Long.MAX_VALUE, OrderFills.dayOf(Instant.now().minus(Duration.ofDays(3)))).map { it.quantity },
+        )
     }
 }

@@ -44,6 +44,20 @@ quantlog:
   notify:
     # Discord/Slack Incoming Webhook URL (시크릿 — application-local.yml 에만 적는다). 비우면 알림 꺼짐.
     webhook-url: ${QUANTLOG_NOTIFY_WEBHOOK_URL:}
+  anthropic:
+    # Claude API 키. 시크릿 — application-local.yml 이나 환경변수에만 적는다.
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: claude-haiku-5-5
+  futures:
+    # 평일 16:00 에 코스피200 옵션 매물대(행사가별 미결제약정)를 모아 option_open_interest 에 저장한다. 한투 조회 100번 안팎(주문 없음).
+    collect-enabled: ${QUANTLOG_FUTURES_COLLECT_ENABLED:true}
+    # 수집 중 한투 호출 사이에 쉬는 시간. 줄이면 초당 한도(EGW00201)에 걸려 잔고 조회까지 밀린다.
+    collect-pause-millis: 500
+  review:
+    # 학습 루프의 일일 리뷰(기획서 6.4). Claude API 를 부르므로 비용이 나간다 — 스케줄러는 기본 꺼짐, 수동 실행은 POST /review/run.
+    enabled: ${QUANTLOG_REVIEW_ENABLED:false}
+    days: 7
+    run-token: ${REVIEW_RUN_TOKEN:}   # 수동 실행 비밀번호. 비우면 확인 안 함(로컬). 서버는 .env 에 설정
   playbook:
     dir: playbook   # 원칙·일지·제안 (playbook/README.md)
   strategy:
@@ -87,6 +101,3 @@ quantlog:
     # 알림(WebSocket)이 오면 바로, 안 와도 interval-millis 마다 DB 를 확인한다. 증권사 앱에서 직접 거래한 물량도 잔고 스냅샷으로 따라온다.
     enabled: ${QUANTLOG_HOLDING_SYNC_ENABLED:true}
     interval-millis: 1000
-  risk:
-    # 1회 주문 상한은 폐지 (2026-09-30). 시장별 자본 배분(국내 1000만원)이 한도를 맡는다. 하루 손실 한도는 2026-10-08 폐지.
-    market-allocation-krw: 10000000

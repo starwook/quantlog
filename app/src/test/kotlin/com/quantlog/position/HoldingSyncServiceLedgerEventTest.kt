@@ -19,7 +19,7 @@ class HoldingSyncServiceLedgerEventTest {
     private val published = mutableListOf<Any>()
     private val ledger = InMemoryBrokerFills()
     private val service =
-        HoldingSyncService(
+        HoldingSyncFixture(
             repository,
             tradeRepository,
             ledger,

@@ -27,6 +27,8 @@ scp "${SSH_OPTS[@]}" build/libs/gateway.jar "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_D
 scp "${SSH_OPTS[@]}" build/libs/app.jar "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_DIR/app.jar.new"
 scp "${SSH_OPTS[@]}" deploy/Dockerfile deploy/docker-compose.yml deploy/remote-deploy.sh \
   "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_DIR/"
+# 일일 리뷰가 보는 원칙. 일지·제안(playbook/journal, proposals)은 서버가 쓰는 것이라 올리지 않는다.
+scp "${SSH_OPTS[@]}" playbook/principles.md "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_DIR/playbook/principles.md"
 
 # -n: 다른 배포가 진행 중이면 기다리지 않고 실패한다
 ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \

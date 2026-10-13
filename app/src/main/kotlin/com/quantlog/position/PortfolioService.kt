@@ -2,14 +2,13 @@ package com.quantlog.position
 
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
+import com.quantlog.common.KST
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.math.MathContext
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 
-private val KST: ZoneId = ZoneId.of("Asia/Seoul")
 private val HUNDRED: BigDecimal = BigDecimal(100)
 
 data class RealizedPnl(
@@ -86,8 +85,10 @@ class PortfolioService(
         val trades = allTrades.filterNot { it.canceled }.sortedBy { it.executedAt }
         // 체결 원장(kis_broker_fill)에 체결이 반영된 주문만 손익·횟수에 넣는다. 일부만 체결된 뒤 취소됐어도 체결된 몫은 실제 거래라 넣는다.
         // 매도 손익은 그 매도의 체결 직전 평단으로 확정한다([realizedOf]). 미체결·확인 전 주문은 기록 화면에만 보인다.
-        val ledgerOrders = orderFills.projectedAll().map { it.market to it.orderNo }.toSet()
-        val filledTrades = allTrades.filter { (it.market to it.orderNo) in ledgerOrders }.sortedBy { it.executedAt }
+        // 주문번호는 날마다 다시 시작하므로 날짜까지 같아야 같은 주문이다.
+        val ledgerOrders = orderFills.projectedAll().map { Triple(it.market, it.orderNo, OrderFills.dayOf(it.filledAt)) }.toSet()
+        val filledTrades =
+            allTrades.filter { Triple(it.market, it.orderNo, OrderFills.dayOf(it.executedAt)) in ledgerOrders }.sortedBy { it.executedAt }
         val today = Instant.now().atZone(KST).toLocalDate()
 
         val realizedByCurrency = mutableMapOf<String, RealizedAcc>()

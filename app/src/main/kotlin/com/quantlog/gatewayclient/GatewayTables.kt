@@ -40,6 +40,37 @@ interface KisBrokerFillRowRepository : JpaRepository<KisBrokerFillRow, Long> {
     fun maxId(): Long?
 }
 
+/** 게이트웨이가 낸 WARN 이상 로그 원본(`gateway_log`) 한 줄. 묶기·분류는 앱이 한다([GatewayLogProjector]). docs/contracts/README.md. */
+@Entity
+@Immutable
+@Table(name = "gateway_log")
+class GatewayLogRow(
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long? = null,
+    @Column(name = "logged_at", nullable = false)
+    val loggedAt: Instant = Instant.EPOCH,
+    @Column(nullable = false, length = 10)
+    val level: String = "",
+    @Column(nullable = false, length = 200)
+    val logger: String = "",
+    @Column(nullable = false, length = 1000)
+    val message: String = "",
+    @Column(name = "exception_class", length = 200)
+    val exceptionClass: String? = null,
+    @Column(name = "exception_message", length = 500)
+    val exceptionMessage: String? = null,
+    @Column(name = "stack_trace", columnDefinition = "text")
+    val stackTrace: String? = null,
+)
+
+interface GatewayLogRowRepository : JpaRepository<GatewayLogRow, Long> {
+    fun findTop100ByIdGreaterThanOrderByIdAsc(id: Long): List<GatewayLogRow>
+
+    @Query("select max(r.id) from GatewayLogRow r")
+    fun maxId(): Long?
+}
+
 /** 잔고 원문(`kis_balance`) 한 줄 — 한투 주식잔고조회 응답 JSON 원문. [fetchedAt] 은 게이트웨이가 한투를 부르기 **전** 시각이다. docs/contracts/README.md. */
 @Entity
 @Immutable
