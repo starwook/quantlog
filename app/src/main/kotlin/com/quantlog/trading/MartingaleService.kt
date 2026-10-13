@@ -17,10 +17,8 @@ import com.quantlog.watchlist.martingaleProperties
 import mu.KotlinLogging
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
-import java.time.Duration
 import java.time.Instant
 import java.time.ZonedDateTime
-import java.util.concurrent.ConcurrentHashMap
 
 private val log = KotlinLogging.logger {}
 
@@ -31,6 +29,7 @@ private val log = KotlinLogging.logger {}
  * 추가 매수 수량·가격은 DB 의 보유 수량·평단으로 계산하므로, 주문을 낸 종목은 **그 체결이 DB 에 반영될 때까지** 판정을 건너뛴다
  * ("단계 진행 중"). 반영은 체결통보(체결통보 반영(게이트웨이의 HoldingFillApplier.applyFill))가 1~2초 안에 한다. 주문 후 [EntryProperties.fillTimeout] 안에
  * 체결 확인이 안 되면 주문을 취소하고, 다음 틱부터 다시 판정한다(2026-10-07 사용자 결정: 취소 뒤 쿨다운 없이 바로 재판정).
+ * 주문이 실패해도(리스크 가드 거부 등) 쿨다운 없이 다음 틱에 다시 판정한다 — 돈이 없으면 못 사는 것뿐이다(2026-10-13: 쿨다운이 새 사이클의 추가매수까지 막았음).
  * 실시간이 커버하지 않는 종목(연결 끊김)은 [EntryScheduler] 의 폴링이 맡는다.
  */
 @Component
@@ -46,7 +45,6 @@ class MartingaleService(
     /** 주문은 냈는데 체결이 아직 DB 에 반영 안 된 종목. */
     private val pending = PendingOrders("마틴게일", broker, tradeService, holdingSync, properties.fillTimeout)
     private val inFlight = KeyedLock()
-    private val lastFailureAt = ConcurrentHashMap<String, Instant>()
 
     /** [tickPrice] 는 방금 온 체결가. 보유 중이 아니거나 마틴게일이 꺼진 종목, 아직 트리거까지 안 내려온 경우엔 아무것도 하지 않는다. */
     fun checkSymbol(
@@ -68,8 +66,6 @@ class MartingaleService(
         now: ZonedDateTime,
     ) {
         if (pending.isWaiting(key)) return
-        val failedAt = lastFailureAt[key]
-        if (failedAt != null && Duration.between(failedAt, now.toInstant()) < properties.cooldown) return
 
         val config = symbolStrategyService.find(market, symbol)?.takeIf { it.martingale } ?: return
         val holding = accountHoldingRepository.findByMarketAndSymbol(market, symbol)?.takeIf { it.quantity > 0 } ?: return
@@ -87,11 +83,7 @@ class MartingaleService(
             "마틴게일 틱 판정: -${config.martingaleDropPercent.stripTrailingZeros().toPlainString()}% 법칙 " +
                 "${cycle.stage + 1}단계 — 평단 $average 대비 ${rule.addOnTriggerPrice(average, quote)} 이하로 하락 " +
                 "(틱 $tickPrice) → 보유 ${cycle.quantity}주 기준 ${quantity}주 추가 매수 (MartingaleRule)"
-        runCatching { buy(market, symbol, quantity, quote, reason, key, now.toInstant()) }
-            .onFailure {
-                lastFailureAt[key] = now.toInstant()
-                throw it
-            }
+        buy(market, symbol, quantity, quote, reason, key, now.toInstant())
     }
 
     private fun buy(

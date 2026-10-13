@@ -69,7 +69,6 @@ class EntryScheduler(
     private val properties: EntryProperties,
 ) {
     private val lastSignalAt = ConcurrentHashMap<String, Instant>()
-    private val lastMartingaleFailureAt = ConcurrentHashMap<String, Instant>()
     private val lastRebuyCheckAt = ConcurrentHashMap<String, Instant>()
 
     @Scheduled(
@@ -107,7 +106,7 @@ class EntryScheduler(
                 watched.martingale && held && !realtimeFeed.isLive(watched.market, watched.symbol) &&
                     !holdingSync.hasUnsyncedTrade(watched.market, watched.symbol)
             if (polledMartingale) {
-                runCatching { checkMartingale(watched, snapshot, now.toInstant()) }
+                runCatching { checkMartingale(watched, snapshot) }
                     .onFailure { log.warn(it) { "[마틴게일] 실패: ${watched.market} ${watched.symbol}" } }
             }
             if (watched.periodicRebuy) {
@@ -125,19 +124,14 @@ class EntryScheduler(
      * 마틴게일: 보유 중일 때만, 평단 -0.5% 에 닿으면 보유 수량이 2배가 되게 추가 매수하고 최대 단계면 더 사지 않는다(손절은 ExitScheduler).
      * 단계는 매매 기록에서, 보유 수량·평단은 KIS 잔고 테이블에서 온다([MartingaleCycle]). 첫 진입·매도 뒤 재진입은 하지 않는다(2026-10-02 폐기).
      * 가격 조건이라 성공한 매수 뒤엔 쿨다운이 필요 없다(다음 트리거는 또 -0.5%가 필요해서 자연히 걸러짐).
-     * 실패(리스크 가드 거부 등)했을 땐 매초 재시도·로그 스팸을 막으려고 쿨다운을 건다.
+     * 실패(리스크 가드 거부 등)해도 쿨다운 없이 다음 주기에 다시 판정한다(2026-10-13).
      * 평단은 체결가가 아직 안 채워졌으면 지정가(현재가 한 호가 위)라 한 호가 어긋날 수 있다.
      */
     private fun checkMartingale(
         watched: SymbolStrategy,
         snapshot: PortfolioSnapshot,
-        now: Instant,
     ) {
         val martingaleRule = MartingaleRule(watched.martingaleProperties())
-        val key = symbolKey(watched.market, watched.symbol)
-        val lastFailure = lastMartingaleFailureAt[key]
-        if (lastFailure != null && Duration.between(lastFailure, now) < properties.cooldown) return
-
         val held =
             snapshot.summaryByCurrency[watched.market.currency]?.holdings
                 ?.firstOrNull { it.market == watched.market && it.symbol == watched.symbol }
@@ -150,11 +144,7 @@ class EntryScheduler(
                 "${cycle.stage + 1}단계 — 평단 $average 대비 " +
                 "${martingaleRule.addOnTriggerPrice(average, quote)} 이하로 하락 → 보유 ${cycle.quantity}주 기준 ${quantity}주 " +
                 "추가 매수 (MartingaleRule)"
-        runCatching { buy(watched, quantity, reason) }
-            .onFailure {
-                lastMartingaleFailureAt[key] = now
-                throw it
-            }
+        buy(watched, quantity, reason)
     }
 
     /**
