@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>즐겨찾기 제안 · quantlog</title>
+    <style th:replace="~{fragments/review :: style}"></style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('review')}"></nav>
+
+    <h1>일일 리뷰</h1>
+    <div class="tabs">
+        <a href="/review">날짜별</a>
+        <a href="/review/favorites" class="on">⭐ 즐겨찾기 <span th:text="${favoriteCount}"></span></a>
+    </div>
+
+    <div class="empty card" th:if="${#lists.isEmpty(proposals)}">즐겨찾기한 제안이 없습니다. 제안 카드를 열고 "☆ 즐겨찾기"를 누르면 여기에 모입니다.</div>
+    <th:block th:each="p : ${proposals}"><div th:replace="~{fragments/review :: proposal(${p}, ${backTo}, true)}"></div></th:block>
+    <a class="more" th:if="${moreLimit != null}" th:href="@{/review/favorites(limit=${moreLimit})}">더 보기</a>
+</main>
+</body>
+</html>

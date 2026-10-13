@@ -16,7 +16,7 @@ class ReviewScheduler(
     @Scheduled(cron = "0 31 15 * * MON-FRI", zone = "Asia/Seoul")
     fun review() {
         runCatching { reviewService.run() }
-            .onSuccess { log.info { "[리뷰] 일지=${it.journal} 제안=${it.proposals.size}건" } }
+            .onSuccess { log.info { "[리뷰] 일지=${it.journalId} 제안=${it.proposalIds.size}건" } }
             .onFailure { log.error(it) { "[리뷰] 실패" } }
     }
 }

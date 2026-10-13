@@ -4,27 +4,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.stereotype.Component
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardOpenOption
-import java.time.Clock
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 @ConfigurationProperties(prefix = "quantlog.playbook")
 data class PlaybookProperties(
     val dir: String = "playbook",
 )
 
-/** 일지·제안서 파일 하나. [name] 은 확장자 없는 파일 이름(날짜로 시작해서 이름순 = 시간순). */
-data class PlaybookNote(val name: String, val content: String)
-
 /**
- * 봇의 "머릿속" 파일 저장소. 원칙을 읽고, 일지를 쓰고, 원칙 변경안을 제안한다.
- * 원칙 파일 자체(principles.md)는 사람과 토론해서만 바꾸므로 여기서 쓰지 않는다. 구조는 playbook/README.md 참고.
+ * 봇의 "머릿속" 파일 저장소. 지금은 원칙(principles.md)을 읽는 일만 한다 — 사람과 토론해서만 바꾸므로 여기서 쓰지 않는다.
+ * 일지·원칙 변경 제안은 DB 로 옮겼다(`review/ReviewArchive.kt`). 구조는 playbook/README.md 참고.
  */
 @Component
 class Playbook(
     properties: PlaybookProperties,
-    private val clock: Clock,
 ) {
     private val root: Path = Path.of(properties.dir)
 
@@ -35,65 +27,7 @@ class Playbook(
         return Files.readString(file)
     }
 
-    /** [day](기본 오늘) 일지에 생각 한 토막을 덧붙인다. 파일이 없으면 날짜 제목과 함께 만든다. */
-    @Synchronized
-    fun writeJournal(
-        title: String,
-        body: String,
-        day: LocalDate = clock.instant().atZone(clock.zone).toLocalDate(),
-    ): Path {
-        val now = clock.instant().atZone(clock.zone)
-        val file = root.resolve(JOURNAL_DIR).resolve("$day.md")
-        Files.createDirectories(file.parent)
-        val header = if (Files.exists(file)) "" else "# 일지 $day\n"
-        val entry = "$header\n## ${now.format(TIME)} KST — $title\n\n${body.trim()}\n"
-        Files.writeString(file, entry, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-        return file
-    }
-
-    /** 원칙 변경 제안서를 proposals/ 에 남긴다. 반영 여부는 사용자와 토론해서 결정한다. */
-    fun propose(
-        title: String,
-        body: String,
-    ): Path {
-        val now = clock.instant().atZone(clock.zone)
-        val slug = title.trim().replace(Regex("[^0-9A-Za-z가-힣]+"), "-").trim('-').take(60).ifEmpty { "proposal" }
-        val file = root.resolve(PROPOSALS_DIR).resolve("${now.format(STAMP)}-$slug.md")
-        Files.createDirectories(file.parent)
-        Files.writeString(
-            file,
-            "# 제안: ${title.trim()}\n\n- 작성: ${now.format(STAMP)} KST\n- 상태: 검토 대기\n\n${body.trim()}\n",
-            StandardOpenOption.CREATE_NEW,
-        )
-        return file
-    }
-
-    /** 최근 일지 [limit]개, 최신 먼저. 폴더가 아직 없으면 빈 목록. */
-    fun recentJournals(limit: Int): List<PlaybookNote> = recentNotes(JOURNAL_DIR, limit)
-
-    /** 최근 원칙 변경 제안 [limit]개, 최신 먼저. 폴더가 아직 없으면 빈 목록. */
-    fun recentProposals(limit: Int): List<PlaybookNote> = recentNotes(PROPOSALS_DIR, limit)
-
-    private fun recentNotes(
-        dir: String,
-        limit: Int,
-    ): List<PlaybookNote> {
-        val folder = root.resolve(dir)
-        if (!Files.isDirectory(folder)) return emptyList()
-        return Files.list(folder).use { files ->
-            files.filter { it.fileName.toString().endsWith(".md") }
-                .sorted(Comparator.reverseOrder())
-                .limit(limit.toLong())
-                .map { PlaybookNote(it.fileName.toString().removeSuffix(".md"), Files.readString(it)) }
-                .toList()
-        }
-    }
-
     private companion object {
         const val PRINCIPLES_FILE = "principles.md"
-        const val JOURNAL_DIR = "journal"
-        const val PROPOSALS_DIR = "proposals"
-        val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
-        val STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmm")
     }
 }

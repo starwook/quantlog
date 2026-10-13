@@ -28,9 +28,9 @@ Gradle 멀티모듈, **서버가 둘**이다(설계·계약은 [docs/서버-분�
 - `BUY`/`SELL`(국내 정규장 평일 09:00~15:20): 호가 단위로 맞춘 지정가로 1주 매매. 모의투자는 일부 종목만 가능하니 거절되면 `quantlog.smoke.symbol`을 바꿔 본다.
 
 ## 일일 리뷰 (학습 루프, 2026-10-12)
-오늘 체결·보유 현황을 Claude 가 복기해 `playbook/journal/`(일지)과 `playbook/proposals/`(원칙 변경 제안)에 남긴다. 원칙 파일은 바꾸지 않는다.
+오늘 체결·보유 현황을 Claude 가 복기해 일지와 원칙 변경 제안을 DB(`review_journal`·`review_proposal` 테이블)에 남긴다. 원칙 파일은 바꾸지 않는다.
 - 키: `application-local.yml` 의 `quantlog.anthropic.api-key` (Anthropic 콘솔 API 키 — Claude 구독과 별개로 크레딧 결제).
-- 수동 실행: 앱을 띄운 뒤 `/review` 화면(메뉴 "리뷰")의 "지금 리뷰 실행" 버튼 (API 비용 발생). 일지·제안도 이 화면에서 본다. 자동: `quantlog.review.enabled=true` → 평일 15:40.
+- 수동 실행: 앱을 띄운 뒤 `/review` 화면(메뉴 "리뷰")의 "지금 리뷰 실행" 버튼 (API 비용 발생). 일지·제안은 이 화면에서 날짜별로(목록 → 날짜 클릭, "더 보기"로 이전 날짜) 보고, 제안은 ⭐ 즐겨찾기해서 따로 모아 볼 수 있다. 자동: `quantlog.review.enabled=true` → 평일 15:40.
 - 선물옵션: `/futures` 화면(메뉴 "선물옵션")에서 코스피200 옵션 매물대(행사가별 미결제약정)와 선물 시세를 본다. 매물대는 평일 16:00 에 자동으로 모아 저장하고(`quantlog.futures.collect-enabled`, 한투 조회 100번 안팎·약 5분, 주문 없음) "지금 모으기" 버튼으로도 모은다. 사양·실측: `docs/kis-api/futures-options.md`.
 
 ## 개발

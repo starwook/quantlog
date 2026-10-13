@@ -5,18 +5,17 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.quantlog.playbook.Playbook
 import com.quantlog.position.PortfolioService
 import org.springframework.stereotype.Service
-import java.nio.file.Path
 import java.time.Clock
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZonedDateTime
 
-data class ReviewProposal(val title: String, val body: String)
+data class ReviewProposalDraft(val title: String, val body: String)
 
-data class ReviewOutput(val journal: String, val proposals: List<ReviewProposal> = emptyList())
+data class ReviewOutput(val journal: String, val proposals: List<ReviewProposalDraft> = emptyList())
 
-data class ReviewResult(val journal: Path, val proposals: List<Path>)
+data class ReviewResult(val journalId: Long, val proposalIds: List<Long>)
 
 /** 국내 장 마감 뒤 리뷰가 도는 시각(KST). 스케줄러와 [reviewDay] 가 같은 값을 쓴다. */
 val REVIEW_TIME: LocalTime = LocalTime.of(15, 31)
@@ -34,12 +33,13 @@ fun reviewDay(now: ZonedDateTime): LocalDate {
 
 /**
  * 학습 루프의 "리뷰 세션"(기획서 6.4): 코드가 계산한 사실([ReviewFacts])과 현재 원칙을 Claude 에게 주고,
- * 해석을 일지(journal/)와 원칙 변경 제안(proposals/)으로 남긴다. **원칙 파일은 건드리지 않는다** — 반영은 사용자와 토론해서 정한다.
+ * 해석을 일지와 원칙 변경 제안으로 DB([ReviewArchive])에 남긴다. **원칙 파일은 건드리지 않는다** — 반영은 사용자와 토론해서 정한다.
  */
 @Service
 class ReviewService(
     private val portfolioService: PortfolioService,
     private val playbook: Playbook,
+    private val archive: ReviewArchive,
     private val llm: LlmClient,
     private val properties: ReviewProperties,
     private val clock: Clock,
@@ -51,8 +51,9 @@ class ReviewService(
         val answer = llm.complete(SYSTEM, "## 현재 원칙\n\n${playbook.principles()}\n\n# 사실 (코드가 계산한 숫자)\n\n$facts")
 
         val output = parse(answer)
-        val journal = playbook.writeJournal("일일 리뷰", output.journal, day)
-        return ReviewResult(journal, output.proposals.map { playbook.propose(it.title, it.body) })
+        val journal = archive.saveJournal(day, "일일 리뷰", output.journal)
+        val proposals = output.proposals.map { archive.saveProposal(day, it.title, it.body) }
+        return ReviewResult(requireNotNull(journal.id), proposals.map { requireNotNull(it.id) })
     }
 
     // 모델이 JSON 을 코드 펜스로 감싸 줄 수 있어 첫 `{` ~ 마지막 `}` 만 잘라 읽는다. 못 읽으면 원문을 일지에 그대로 남긴다(제안은 없음).
