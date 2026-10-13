@@ -58,6 +58,15 @@ class KisBrokerFillOrderFillsTest {
     }
 
     @Test
+    fun `접수 통보는 앱이 아직 반영하지 않은 줄이어도 접수로 본다`() {
+        add("A", 0, fill = false)
+        cursor = 0
+
+        assertTrue(fills.accepted("A"))
+        assertTrue(fills.projected("A").isEmpty())
+    }
+
+    @Test
     fun `새로 쌓인 줄은 다음 조회 때 이어서 읽는다`() {
         add("A", 3)
         cursor = 1
