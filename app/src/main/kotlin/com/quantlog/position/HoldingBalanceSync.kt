@@ -24,8 +24,9 @@ private val log = KotlinLogging.logger {}
  * **같은 시점끼리만 비교한다.** 체결통보는 한투 체결보다 몇 초~20초 늦게 올 수 있다(2026-10-12 실측 최대 18.8초). 그 사이 온 잔고는 체결이 끝난 값이라
  * 그대로 덮어쓰면, 뒤늦게 오는 체결통보가 같은 체결을 한 번 더 얹는다(2026-10-12 226490: 평단 65,980 → 65,937.5 로 틀어져 매도 손익이 425원 어긋났다).
  * 잔고에는 종목별 당일 누적 매수·매도 수량이 있으니, **앱이 반영한 원장의 당일 누적과 같을 때만** "같은 시점"으로 보고 수량·평단을 비교한다.
- * 누적이 다르면 통보가 아직 덜 온 것이라 그 회차는 건드리지 않는다. 다만 어긋남이 [SETTLE] 이상 이어지고 그동안 이 종목 체결 반영도 없었다면
- * (통보를 놓쳤거나 잔고에 누적이 없는 경우, 잔고에서 종목이 사라진 경우) 증권사 값이 정답이라고 보고 고친다.
+ * 누적이 다르면 이유는 둘 중 하나다. ① 앱이 낸 주문의 체결통보가 아직 안 왔다 → 그 주문이 끝날 때까지 수량·평단은 건드리지 않는다(현재가만 갱신).
+ * ② 기다릴 주문이 없는데 다르다(통보를 놓쳤다) → 시간을 재지 않고 바로 증권사 값으로 고친다.
+ * 직접 거래는 하지 않는다는 전제라, 잔고에 누적이 없거나 종목이 사라졌을 때도 같은 규칙을 쓴다.
  */
 @Service
 class HoldingBalanceSync(
@@ -34,10 +35,8 @@ class HoldingBalanceSync(
     private val events: ApplicationEventPublisher,
     private val state: HoldingUpdateTimes,
     private val orderFills: OrderFills,
+    private val tradeRepository: TradeRepository,
 ) {
-    /** 종목별로 "원장과 어긋난 채 같은 시점인지 확인할 수 없는" 상태가 시작된 잔고 조회 시각. */
-    private val unsettledSince = mutableMapOf<Pair<Market, String>, Instant>()
-
     /**
      * [kis] 는 [fetchedAt] 시점에 받은 잔고 전체. 바뀐 내용 설명 목록을 돌려준다(변화가 없으면 빈 목록).
      * [fetchedAt] 은 KIS 를 부르기 **전** 시각이어야 한다 — 조회 도중 낸 주문을 "반영됨"으로 착각하지 않기 위해서다.
@@ -63,13 +62,12 @@ class HoldingBalanceSync(
             val agrees = row != null && holding != null && matches(row, holding)
 
             if (agrees) {
-                unsettledSince.remove(key)
                 // 같은 시점으로 확인된 값이면 증권사 평단으로 맞춰 둔다(체결가로 계산한 평단과 한투 평단은 소수 자릿수만 다를 수 있다).
                 if (row!!.currentPrice.compareTo(holding!!.currentPrice) != 0) priceChanged = true
                 row.update(row.quantity, if (sameTime) holding.averagePrice else row.avgCost, holding.currentPrice)
                 return@forEach
             }
-            if (!sameTime && !settled(key, fetchedAt)) {
+            if (!sameTime && hasOrderInFlight(key, fetchedAt)) {
                 // 체결통보가 덜 왔을 수 있다 — 수량·평단은 두고 현재가만 갱신한다.
                 if (row != null && holding != null && row.currentPrice.compareTo(holding.currentPrice) != 0) {
                     row.update(row.quantity, row.avgCost, holding.currentPrice)
@@ -77,7 +75,6 @@ class HoldingBalanceSync(
                 }
                 return@forEach
             }
-            unsettledSince.remove(key)
             when {
                 row == null -> changes += addMissing(holding!!)
                 holding == null -> changes += removeGone(row)
@@ -124,20 +121,15 @@ class HoldingBalanceSync(
     private fun Totals?.orZero() = this ?: Totals(0, 0)
 
     /**
-     * 같은 시점인지 확인할 수 없는 어긋남이 [SETTLE] 이상 이어졌고 그동안 이 종목 체결 반영이 없었으면 true.
-     * 체결 반영이 있으면 기다리는 시간을 처음부터 다시 센다 — 통보가 계속 들어오는 중이다.
+     * 이 종목에 앱이 낸 주문 중 체결통보가 아직 다 안 온 주문이 있는가(취소된 주문은 뺀다). 있으면 잔고와의 어긋남은 그 통보가 늦는 탓일 수 있다.
+     * 주문이 영영 안 끝나 보유 대조가 막히지 않도록 [IN_FLIGHT_LIMIT] 이전 주문은 보지 않는다.
      */
-    private fun settled(
+    private fun hasOrderInFlight(
         key: Pair<Market, String>,
         fetchedAt: Instant,
-    ): Boolean {
-        val since = unsettledSince.getOrPut(key) { fetchedAt }
-        if (state.fillAppliedAfter(key, since)) {
-            unsettledSince[key] = fetchedAt
-            return false
-        }
-        return Duration.between(since, fetchedAt) >= SETTLE
-    }
+    ): Boolean =
+        tradeRepository.findAllByMarketAndSymbolAndExecutedAtAfter(key.first, key.second, fetchedAt.minus(IN_FLIGHT_LIMIT))
+            .any { !it.canceled && orderFills.projected(it.orderNo, OrderFills.dayOf(it.executedAt)).total().quantity < it.quantity }
 
     private fun label(
         market: Market,
@@ -208,8 +200,8 @@ class HoldingBalanceSync(
     private companion object {
         val AVERAGE_TOLERANCE: BigDecimal = BigDecimal("0.0001")
 
-        /** 체결통보 지연 실측 최대 18.8초(2026-10-12)의 3배 남짓. 이보다 오래 어긋나 있으면 통보를 놓친 것으로 본다. */
-        val SETTLE: Duration = Duration.ofSeconds(60)
+        /** 앱이 주문 체결을 기다리는 최대 시간(10초 뒤 취소 시도 + 2분 뒤 포기, `trading/PendingOrders.kt`)보다 넉넉히. */
+        val IN_FLIGHT_LIMIT: Duration = Duration.ofMinutes(3)
         const val AREA = "잔고 동기화"
     }
 }

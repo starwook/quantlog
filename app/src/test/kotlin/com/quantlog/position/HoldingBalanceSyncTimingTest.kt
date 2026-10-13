@@ -19,7 +19,13 @@ import kotlin.test.assertTrue
 class HoldingBalanceSyncTimingTest {
     private val symbol = "226490"
     private val repository = Mockito.mock(AccountHoldingRepository::class.java)
-    private val tradeRepository = Mockito.mock(TradeRepository::class.java)
+    private val placed = mutableListOf<Trade>()
+
+    /** 앱이 낸 주문 기록을 [placed] 로 돌려주는 가짜 저장소. */
+    private val tradeRepository =
+        Mockito.mock(TradeRepository::class.java) { call ->
+            if (call.method.name == "findAllByMarketAndSymbolAndExecutedAtAfter") placed.toList() else Mockito.RETURNS_DEFAULTS.answer(call)
+        }
     private val ledger = InMemoryBrokerFills()
     private val events = mutableListOf<Any>()
     private val service = HoldingSyncFixture(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher(events))
@@ -62,6 +68,8 @@ class HoldingBalanceSyncTimingTest {
         val holding = row(10, "66065")
         fill(Side.BUY, 10, "66065", "0000037320", at.minusSeconds(300)) // 이미 반영된 첫 매수
         holding.update(10, BigDecimal("66065"), BigDecimal("66000"))
+        orderPlaced("0000037728", Side.BUY, 10, at.plusSeconds(20))
+        orderPlaced("0000037742", Side.SELL, 10, at.plusSeconds(24))
 
         MismatchLog().use { captured ->
             // 한투는 14:44:20~26 에 추가 매수 10주 + 매도 10주를 끝냈다. 이 잔고(14:44:22 조회)는 그 뒤 값이지만 체결통보는 아직 안 왔다.
@@ -86,58 +94,96 @@ class HoldingBalanceSyncTimingTest {
     }
 
     @Test
-    fun `당일 누적이 원장과 다른 어긋남은 60초 동안 기다리고 그래도 이어지면 증권사 값으로 고친다`() {
+    fun `기다릴 주문이 없는데 당일 누적이 다르면 통보를 놓친 것이라 바로 증권사 값으로 고친다`() {
         val holding = row(10, "66065")
         fill(Side.BUY, 10, "66065", "0000037320", at.minusSeconds(300))
         holding.update(10, BigDecimal("66065"), BigDecimal("66000"))
-        val missed = kis(15, "66000", bought = 25, sold = 0) // 통보를 놓친 매수 15주가 있는 잔고
 
         MismatchLog().use { captured ->
-            assertTrue(service.sync(listOf(missed), at).isEmpty())
-            assertTrue(service.sync(listOf(missed), at.plusSeconds(59)).isEmpty())
-            assertEquals(10, holding.quantity)
-            assertTrue(captured.messages.isEmpty())
+            assertEquals(1, service.sync(listOf(kis(15, "66000", bought = 25, sold = 0)), at).size)
 
-            assertEquals(1, service.sync(listOf(missed), at.plusSeconds(60)).size)
             assertEquals(15, holding.quantity)
             assertTrue("DB=10주" in captured.messages.single() && "증권사=15주" in captured.messages.single(), captured.messages.toString())
         }
     }
 
     @Test
-    fun `기다리는 동안 이 종목 체결이 반영되면 기다리는 시간을 처음부터 다시 센다`() {
+    fun `이미 체결이 다 확인된 주문은 기다리는 주문이 아니다`() {
         val holding = row(10, "66065")
         fill(Side.BUY, 10, "66065", "0000037320", at.minusSeconds(300))
         holding.update(10, BigDecimal("66065"), BigDecimal("66000"))
+        orderPlaced("0000037320", Side.BUY, 10, at.minusSeconds(300))
 
-        service.sync(listOf(kis(15, "66000", bought = 30, sold = 0)), at)
-        fill(Side.BUY, 5, "66000", "0000037500", at.plusSeconds(30)) // 통보가 계속 들어오는 중
-
-        assertTrue(service.sync(listOf(kis(15, "66000", bought = 30, sold = 0)), at.plusSeconds(61)).isEmpty())
-        assertEquals(15, holding.quantity)
-        assertTrue(holding.avgCost > BigDecimal("66040"), "평단은 체결로 계산한 값 그대로여야 한다: ${holding.avgCost}")
+        assertEquals(1, service.sync(listOf(kis(15, "66000", bought = 25, sold = 0)), at).size)
     }
 
     @Test
-    fun `잔고에 당일 누적이 없으면 같은 시점인지 알 수 없어 기다린다`() {
+    fun `취소된 주문도 기다리는 주문이 아니다`() {
         val holding = row(10, "66065")
+        orderPlaced("0000037500", Side.BUY, 5, at.minusSeconds(20)).cancel()
+
+        assertEquals(1, service.sync(listOf(kis(15, "66000", bought = 5, sold = 0)), at).size)
+        assertEquals(15, holding.quantity)
+    }
+
+    @Test
+    fun `주문의 체결통보를 기다리는 동안은 수량·평단을 건드리지 않고 통보가 오면 그 뒤에 비교한다`() {
+        val holding = row(10, "66065")
+        orderPlaced("0000037500", Side.BUY, 5, at.minusSeconds(20))
+
+        // 잔고는 이미 체결된 15주인데 통보가 아직 없다
+        assertTrue(service.sync(listOf(kis(15, "66043.333333", bought = 5, sold = 0)), at).isEmpty())
+        assertEquals(10, holding.quantity)
+
+        fill(Side.BUY, 5, "66000", "0000037500", at.plusSeconds(15))
+        assertTrue(service.sync(listOf(kis(15, "66043.333333", bought = 5, sold = 0)), at.plusSeconds(20)).isEmpty())
+        assertEquals(15, holding.quantity)
+    }
+
+    @Test
+    fun `잔고에 당일 누적이 없어도 기다릴 주문이 없으면 바로 고치고 있으면 기다린다`() {
+        val holding = row(10, "66065")
+        orderPlaced("0000037500", Side.BUY, 2, at.minusSeconds(5))
 
         assertTrue(service.sync(listOf(kis(12, "66000", bought = null, sold = null)), at).isEmpty())
         assertEquals(10, holding.quantity)
-        assertEquals(1, service.sync(listOf(kis(12, "66000", bought = null, sold = null)), at.plusSeconds(60)).size)
+
+        placed.clear()
+        assertEquals(1, service.sync(listOf(kis(12, "66000", bought = null, sold = null)), at.plusSeconds(1)).size)
         assertEquals(12, holding.quantity)
     }
 
     @Test
-    fun `증권사 잔고에서 사라진 종목도 통보를 기다린 뒤에만 지운다`() {
+    fun `증권사 잔고에서 사라진 종목은 매도 주문을 기다리는 동안만 지우지 않는다`() {
         val holding = row(10, "66065")
+        orderPlaced("0000037742", Side.SELL, 10, at.minusSeconds(3))
 
         assertTrue(service.sync(emptyList(), at).isEmpty())
         Mockito.verify(repository, Mockito.never()).delete(holding)
 
-        // 그 사이 매도 통보가 와서 보유가 0 이 되면 잔고와 같아져 기다림이 끝난다
+        // 통보가 와서 보유가 0 이 되면 잔고와 같아진다
         fill(Side.SELL, 10, "65880", "0000037742", at.plusSeconds(15))
         Mockito.verify(repository).delete(holding)
-        assertTrue(service.sync(emptyList(), at.plusSeconds(70)).isEmpty())
+    }
+
+    @Test
+    fun `3분보다 오래된 주문은 기다리는 주문으로 보지 않는다`() {
+        row(10, "66065")
+
+        service.sync(listOf(kis(12, "66000", bought = 5, sold = 0)), at)
+
+        Mockito.verify(tradeRepository).findAllByMarketAndSymbolAndExecutedAtAfter(Market.KR, symbol, at.minusSeconds(180))
+    }
+
+    /** 앱이 낸 주문 기록을 만들어 [tradeRepository] 가 돌려주게 한다. */
+    private fun orderPlaced(
+        orderNo: String,
+        side: Side,
+        quantity: Int,
+        placedAt: Instant,
+    ): Trade {
+        val trade = Trade(Market.KR, symbol, side, quantity, BigDecimal("66000"), orderNo, "ok", executedAt = placedAt)
+        placed += trade
+        return trade
     }
 }

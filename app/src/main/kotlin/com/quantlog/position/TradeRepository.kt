@@ -2,6 +2,7 @@ package com.quantlog.position
 
 import com.quantlog.broker.Market
 import org.springframework.data.jpa.repository.JpaRepository
+import java.time.Instant
 import java.time.LocalDate
 
 interface TradeRepository : JpaRepository<Trade, Long> {
@@ -16,6 +17,13 @@ interface TradeRepository : JpaRepository<Trade, Long> {
         market: Market,
         symbol: String,
     ): Trade?
+
+    /** 이 종목에서 [since] 이후에 낸 주문. 잔고 동기화가 체결통보를 기다리는 주문이 있는지 볼 때 쓴다. */
+    fun findAllByMarketAndSymbolAndExecutedAtAfter(
+        market: Market,
+        symbol: String,
+        since: Instant,
+    ): List<Trade>
 
     /** 같은 주문번호의 기록 전부(날이 다른 것 포함). 보통은 [findByOrderNo] 로 날짜까지 맞춰 찾는다. */
     fun findAllByMarketAndOrderNo(
