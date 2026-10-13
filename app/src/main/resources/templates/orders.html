@@ -85,6 +85,7 @@
         .sub-chips .chip.WIN.active { background: var(--buy); border-color: var(--buy); }
         .sub-chips .chip.LOSS.active { background: var(--sell); border-color: var(--sell); }
         .chips + .chips { margin-top: -4px; }
+        .more { display: block; width: 100%; min-height: 44px; margin: 8px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; }
         .empty { padding: 20px 0; text-align: center; font-size: 14px; color: var(--muted); }
     </style>
 </head>
@@ -125,7 +126,7 @@
     </section>
 
     <section class="card">
-        <h2>체결 내역 <span class="sub">(최근 100건)</span></h2>
+        <h2>체결 내역 <span class="sub">오늘 <span id="fillTotal">0</span>건</span></h2>
         <div class="chips" id="fillChips" role="tablist" aria-label="체결 내역 필터"></div>
         <div class="chips sub-chips" id="fillSubChips" role="tablist" aria-label="매도 결과 필터" hidden></div>
         <div id="done"></div>
@@ -138,7 +139,8 @@
     const market = 'KR';
     const orders = new Map(); // key -> 주문
     let fills = []; // 체결 내역(체결통보 1건 = 1줄), 최근 순
-    const MAX_FILLS = 100;
+    const PAGE = 100; // 한 번에 보여 주는 체결 줄 수. 하루치 전부를 받아 두고 "더 보기"로 늘린다.
+    let shownLimit = PAGE;
     // 체결 내역 필터는 2단이다. 위: 전체·매수·매도, 매도를 고르면 아래에 수익·손실이 나타난다. 수익/손실은 매도 중 실현손익이 +/- 인 것(pnlCss 가 pos/neg)이고
     // 한국 시장 색(수익 빨강, 손실 파랑)을 칩에도 쓴다. 선택은 브라우저에 기억한다.
     const SIDE_FILTERS = [
@@ -263,6 +265,7 @@
 
     function pickSide(id) {
         sideFilter = id;
+        shownLimit = PAGE;
         resultFilter = 'ALL'; // 매도를 벗어나면 수익/손실 선택은 초기화한다
         localStorage.setItem('fillSideFilter', id);
         localStorage.setItem('fillResultFilter', 'ALL');
@@ -271,6 +274,7 @@
 
     function pickResult(id) {
         resultFilter = id;
+        shownLimit = PAGE;
         localStorage.setItem('fillResultFilter', id);
         render();
     }
@@ -306,7 +310,15 @@
         const result = RESULT_FILTERS.find((x) => x.id === resultFilter);
         renderFillFilters(myFills);
         const shown = myFills.filter(side.match).filter(sideFilter === 'SELL' ? result.match : () => true);
-        renderList(document.getElementById('done'), shown, (f) => renderFill(f, flashKey), sideFilter === 'SELL' ? result.empty : side.empty);
+        document.getElementById('fillTotal').textContent = myFills.length;
+        const done = document.getElementById('done');
+        renderList(done, shown.slice(0, shownLimit), (f) => renderFill(f, flashKey), sideFilter === 'SELL' ? result.empty : side.empty);
+        if (shown.length > shownLimit) {
+            const more = el('button', 'more', '더 보기 (' + (shown.length - shownLimit) + '건 남음)');
+            more.type = 'button';
+            more.onclick = () => { shownLimit += PAGE; render(); };
+            done.appendChild(more);
+        }
         tick();
     }
 
@@ -341,7 +353,7 @@
                 renderSummary(msg.summary, true);
                 render(msg.order.key);
             } else if (msg.type === 'fill') {
-                if (!fills.some((f) => f.key === msg.fill.key)) fills = [msg.fill, ...fills].slice(0, MAX_FILLS);
+                if (!fills.some((f) => f.key === msg.fill.key)) fills = [msg.fill, ...fills];
                 if (msg.summary) renderSummary(msg.summary, true);
                 render(msg.fill.key);
             } else if (msg.type === 'price') {

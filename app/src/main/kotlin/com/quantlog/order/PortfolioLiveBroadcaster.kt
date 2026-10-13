@@ -32,7 +32,7 @@ private val log = KotlinLogging.logger {}
 
 /**
  * 주문이 접수·체결·취소되거나 보유 종목이 바뀔 때마다 열려 있는 모든 브라우저(/ws/portfolio)에 그 변화를 밀어준다.
- * 새로 연결되면 보유 종목·대기열·최근 체결 내역을 한 번에 보내(snapshot) 화면이 바로 채워지게 한다.
+ * 새로 연결되면 보유 종목·대기열·오늘 체결 내역 전부를 한 번에 보내(snapshot) 화면이 바로 채워지게 한다.
  */
 @Component
 class PortfolioLiveBroadcaster(
@@ -55,14 +55,13 @@ class PortfolioLiveBroadcaster(
         val snapshot = portfolioService.snapshot()
         val todayStart = LocalDate.now(KST).atStartOfDay(KST).toInstant()
         val newestFirst = snapshot.trades.sortedByDescending { it.executedAt }
-        val filled = newestFirst.filter { it.state == OrderState.FILLED }.take(HISTORY_LIMIT)
-        val waiting = newestFirst.filter { it.state != OrderState.FILLED && it.executedAt.isAfter(todayStart) }
-        val orders = (waiting + filled).map { it.toView(snapshot.realizedPnlByTradeId[it.id]) }
+        // 오늘 낸 주문 전부. 체결 내역 줄이 같은 주문번호의 사유(reason)를 이 목록에서 찾아 붙이므로 오늘 체결 내역만큼 있어야 한다.
+        val orders = newestFirst.filter { it.executedAt.isAfter(todayStart) }.map { it.toView(snapshot.realizedPnlByTradeId[it.id]) }
         val snapshotMessage =
             mapOf(
                 "type" to "snapshot",
                 "orders" to orders,
-                "fills" to recentFills(snapshot),
+                "fills" to todaysFills(snapshot),
                 "holdings" to holdingViews(),
                 "summary" to summaryView(snapshot),
             )
@@ -163,11 +162,14 @@ class PortfolioLiveBroadcaster(
         }
     }
 
-    /** 체결 내역 = 원장(`kis_broker_fill`) 줄, 최근 순으로 [HISTORY_LIMIT] 건. 손익은 그 주문의 체결 직전 평단([com.quantlog.position.Trade.avgCostBefore]) 기준이다. */
-    private fun recentFills(snapshot: PortfolioSnapshot): List<FillLiveView> =
+    /**
+     * 체결 내역 = 원장(`kis_broker_fill`) 줄 중 오늘(KST) 것 전부, 최근 순. 하루치라 하루가 끝나면 비워진다. 손익은 그 주문의 체결 직전 평단
+     * ([com.quantlog.position.Trade.avgCostBefore]) 기준이다.
+     */
+    private fun todaysFills(snapshot: PortfolioSnapshot): List<FillLiveView> =
         orderFills.projectedAll()
+            .filter { OrderFills.dayOf(it.filledAt) == OrderFills.today() }
             .sortedByDescending { it.id }
-            .take(HISTORY_LIMIT)
             .map {
                 FillLiveView.of(
                     it,
@@ -181,7 +183,6 @@ class PortfolioLiveBroadcaster(
     private fun broadcast(payload: Any) = sessions.broadcast(payload)
 
     private companion object {
-        const val HISTORY_LIMIT = 100
         const val KRW = "KRW"
     }
 }
