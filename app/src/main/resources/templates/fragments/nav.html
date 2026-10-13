@@ -36,15 +36,14 @@
     </div>
 </nav>
 
-<!-- 한 종목의 화면 3개(차트·진입 백테스트·마틴게일)를 오가는 탭. 종목 선택 바로 아래에 둔다.
-     사용: <div th:replace="~{fragments/nav :: symbolTabs('chart', ${market}, ${symbol})}"></div> (active: chart|backtest|martingale) -->
+<!-- 분석 > 백테스트 안에서 한 종목의 진입 백테스트·마틴게일을 오가는 탭. 종목 선택 바로 아래에 둔다. (차트·주문은 거래 그룹이라 여기에 넣지 않는다)
+     사용: <div th:replace="~{fragments/nav :: symbolTabs('backtest', ${market}, ${symbol})}"></div> (active: backtest|martingale) -->
 <div th:fragment="symbolTabs(active, market, symbol)" class="symbol-tabs">
     <style>
         .symbol-tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 16px; background: var(--card, #fff); border-radius: 12px; }
         .symbol-tabs a { flex: 1; padding: 9px 4px; text-align: center; font-size: 14px; font-weight: 600; color: var(--muted, #8b95a1); text-decoration: none; border-radius: 9px; }
         .symbol-tabs a.active { background: var(--text, #191f28); color: #fff; }
     </style>
-    <a th:href="@{'/chart/' + ${market} + '/' + ${symbol}}" th:classappend="${active == 'chart'} ? 'active'">차트·주문</a>
     <a th:href="@{'/backtest/' + ${market} + '/' + ${symbol}}" th:classappend="${active == 'backtest'} ? 'active'">진입 백테스트</a>
     <a th:href="@{'/backtest/martingale/' + ${market} + '/' + ${symbol}}" th:classappend="${active == 'martingale'} ? 'active'">마틴게일</a>
 </div>
