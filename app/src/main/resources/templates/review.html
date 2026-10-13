@@ -63,7 +63,8 @@
 
     <h1>일일 리뷰</h1>
     <p class="note">
-        Claude 가 오늘 체결과 보유 현황을 현재 원칙에 비춰 복기한 기록입니다. 원칙은 자동으로 바뀌지 않고, 바꿀 만한 근거가 있으면 아래 "원칙 변경 제안"에 올라옵니다.
+        Claude 가 하루 체결과 보유 현황을 현재 원칙에 비춰 복기한 기록입니다. 평일 15:31(국내 장 마감 직후)에 자동으로 만들어지고,
+        그 시각 전에 직접 실행하면 직전 평일을 복기합니다. 원칙은 자동으로 바뀌지 않고, 바꿀 근거나 더 모아야 할 데이터가 있으면 아래 "원칙 변경 제안"에 올라옵니다.
     </p>
 
     <div class="msg done" th:if="${done}" th:text="${done}"></div>
@@ -86,7 +87,7 @@
     </div>
 
     <h2>원칙 변경 제안</h2>
-    <div class="empty card" th:if="${#lists.isEmpty(proposals)}">아직 제안이 없습니다. 체결이 충분히 쌓이고 근거가 생기면 올라옵니다.</div>
+    <div class="empty card" th:if="${#lists.isEmpty(proposals)}">아직 제안이 없습니다. 원칙 수치를 바꾸자는 제안은 체결이 50건 이상 쌓여야 나오고, 부족한 데이터를 모으자는 제안은 리뷰 때마다 나올 수 있습니다.</div>
     <div class="card" th:each="proposal : ${proposals}">
         <details>
             <summary th:text="${proposal.name}"></summary>
