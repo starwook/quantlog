@@ -43,10 +43,13 @@ class ErrorLogController(private val repository: ErrorLogRepository) {
         val period = days.takeIf { it in PERIOD_DAYS } ?: 7L
         val inPeriod = repository.findAllByLastSeenAfterOrderByLastSeenDesc(Instant.now().minus(Duration.ofDays(period)))
         val byLevel = inPeriod.filter { level == "ALL" || it.level == level }
-        val shown = byLevel.filter { category.isNullOrBlank() || it.category == category }
+        // 레벨 칩을 눌러도 분류가 URL 에 남는다. 그 분류가 이 레벨에는 없으면(WARN 분류 선택 후 ERROR 로 바꾼 경우)
+        // 0건으로 비어 보이니 분류 필터를 풀고 전체를 보여 준다.
+        val selectedCategory = category?.takeIf { c -> byLevel.any { it.category == c } }.orEmpty()
+        val shown = byLevel.filter { selectedCategory.isEmpty() || it.category == selectedCategory }
 
         model.addAttribute("level", level)
-        model.addAttribute("category", category.orEmpty())
+        model.addAttribute("category", selectedCategory)
         model.addAttribute("days", period)
         model.addAttribute("periodDays", PERIOD_DAYS)
         model.addAttribute("rows", shown.take(MAX_ROWS).map { it.toView() })
