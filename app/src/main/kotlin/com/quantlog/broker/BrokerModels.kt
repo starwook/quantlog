@@ -94,6 +94,9 @@ data class Holding(
     val quantity: BigDecimal,
     val averagePrice: BigDecimal,
     val currentPrice: BigDecimal,
+    /** 한투 잔고가 알려 주는 이 종목의 당일 누적 매수·매도 수량(`thdt_buyqty`·`thdt_sll_qty`). 응답에 없으면 null. */
+    val boughtToday: BigDecimal? = null,
+    val soldToday: BigDecimal? = null,
 )
 
 data class BuyingPower(

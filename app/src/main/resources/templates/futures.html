@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>선물옵션 · quantlog</title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --err: #f04452;
+            --ok: #0f9d58;
+            --call: #f04452;
+            --put: #3182f6;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 24px 16px 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; }
+        h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+        h2 { font-size: 15px; margin: 24px 0 8px; font-weight: 700; }
+        .note { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+        .card { background: var(--card); border-radius: 16px; margin-bottom: 12px; padding: 16px 20px; }
+        .msg { padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-size: 14px; background: var(--card); }
+        .msg.done { color: var(--ok); }
+        .msg.error { color: var(--err); }
+        .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; }
+        .summary div { font-size: 12px; color: var(--muted); }
+        .summary b { display: block; margin-top: 2px; font-size: 18px; color: var(--text); }
+        .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+        .tools form { display: flex; gap: 8px; align-items: center; }
+        input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; }
+        button { padding: 9px 14px; border: none; border-radius: 10px; background: var(--text); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+        button:disabled { background: var(--muted); cursor: default; }
+        .scroll { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        th, td { padding: 6px 8px; text-align: right; white-space: nowrap; }
+        th { color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+        td.strike { text-align: center; font-weight: 700; }
+        td.name { text-align: left; }
+        tr.atm td { background: #fff8e1; }
+        .bar { display: inline-block; height: 10px; border-radius: 3px; vertical-align: middle; }
+        .bar.call { background: var(--call); }
+        .bar.put { background: var(--put); }
+        td.putbar { text-align: left; }
+        .tag { font-size: 11px; color: var(--muted); }
+        .empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('futures')}"></nav>
+
+    <h1>선물옵션</h1>
+    <p class="note">
+        코스피200 옵션의 행사가별 미결제약정으로 매물대를 봅니다. 콜이 몰린 행사가는 위쪽 저항, 풋이 몰린 행사가는 아래쪽 지지로 읽는 참고 지표이고,
+        맥스페인은 만기 때 매수자 손실이 가장 큰 행사가입니다. 평일 16:00 에 지수 위아래 8% 범위를 자동으로 모아 저장하고, 아래 표는 가장 최근 저장본입니다.
+    </p>
+
+    <div class="msg done" th:if="${done}" th:text="${done}"></div>
+    <div class="msg error" th:if="${error}" th:text="${error}"></div>
+
+    <div class="tools">
+        <form method="get" th:action="@{/futures}">
+            <input type="month" name="maturity" th:value="${maturity}" required>
+            <button type="submit">월물 보기</button>
+        </form>
+        <form method="post" th:action="@{/futures/collect}">
+            <input type="hidden" name="maturity" th:value="${maturity}">
+            <button type="submit" th:disabled="${collecting}" th:text="${collecting} ? '모으는 중… (약 5분)' : '지금 모으기'">지금 모으기</button>
+        </form>
+        <span class="note" style="margin: 0;">만기일 <span th:text="${expiry}"></span></span>
+    </div>
+
+    <div class="empty card" th:if="${board == null}">이 월물의 저장본이 아직 없습니다. "지금 모으기"를 누르거나 평일 16:00 자동 수집을 기다리세요.</div>
+
+    <th:block th:if="${board != null}">
+        <div class="card summary">
+            <div>콜 최대 (저항)<b th:text="${board.callWall != null} ? ${board.callWall.strike} : '-'"></b></div>
+            <div>풋 최대 (지지)<b th:text="${board.putWall != null} ? ${board.putWall.strike} : '-'"></b></div>
+            <div>맥스페인<b th:text="${board.maxPain != null} ? ${board.maxPain} : '-'"></b></div>
+            <div>풋/콜 비율<b th:text="${board.putCallRatio != null} ? ${board.putCallRatio} : '-'"></b></div>
+            <div>KOSPI200<b th:text="${board.underlying != null} ? ${board.underlying} : '-'"></b></div>
+        </div>
+        <p class="note">저장한 날 <span th:text="${snapshotDate}"></span> · 노란 줄이 지수에 가장 가까운 행사가(ATM)입니다.</p>
+
+        <div class="card scroll">
+            <table>
+                <thead>
+                <tr><th>증감</th><th>콜 미결제</th><th></th><th>행사가</th><th></th><th>풋 미결제</th><th>증감</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="s : ${board.strikes}" th:classappend="${s.strike == board.atmStrike} ? 'atm'">
+                    <td th:text="${s.call != null} ? ${#numbers.formatInteger(s.call.openInterestChange, 1, 'COMMA')} : ''"></td>
+                    <td th:text="${#numbers.formatInteger(s.callOi, 1, 'COMMA')}"></td>
+                    <td><span class="bar call" th:style="'width:' + ${board.maxOi > 0 ? s.callOi * 100 / board.maxOi : 0} + 'px'"></span></td>
+                    <td class="strike" th:text="${s.strike}"></td>
+                    <td class="putbar"><span class="bar put" th:style="'width:' + ${board.maxOi > 0 ? s.putOi * 100 / board.maxOi : 0} + 'px'"></span></td>
+                    <td th:text="${#numbers.formatInteger(s.putOi, 1, 'COMMA')}"></td>
+                    <td th:text="${s.put != null} ? ${#numbers.formatInteger(s.put.openInterestChange, 1, 'COMMA')} : ''"></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </th:block>
+
+    <h2>코스피200 선물 (지금)</h2>
+    <div class="msg error" th:if="${futuresError}" th:text="'선물 조회 실패: ' + ${futuresError}"></div>
+    <div class="empty card" th:if="${futures != null and #lists.isEmpty(futures)}">선물 데이터가 없습니다.</div>
+    <div class="card scroll" th:if="${futures != null and !#lists.isEmpty(futures)}">
+        <table>
+            <thead><tr><th style="text-align:left">월물</th><th>현재가</th><th>전일대비</th><th>등락률</th><th>거래량</th><th>미결제</th><th>잔존일</th></tr></thead>
+            <tbody>
+            <tr th:each="row : ${futures}">
+                <td class="name" th:text="${row['hts_kor_isnm']}"></td>
+                <td th:text="${row['futs_prpr']}"></td>
+                <td th:text="${row['futs_prdy_vrss']}"></td>
+                <td th:text="${row['futs_prdy_ctrt']} + '%'"></td>
+                <td th:text="${row['acml_vol']}"></td>
+                <td th:text="${row['hts_otst_stpl_qty']}"></td>
+                <td th:text="${row['hts_rmnn_dynu']}"></td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+</body>
+</html>

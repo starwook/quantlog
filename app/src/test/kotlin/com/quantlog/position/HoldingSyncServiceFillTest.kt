@@ -138,13 +138,16 @@ class HoldingSyncServiceFillTest {
         Mockito.`when`(repository.findAll()).thenReturn(listOf(existing))
         service.applyRecorded(ledger, notice(Side.BUY, 2, "9000"), now)
         assertEquals(5, existing.quantity)
-        val staleKis = listOf(Holding(Market.KR, symbol, "삼성전자", BigDecimal(3), BigDecimal("9000"), BigDecimal("9000")))
+        val staleKis =
+            listOf(
+                Holding(Market.KR, symbol, "삼성전자", BigDecimal(3), BigDecimal("9000"), BigDecimal("9000"), BigDecimal(2), BigDecimal.ZERO),
+            )
 
         // 체결 반영(now) 이전에 시작한 조회(체결 전 잔고 3주)는 무시된다
         service.sync(staleKis, now.minusSeconds(1))
         assertEquals(5, existing.quantity)
 
-        // 반영 뒤에 시작한 조회는 KIS 값이 정답이다
+        // 반영 뒤에 시작한 조회는 당일 누적(매수 2주)이 원장과 같으면 같은 시점이라 KIS 값이 정답이다
         service.sync(staleKis, now.plusSeconds(1))
         assertEquals(3, existing.quantity)
     }
