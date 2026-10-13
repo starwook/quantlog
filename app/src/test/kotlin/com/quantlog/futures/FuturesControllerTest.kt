@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 
 @WebMvcTest(FuturesController::class)
 @Import(ClockConfig::class)
@@ -50,6 +51,19 @@ class FuturesControllerTest {
             .andExpect(content().string(containsString("2026-10-13")))
             .andExpect(content().string(containsString("class=\"rung atm\"")))
             .andExpect(content().string(containsString("F 202612")))
+    }
+
+    @Test
+    fun `가장 가까운 월물 선물의 캔들 차트를 그린다`() {
+        val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
+        Mockito.`when`(client.futuresBoard()).thenReturn(listOf(mapOf("futs_shrn_iscd" to "A01612", "hts_kor_isnm" to "F 202612")))
+        val candle = Candle("20261013", null, BigDecimal("100"), BigDecimal("110"), BigDecimal("90"), BigDecimal("105"), 1)
+        Mockito.`when`(client.candles("A01612", false, today)).thenReturn(listOf(candle))
+
+        mvc.perform(get("/futures"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(containsString("<svg")))
+            .andExpect(content().string(containsString("20261013")))
     }
 
     @Test
