@@ -1,5 +1,10 @@
 # TODO
 
+## 문서만 바뀌면 배포 생략 (2026-10-13 논의, 보류)
+지금은 어떤 파일이 바뀌든 `main` 머지마다 `deploy.yml` 이 빌드·테스트·배포를 돈다. 문서만 고친 머지는 jar 도 서버 파일도 안 바뀌니 생략하고 싶다는 요청이 있었으나 **일단 보류**(사용자 결정: 무엇이 바뀌든 재배포).
+- 하려면 `deploy.yml` 의 `on.push` 에 `paths` 필터: `"**"`, `"!docs/**"`, `"!README.md"`, `"!CLAUDE.md"`, `"!playbook/**"`, `"playbook/principles.md"`(뒤에서 다시 포함 — 이 파일은 배포가 서버로 올리고 `PrinciplesAlignmentTest` 가 읽는다). 코드·`deploy/`·워크플로가 섞이면 배포되고 `workflow_dispatch` 는 그대로다. `deploy/DEPLOY.md` 의 배포 설명도 같이 고친다.
+- GitHub 이 이 필터를 의도대로 평가하는지는 문서만 바뀐 머지로 확인한다. 안 먹히면 `paths-ignore` 로 단순화.
+
 ## 일지·제안 DB 이전 뒤처리 (PR #118, 2026-10-13) — DB 를 볼 수 있는 세션에서
 일지·원칙 변경 제안을 파일(`playbook/journal/`, `proposals/`)에서 DB(`review_journal`, `review_proposal`)로 옮겼다. 서버의 옛 파일은 앱이 뜰 때 `ReviewFileImporter` 가 한 번 DB 로 옮긴다. 아래는 그 임시 장치와 옛 파일을 걷어내는 일이다. **1번(이전 확인)이 끝나기 전에는 2번 이후를 하지 않는다.**
 

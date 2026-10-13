@@ -3,16 +3,6 @@ name: deploy
 on:
   push:
     branches: [main]
-    # 문서만 바뀐 푸시는 배포하지 않는다(jar 도, 서버에 올라가는 파일도 안 바뀐다). 아래 목록이 "서버에 영향 없는 파일"이다.
-    # playbook/principles.md 는 배포가 서버로 올리고 PrinciplesAlignmentTest 가 읽으므로 문서여도 배포한다.
-    # 문서가 아닌 파일(코드·deploy/·워크플로)이 하나라도 섞여 있으면 평소처럼 배포한다. 수동 실행(workflow_dispatch)은 항상 된다.
-    paths:
-      - "**"
-      - "!docs/**"
-      - "!README.md"
-      - "!CLAUDE.md"
-      - "!playbook/**"
-      - "playbook/principles.md"
   workflow_dispatch:
     inputs:
       force_gateway:

@@ -7,7 +7,7 @@
 - 컨테이너 둘: **`quantlog-gateway`**(증권사 키·REST·실시간·주문·원장 기록, 포트 8081은 호스트에 열지 않고 앱이 컴포즈 네트워크로 `http://gateway:8081` 접속)와 **`quantlog`**(앱, 포트 **8080**). 설계는 `docs/서버-분리.md`.
 - DB: 서버에 설치된 호스트 MySQL의 `quantlog` DB, 유저 `admin`. 컨테이너에서 `host.docker.internal:3306`으로 접속 (둘이 같은 DB를 쓴다)
 - 두 배포 방식은 같은 `deploy/deploy.sh`를 쓴다 (jar 둘을 올리고 서버에서 `remote-deploy.sh` 가 서비스별로 `docker compose up -d --build <서비스>`)
-  1. GitHub push(main) → `.github/workflows/deploy.yml` (빌드·테스트 후 배포). **문서만 바뀐 푸시(`docs/**`·`README.md`·`CLAUDE.md`·`playbook/` 중 `principles.md` 제외)는 배포하지 않는다** — 워크플로 `paths` 필터. 서버에 올라가는 파일(jar·`deploy/`·`playbook/principles.md`)이나 코드가 하나라도 섞이면 평소처럼 배포하고, 수동 실행은 항상 된다.
+  1. GitHub push(main) → `.github/workflows/deploy.yml` (빌드·테스트 후 배포)
   2. 로컬 수동: `DEPLOY_KEY=<키 경로> DEPLOY_HOST=<IP> deploy/deploy.sh` (빌드·테스트 포함)
 - 순서는 **앱 → 게이트웨이**. **게이트웨이는 재배포가 드물어야 한다**: jar 내용(sha256)이 같으면 건드리지 않고, 바뀌었어도 장중(평일 08:30~15:31 KST)이면 미루고 앱만 배포한다. 장중에 꼭 올려야 하면 `FORCE_GATEWAY=1 deploy/deploy.sh` 또는 워크플로 수동 실행의 `force_gateway`. (게이트웨이를 다시 띄우면 증권사 웹소켓이 끊겨 체결통보를 놓칠 수 있다.)
 - 서버 쪽은 `flock`으로 동시 배포를 막고, 서비스마다 기동 로그(`Started QuantlogApplicationKt` / `Started GatewayApplicationKt`)를 확인해 실패하면 그 서비스만 이전 jar로 롤백한다.
