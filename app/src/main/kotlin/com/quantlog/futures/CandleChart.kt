@@ -27,8 +27,8 @@ data class ChartPoint(
     val volume: Long,
 )
 
-/** 야간장(18:00~06:00) 분봉인지. */
-fun isNightBar(c: Candle) = c.time != null && (c.time >= "180000" || c.time < "060000")
+/** 야간장(18:00~06:00, 06:00 마감 봉 포함) 분봉인지. */
+fun isNightBar(c: Candle) = c.time != null && (c.time >= "180000" || c.time <= "060000")
 
 /** 차트에 겹쳐 그릴 가격선(저항·지지·맥스페인 등). */
 data class ChartLine(
