@@ -6,7 +6,6 @@ import com.quantlog.strategy.StrategyProperties
 import com.quantlog.trading.EntryProperties
 import com.quantlog.trading.EntryScheduler
 import com.quantlog.trading.ExitProperties
-import com.quantlog.trading.RiskProperties
 import org.junit.jupiter.api.Test
 import org.springframework.boot.context.properties.bind.Binder
 import org.springframework.boot.context.properties.bind.PropertySourcesPlaceholdersResolver
@@ -58,12 +57,6 @@ class PrinciplesAlignmentTest {
         assertDecimal("0.3", entry.nearSupportPercent)
         assertEquals(20, entry.supportBucketCount)
         assertDecimal("0.5", entry.supportZoneFraction)
-    }
-
-    @Test
-    fun `리스크 가드는 국내 1000만원`() {
-        val risk = bound<RiskProperties>("quantlog.risk")
-        assertDecimal("10000000", risk.marketAllocationKrw)
     }
 
     @Test

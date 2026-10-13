@@ -6,10 +6,12 @@ import com.quantlog.broker.Market
 import com.quantlog.marketdata.MinuteCandleEntity
 import com.quantlog.marketdata.MinuteCandleRepository
 import com.quantlog.marketdata.MinuteCandleStore
+import com.quantlog.position.AccountCashService
 import com.quantlog.position.HoldingBalanceSync
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito
+import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalTime
 import java.util.Optional
@@ -42,16 +44,19 @@ class RawProjectorsTest {
         Mockito.`when`(balances.findTopByOrderByIdDesc()).thenReturn(
             balanceRow(
                 7,
-                """{"rt_cd":"0","output1":[{"pdno":"005930","prdt_name":"삼성전자","hldg_qty":"2","pchs_avg_pric":"70000","prpr":"70500"}]}""",
+                """{"rt_cd":"0","output1":[{"pdno":"005930","prdt_name":"삼성전자","hldg_qty":"2","pchs_avg_pric":"70000","prpr":"70500"}],""" +
+                    """"output2":[{"dnca_tot_amt":"167848","prvs_rcdl_excc_amt":"7124135"}]}""",
             ),
         )
         val holdingSync = Mockito.mock(HoldingBalanceSync::class.java)
         val held = Mockito.mock(HeldSymbolPublisher::class.java)
-        val projector = BalanceProjector(balances, cursors, holdingSync, held, mapper)
+        val accountCash = Mockito.mock(AccountCashService::class.java)
+        val projector = BalanceProjector(balances, cursors, holdingSync, accountCash, held, mapper)
 
         assertEquals(true, projector.project())
 
         Mockito.verify(holdingSync).sync(Mockito.anyList(), Mockito.eq(fetchedAt) ?: fetchedAt)
+        Mockito.verify(accountCash).sync(Market.KR, BigDecimal("7124135"), fetchedAt)
         Mockito.verify(held).publish(Mockito.anyList())
         assertEquals(7L, cursorStore["kis_balance"])
         assertEquals(false, projector.project()) // 같은 줄은 다시 반영하지 않는다
@@ -66,7 +71,14 @@ class RawProjectorsTest {
 
         assertEquals(
             false,
-            BalanceProjector(balances, cursors, holdingSync, Mockito.mock(HeldSymbolPublisher::class.java), mapper).project(),
+            BalanceProjector(
+                balances,
+                cursors,
+                holdingSync,
+                Mockito.mock(AccountCashService::class.java),
+                Mockito.mock(HeldSymbolPublisher::class.java),
+                mapper,
+            ).project(),
         )
 
         Mockito.verifyNoInteractions(holdingSync)

@@ -35,7 +35,7 @@
 | 매수가능 | 미국 | `GET /uapi/overseas-stock/v1/trading/inquire-psamount` | `VTTS3007R` |
 | 매수가능 | 국내 | `GET /uapi/domestic-stock/v1/trading/inquire-psbl-order` | `VTTC8908R` |
 | 잔고 | 미국 | `GET /uapi/overseas-stock/v1/trading/inquire-balance` | `VTTS3012R` |
-| 잔고 | 국내 | `GET /uapi/domestic-stock/v1/trading/inquire-balance` | `VTTC8434R` |
+| 잔고 | 국내 | `GET /uapi/domestic-stock/v1/trading/inquire-balance` | `VTTC8434R` — 계좌 요약 `output2[0].prvs_rcdl_excc_amt` 가 오늘 체결까지 반영한 현금이다(2026-10-13 모의 실측: 매수·매도 체결 즉시 체결금액±수수료만큼 움직임, 보유 0 이면 `tot_evlu_amt` 와 같음. `dnca_tot_amt`·`nxdy_excc_amt` 는 장중 불변). 미체결 매수 주문을 빼 주는지는 실측 못 함 |
 | 매수 | 미국 | `POST /uapi/overseas-stock/v1/trading/order` | `VTTT1002U` |
 | 매도 | 미국 | 〃 | `VTTT1001U` ※ |
 | 매수/매도 | 국내 | `POST /uapi/domestic-stock/v1/trading/order-cash` | `VTTC0012U` / `VTTC0011U` |

@@ -12,8 +12,6 @@ import com.quantlog.broker.Side
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.FillProgress
-import com.quantlog.position.PortfolioService
-import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import com.quantlog.watchlist.symbolStrategy
@@ -260,7 +258,7 @@ class MartingaleServiceTest {
     @Test
     fun `리스크 가드가 거부해도 쿨다운 없이 다음 틱에 다시 판정한다`() {
         holding(2)
-        Mockito.doThrow(RiskViolationException("자본 배분 초과")).`when`(riskGuard).checkBuy(anyNonNull())
+        Mockito.doThrow(RiskViolationException("주문가능금액 부족")).`when`(riskGuard).checkBuy(anyNonNull())
         val service = service()
 
         runCatching { tick(service) }
@@ -275,12 +273,10 @@ class MartingaleServiceTest {
     @Test
     fun `리스크 가드는 실제 객체로도 통과한다`() {
         holding(2)
-        val portfolio = Mockito.mock(PortfolioService::class.java)
-        Mockito.`when`(portfolio.snapshot()).thenReturn(PortfolioSnapshot(emptyList(), emptyMap(), emptyMap()))
         val service =
             MartingaleService(
                 broker,
-                RiskGuard(RiskProperties(), portfolio),
+                RiskGuard { null },
                 symbolStrategyServiceOf(symbolStrategy(Market.KR, symbol, martingale = true)),
                 tradeService,
                 repository,

@@ -122,7 +122,7 @@ class EntrySchedulerTest {
         realtimeFeed: RealtimePriceFeed = Mockito.mock(RealtimePriceFeed::class.java),
     ) = EntryScheduler(
         broker,
-        RiskGuard(RiskProperties(), noopPortfolioService()),
+        RiskGuard { null },
         entryRuleReturning(signal),
         symbolStrategyServiceOf(*configs.toTypedArray()).also { service ->
             // 감시 종목 목록은 DB(symbol_strategy) 행 목록 — 이 테스트에서 감시 중인 종목의 설정만 돌려준다.
