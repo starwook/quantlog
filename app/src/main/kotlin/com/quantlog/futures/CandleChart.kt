@@ -33,12 +33,35 @@ data class ChartLine(
     val price: Double,
 )
 
-/** 차트 한 장에 필요한 값. [candles] 는 과거 → 최근 순서이고 비어 있으면 안 된다. 그리기와 확대·축소는 브라우저가 한다. */
+/**
+ * 차트 한 장에 필요한 값. [candles] 는 과거 → 최근 순서이고 비어 있으면 안 된다. 그리기와 확대·축소는 브라우저가 한다.
+ * [fallbackBase] 는 봉 목록에서 전일 종가를 못 찾을 때 쓰는 전일 종가(정규장 중에만 의미가 있다).
+ */
 class CandleChart(
     val candles: List<Candle>,
     levels: List<KeyLevel>,
+    fallbackBase: BigDecimal? = null,
 ) {
     private val daily = candles.first().time == null
+
+    private fun isNight(c: Candle) = c.time != null && (c.time >= NIGHT_START || c.time < NIGHT_END)
+
+    /**
+     * 등락률의 기준 종가. 일봉은 직전 봉 종가, 1분봉은 야간장이면 그날 주간 종가(15:45 마지막 정규장 봉),
+     * 정규장이면 전일 정규장 마지막 봉 종가. 못 찾으면 [fallbackBase], 그래도 없으면 null.
+     */
+    private val baseCandle: Candle? =
+        if (daily) {
+            candles.getOrNull(candles.size - 2)
+        } else if (isNight(candles.last())) {
+            candles.lastOrNull { !isNight(it) }
+        } else {
+            candles.lastOrNull { !isNight(it) && it.date < candles.last().date }
+        }
+
+    val baseline: Double? = (baseCandle?.close ?: fallbackBase.takeIf { !daily && !isNight(candles.last()) })?.toDouble()
+
+    val baselineLabel: String = if (!daily && isNight(candles.last())) "주간 종가" else "전일 종가"
 
     val points: List<ChartPoint> =
         candles.map { ChartPoint(timeOf(it), it.open.toDouble(), it.high.toDouble(), it.low.toDouble(), it.close.toDouble(), it.volume) }
@@ -61,5 +84,7 @@ class CandleChart(
     private companion object {
         val DATE: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
         val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
+        const val NIGHT_START = "180000"
+        const val NIGHT_END = "060000"
     }
 }
