@@ -73,4 +73,12 @@ class CandleChartTest {
         val onlyToday = listOf(minute("20261014", "100000", "950"))
         assertEquals(900.0, CandleChart(onlyToday, emptyList(), BigDecimal("900")).baseline)
     }
+
+    @Test
+    fun `06시 마감 봉도 야간으로 보고 그날 주간 종가를 기준으로 한다`() {
+        val chart = CandleChart(listOf(minute("20261014", "154500", "940"), minute("20261015", "060000", "961")), emptyList())
+
+        assertEquals(940.0, chart.baseline)
+        assertEquals("주간 종가", chart.baselineLabel)
+    }
 }
