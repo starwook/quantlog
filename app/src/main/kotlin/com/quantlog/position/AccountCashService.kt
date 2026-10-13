@@ -5,6 +5,7 @@ import com.quantlog.broker.Side
 import com.quantlog.common.KST
 import com.quantlog.sync.SyncMismatchReporter
 import mu.KotlinLogging
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -31,6 +32,7 @@ fun interface OrderableCash {
 class AccountCashService(
     private val repository: AccountCashRepository,
     private val tradeRepository: TradeRepository,
+    private val events: ApplicationEventPublisher,
 ) : OrderableCash {
     /** 마지막으로 체결을 현금에 반영한 시각. 그보다 먼저 시작한 잔고 조회 결과로는 덮어쓰지 않는다(체결 이전 값일 수 있다). */
     @Volatile
@@ -44,6 +46,7 @@ class AccountCashService(
         row.update(if (event.side == Side.BUY) row.amount.subtract(amount) else row.amount.add(amount))
         repository.save(row)
         fillAppliedAt = Instant.now()
+        events.publishEvent(CashChangedEvent)
     }
 
     /**
@@ -60,6 +63,7 @@ class AccountCashService(
         val row = repository.findByCurrency(market.currency)
         if (row == null) {
             repository.save(AccountCash(market.currency, kis))
+            events.publishEvent(CashChangedEvent)
             log.info { "[현금 동기화] ${market.currency} 처음 받음: ${kis.plain()}" }
             return
         }
@@ -68,6 +72,7 @@ class AccountCashService(
             SyncMismatchReporter.report(AREA, market.currency, row.amount.plain(), kis.plain(), "DB 를 증권사 값으로 고침")
         }
         row.update(kis)
+        events.publishEvent(CashChangedEvent)
     }
 
     /** 현금 사본에서 아직 체결되지 않은 오늘의 매수 주문이 잡고 있는 돈을 뺀 값. 현금을 아직 한 번도 못 받았으면 null. */

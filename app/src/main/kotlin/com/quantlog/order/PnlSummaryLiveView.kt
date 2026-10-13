@@ -15,6 +15,8 @@ data class PnlSummaryLiveView(
     val unrealizedCss: String,
     /** 보유 종목 전체의 총 평가금액(현재가 × 수량 합계). */
     val totalValueText: String,
+    /** 지금 새 매수에 쓸 수 있는 돈(주문가능금액). 아직 모르면 "-". */
+    val orderableText: String,
     val buyCount: Int,
     val sellCount: Int,
     val win: Int,
@@ -29,6 +31,7 @@ data class PnlSummaryLiveView(
             unrealizedAmount: BigDecimal,
             unrealizedPercent: BigDecimal,
             totalValue: BigDecimal,
+            orderable: BigDecimal?,
         ): PnlSummaryLiveView {
             val decided = summary.sellWinToday + summary.sellLossToday
             return PnlSummaryLiveView(
@@ -37,6 +40,7 @@ data class PnlSummaryLiveView(
                 unrealizedText = signedMoneyAndPercent(unrealizedAmount, unrealizedPercent, currency),
                 unrealizedCss = pnlCss(unrealizedAmount),
                 totalValueText = totalValue.money(currency),
+                orderableText = orderable?.money(currency) ?: "-",
                 buyCount = summary.buyCountToday,
                 sellCount = summary.sellCountToday,
                 win = summary.sellWinToday,

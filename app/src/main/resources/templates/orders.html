@@ -97,8 +97,10 @@
             <a href="/realized" class="today-link"><div class="label">오늘 실현손익 <span class="sub">(매도 확정분)</span> ›</div><div class="big" id="sumToday"></div></a>
             <div><div class="label">현재 평가손익</div><div class="big" id="sumUnrealized"></div></div>
         </div>
-        <div class="label">총 평가금액 <span class="sub">(보유 종목 합계)</span></div>
-        <div class="big" id="sumTotalValue"></div>
+        <div class="top">
+            <div><div class="label">총 평가금액 <span class="sub">(보유 종목 합계)</span></div><div class="big" id="sumTotalValue"></div></div>
+            <div><div class="label">주문가능금액 <span class="sub">(미체결 매수 제외)</span></div><div class="big" id="sumOrderable"></div></div>
+        </div>
         <div class="stats">
             <div class="stat"><div class="label">승률 (승 / 패)</div><div class="v" id="sumWinRate"></div></div>
             <div class="stat"><div class="label">매수 회수</div><div class="v" id="sumBuy"></div></div>
@@ -243,6 +245,7 @@
         set('sumToday', sm.todayText, sm.todayCss);
         set('sumUnrealized', sm.unrealizedText, sm.unrealizedCss);
         set('sumTotalValue', sm.totalValueText);
+        set('sumOrderable', sm.orderableText);
         set('sumWinRate', sm.winRateText + ' (' + sm.win + '승 ' + sm.loss + '패)');
         set('sumBuy', sm.buyCount + '회');
         set('sumSell', sm.sellCount + '회');
@@ -364,6 +367,8 @@
                 const sum = document.getElementById('sumUnrealized');
                 sum.textContent = msg.unrealizedText;
                 sum.className = sum.className.replace(/\b(pos|neg|zero)\b/g, '').trim() + ' ' + msg.unrealizedCss;
+            } else if (msg.type === 'cash') {
+                document.getElementById('sumOrderable').textContent = msg.orderableText;
             } else if (msg.type === 'holdings') {
                 holdings = msg.holdings;
                 renderSummary(msg.summary, false);
