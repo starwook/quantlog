@@ -3,6 +3,8 @@ package com.quantlog.watchlist
 import com.quantlog.broker.Market
 import com.quantlog.gatewayclient.WatchSymbolRow
 import com.quantlog.gatewayclient.WatchSymbolRowRepository
+import com.quantlog.position.AccountHolding
+import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.strategy.MartingaleProperties
 import com.quantlog.strategy.StrategyProperties
 import org.junit.jupiter.api.Test
@@ -20,9 +22,10 @@ class SymbolStrategyServiceTest {
         Mockito.mock(WatchSymbolRowRepository::class.java).also { repo ->
             Mockito.`when`(repo.save(Mockito.any(WatchSymbolRow::class.java))).thenAnswer { it.arguments[0] }
         }
+    private val holdings = Mockito.mock(AccountHoldingRepository::class.java)
     private val events = Mockito.mock(ApplicationEventPublisher::class.java)
     private val defaults = SymbolStrategyDefaults(StrategyProperties(), MartingaleProperties(), watchSymbols)
-    private val service = SymbolStrategyService(repository, watchSymbols, defaults, events)
+    private val service = SymbolStrategyService(repository, watchSymbols, holdings, defaults, events)
     private val seeding = SymbolStrategySeedService(repository, defaults)
 
     @Test
@@ -160,6 +163,18 @@ class SymbolStrategyServiceTest {
         Mockito.verify(watchSymbols).delete(existing.watchSymbol!!)
         Mockito.verify(events).publishEvent(WatchSymbolsChanged)
         assertFailsWith<IllegalArgumentException> { service.remove(Market.KR, "000000") }
+    }
+
+    @Test
+    fun `보유 중인 종목은 삭제할 수 없다`() {
+        val existing = symbolStrategy(Market.KR, "005930")
+        Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, "005930")).thenReturn(existing)
+        Mockito.`when`(holdings.findByMarketAndSymbol(Market.KR, "005930"))
+            .thenReturn(AccountHolding(Market.KR, "005930", 3, BigDecimal("70000"), BigDecimal("70000")))
+
+        assertFailsWith<IllegalArgumentException> { service.remove(Market.KR, "005930") }
+
+        Mockito.verify(repository, Mockito.never()).delete(existing)
     }
 
     @Test
