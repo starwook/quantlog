@@ -9,6 +9,7 @@ import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlin.test.assertEquals
@@ -60,10 +61,12 @@ class OptionChainCollectorTest {
             @Suppress("UNCHECKED_CAST")
             saved = it.arguments[3] as List<OptionStrike>
             null
-        }.`when`(store).replace(anyDate(), anyMonth(), anyDecimal(), anyList())
+        }.`when`(store).replace(anyDate(), anyMonth(), anyDecimal(), anyList(), anyDateTime())
         OptionChainCollector(FuturesOptionsClient(kis), store, clock, pauseMillis = 0).collect(nov)
         return saved
     }
+
+    private fun anyDateTime(): LocalDateTime = Mockito.any(LocalDateTime::class.java) ?: LocalDateTime.MIN
 
     private fun anyDate(): LocalDate = Mockito.any(LocalDate::class.java) ?: LocalDate.MIN
 

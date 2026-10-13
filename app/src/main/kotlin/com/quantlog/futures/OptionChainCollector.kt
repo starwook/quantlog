@@ -11,6 +11,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.YearMonth
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -25,10 +26,11 @@ class OptionSnapshotStore(private val repository: OptionOpenInterestRepository) 
         maturity: YearMonth,
         underlying: BigDecimal,
         strikes: List<OptionStrike>,
+        collectedAt: LocalDateTime,
     ) {
         repository.deleteSnapshot(tradeDate, maturity.toString())
         repository.flush()
-        repository.saveAll(strikes.map { OptionOpenInterest.of(tradeDate, maturity.toString(), underlying, it) })
+        repository.saveAll(strikes.map { OptionOpenInterest.of(tradeDate, maturity.toString(), underlying, it, collectedAt) })
     }
 
     /** 그 월물의 가장 최근 저장본. 없으면 null. */
@@ -36,7 +38,13 @@ class OptionSnapshotStore(private val repository: OptionOpenInterestRepository) 
     fun latest(maturity: YearMonth): Pair<LocalDate, OptionBoard>? {
         val date = repository.latestTradeDate(maturity.toString()) ?: return null
         val rows = repository.findAllByTradeDateAndMaturity(date, maturity.toString())
-        return date to OptionBoard(rows.map { it.toStrike() }, rows.firstNotNullOfOrNull { it.underlying })
+        return date to
+            OptionBoard(
+                rows.map {
+                    it.toStrike()
+                },
+                rows.firstNotNullOfOrNull { it.underlying }, rows.firstNotNullOfOrNull { it.collectedAt },
+            )
     }
 }
 
@@ -77,7 +85,7 @@ class OptionChainCollector(
             val low = underlying * (BigDecimal.ONE - RANGE)
             val high = underlying * (BigDecimal.ONE + RANGE)
             val strikes = below1000(maturity, low, high) + from1000(maturity, low, high)
-            store.replace(LocalDate.now(clock), maturity, underlying, strikes)
+            store.replace(LocalDate.now(clock), maturity, underlying, strikes, LocalDateTime.now(clock))
             return strikes.size
         } finally {
             running.set(false)

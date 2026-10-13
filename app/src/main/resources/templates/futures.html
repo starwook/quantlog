@@ -107,10 +107,9 @@
 
     <h2>코스피200 선물 차트</h2>
     <div class="tools">
-        <a th:href="@{/futures(maturity=${maturity}, chart='D')}" th:class="${chartUnit != 'M' and chartUnit != 'N'} ? 'tab on' : 'tab'">일봉</a>
-        <a th:href="@{/futures(maturity=${maturity}, chart='M')}" th:class="${chartUnit == 'M'} ? 'tab on' : 'tab'">1분봉</a>
-        <a th:href="@{/futures(maturity=${maturity}, chart='N')}" th:class="${chartUnit == 'N'} ? 'tab on' : 'tab'">야간 1분봉</a>
-        <span class="note" style="margin: 0;">가로선은 아래 옵션 매물대(점선: 저항·지지·맥스페인)입니다. 옵션 기준 지수와 선물 가격은 조금 다를 수 있습니다.</span>
+        <a th:href="@{/futures(maturity=${maturity}, chart='M')}" th:class="${chartUnit != 'D'} ? 'tab on' : 'tab'">1분봉</a>
+        <a th:href="@{/futures(maturity=${maturity}, chart='D')}" th:class="${chartUnit == 'D'} ? 'tab on' : 'tab'">일봉</a>
+        <span class="note" style="margin: 0;">1분봉은 정규장(~15:45)과 야간장(18:00~)을 이어 붙여 보여줍니다(사이는 장이 없습니다). 가로선은 아래 옵션 매물대(점선: 저항·지지·맥스페인)입니다. 옵션 기준 지수와 선물 가격은 조금 다를 수 있습니다.</span>
     </div>
     <div class="msg error" th:if="${chartError}" th:text="'차트 조회 실패: ' + ${chartError}"></div>
     <div class="card" th:if="${candleChart != null}">
@@ -140,7 +139,7 @@
                 <span><b th:text="${l.price}"></b><span class="gap" th:if="${l.gapPercent != null and !l.label.startsWith('현재')}" th:text="(${l.gapPercent.signum() > 0} ? '+' : '') + ${l.gapPercent} + '%'"></span></span>
             </div>
         </div>
-        <p class="note">저장한 날 <span th:text="${snapshotDate}"></span> · 위가 높은 가격입니다. 노란 줄이 지수에 가장 가까운 행사가이고, 막대가 긴 가격대일수록 매물이 많이 걸려 있습니다.</p>
+        <p class="note">저장한 시각 <span th:text="${snapshotAt}"></span> · 위가 높은 가격입니다. 노란 줄이 지수에 가장 가까운 행사가이고, 막대가 긴 가격대일수록 매물이 많이 걸려 있습니다.</p>
 
         <div class="card">
             <div class="legend"><span class="p">◀ 풋 (아래 지지)</span><span class="c">콜 (위 저항) ▶</span></div>

@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * 하루 한 번 모은 옵션 행사가 하나의 콜·풋 값. 한투 전광판은 100행에서 끊겨 지수 근처가 빠지므로(실측) 행사가마다 따로 조회해 쌓는다.
@@ -47,6 +48,9 @@ class OptionOpenInterest(
     val putOiChange: Long?,
     @Column(name = "put_volume")
     val putVolume: Long?,
+    /** 이 값을 모은 시각. 이 컬럼이 생기기 전 저장본은 null. */
+    @Column(name = "collected_at")
+    val collectedAt: LocalDateTime? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -66,6 +70,7 @@ class OptionOpenInterest(
             maturity: String,
             underlying: BigDecimal?,
             strike: OptionStrike,
+            collectedAt: LocalDateTime,
         ) = OptionOpenInterest(
             tradeDate,
             maturity,
@@ -79,6 +84,7 @@ class OptionOpenInterest(
             strike.put?.openInterest,
             strike.put?.openInterestChange,
             strike.put?.volume,
+            collectedAt,
         )
     }
 }

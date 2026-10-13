@@ -2,6 +2,7 @@ package com.quantlog.futures
 
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.LocalDateTime
 
 /** 옵션 한 종목(콜 또는 풋)의 값. [openInterest] 는 미결제약정 수량. */
 data class OptionQuote(
@@ -35,6 +36,8 @@ data class KeyLevel(
 class OptionBoard(
     strikes: List<OptionStrike>,
     val underlying: BigDecimal?,
+    /** 저장본을 모은 시각. 모르면 null. */
+    val collectedAt: LocalDateTime? = null,
 ) {
     val strikes: List<OptionStrike> = strikes.sortedBy { it.strike }
 
