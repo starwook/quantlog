@@ -17,6 +17,8 @@ services:
       TZ: Asia/Seoul
       SPRING_PROFILES_ACTIVE: local
       JAVA_OPTS: "-XX:MaxRAMPercentage=30"
+      # 증권사 키가 있는 게이트웨이는 서버에서만 뜬다(KisRunGuard). 로컬 실행을 막기 위한 허락 표시.
+      QUANTLOG_GATEWAY_ALLOW_KIS: "true"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

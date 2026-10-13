@@ -105,4 +105,17 @@ class KisFillNoticeHandlerTest {
 
         assertTrue(events.isEmpty())
     }
+
+    @Test
+    fun `구독 거절 응답은 실패로 알리고 문구에 되돌려 준 접속키는 가린다`() {
+        val rejected =
+            ObjectMapper().readTree(
+                """{"header":{"tr_id":"H0STCNI9"},"body":{"rt_cd":"1","msg_cd":"OPSP0011","msg1":"invalid approval : secretkey123"}}""",
+            )
+
+        assertEquals(false, handler.onSubscribeResponse("H0STCNI9", rejected))
+        assertEquals(true, handler.onSubscribeResponse("H0STCNI9", subscribeResponse("H0STCNI9")))
+        assertEquals("invalid approval : ***", KisFillNoticeHandler.maskApprovalKey("invalid approval : secretkey123"))
+        assertEquals("SUBSCRIBE SUCCESS", KisFillNoticeHandler.maskApprovalKey("SUBSCRIBE SUCCESS"))
+    }
 }
