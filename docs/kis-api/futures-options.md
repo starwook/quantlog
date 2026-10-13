@@ -27,3 +27,9 @@
 2. 모의투자 도메인에서 이 TR 들이 되는지(예제는 `inquire-price`·일봉만 모의 TR 이 같다고 적음). 안 되면 실전 키로 시세 조회만.
 3. 선물옵션 계좌 개설 없이 시세만 조회되는지.
 4. 야간 시세를 REST 로 받는 방법(야간 시간대에 `inquire-price` 가 야간 값을 주는지).
+
+## 응답 필드명 (공식 저장소 `chk_*.py` 의 COLUMN_MAPPING 원문, 2026-10-13 — 실측 전, output1/2 구분은 미확인)
+
+**`display-board-callput`** (콜·풋 공통 키): `acpr` 행사가 · `optn_shrn_iscd` 옵션 단축코드 · `optn_prpr` 현재가 · `optn_prdy_vrss`/`optn_prdy_ctrt` 전일대비/율 · `prdy_vrss_sign` · `optn_bidp`/`optn_askp` 매수/매도호가 · `acml_vol` 누적거래량 · `acml_tr_pbmn` 누적거래대금 · **`hts_otst_stpl_qty` 미결제약정 수량 · `otst_stpl_qty_icdc` 미결제약정 증감** · `delta_val` `gama` `vega` `theta` `rho` · `hts_ints_vltl` 내재변동성 · `tmvl_val` 시간가치 · `invl_val` 내재가치 · `atm_cls_name` ATM 구분 · `optn_oprc/hgpr/lwpr/mxpr/llam` · `seln_rsqn`/`shnu_rsqn` 잔량 · `total_askp_rsqn`/`total_bidp_rsqn` · `futs_antc_cnpr` 선물예상체결가 · `unch_prpr` 환산 현재가 · `nmix_sdpr` 지수 기준가.
+
+**`inquire-price`**: `hts_kor_isnm` 종목명 · `futs_prpr` 현재가 · `futs_prdy_vrss`/`futs_prdy_ctrt` · `futs_prdy_clpr` 전일종가 · `futs_oprc/hgpr/lwpr/mxpr/llam` · `acml_vol` · `acml_tr_pbmn` · `hts_otst_stpl_qty` 미결제약정 · `otst_stpl_qty_icdc` 증감 · `basis`·`mrkt_basis` 베이시스 · `hts_thpr` 이론가 · `dprt` 괴리율 · `futs_last_tr_date` 최종거래일 · `hts_rmnn_dynu` 잔존일수 · `bstp_nmix_prpr` 업종지수(KOSPI200) 현재가 외.
