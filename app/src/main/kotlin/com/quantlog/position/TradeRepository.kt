@@ -1,6 +1,7 @@
 package com.quantlog.position
 
 import com.quantlog.broker.Market
+import com.quantlog.broker.Side
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
 import java.time.LocalDate
@@ -29,6 +30,13 @@ interface TradeRepository : JpaRepository<Trade, Long> {
     fun findAllByMarketAndOrderNo(
         market: Market,
         orderNo: String,
+    ): List<Trade>
+
+    /** [since] 이후에 낸, 취소되지 않은 주문. 미체결 매수가 잡고 있는 돈을 셀 때 쓴다([AccountCashService]). */
+    fun findAllByMarketAndSideAndCanceledFalseAndExecutedAtGreaterThanEqual(
+        market: Market,
+        side: Side,
+        since: Instant,
     ): List<Trade>
 }
 

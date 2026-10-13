@@ -51,7 +51,7 @@ class SmokeTestRunnerTest {
         Mockito.mock(PortfolioService::class.java).also {
             Mockito.`when`(it.snapshot()).thenReturn(PortfolioSnapshot(emptyList(), emptyMap(), emptyMap()))
         }
-    private val guard = RiskGuard(RiskProperties(), portfolioService)
+    private val guard = RiskGuard { null }
     private val exitRule = FixedPercentExitRule(BigDecimal.ONE, BigDecimal.ONE)
     private val tradeService = Mockito.mock(TradeService::class.java)
 
@@ -86,9 +86,9 @@ class SmokeTestRunnerTest {
     }
 
     @Test
-    fun `배분 한도를 넘으면 주문이 나가지 않는다`() {
+    fun `주문가능금액을 넘으면 주문이 나가지 않는다`() {
         val broker = FakeBroker()
-        val strict = RiskGuard(RiskProperties(marketAllocationKrw = BigDecimal("100")), portfolioService)
+        val strict = RiskGuard { BigDecimal("100") }
         runCatching { runner(broker, SmokeProperties(mode = "BUY"), strict).run(DefaultApplicationArguments()) }
         assertTrue(broker.orders.isEmpty())
     }

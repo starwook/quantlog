@@ -56,7 +56,7 @@ class ManualOrderServiceTest {
     private val tradeService = Mockito.mock(TradeService::class.java)
     private val portfolioService = Mockito.mock(PortfolioService::class.java)
     private val accountHoldingRepository = Mockito.mock(AccountHoldingRepository::class.java)
-    private val service = ManualOrderService(broker, RiskGuard(RiskProperties(), portfolioService), tradeService, accountHoldingRepository)
+    private val service = ManualOrderService(broker, RiskGuard { null }, tradeService, accountHoldingRepository)
 
     private fun holding(quantity: Int) {
         val price = BigDecimal("272000")

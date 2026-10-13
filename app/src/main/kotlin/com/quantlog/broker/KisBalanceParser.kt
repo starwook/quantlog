@@ -6,6 +6,8 @@ import java.math.BigDecimal
 /**
  * 한투 주식잔고조회(VTTC8434R) 응답에서 보유 종목을 읽는다. 종목별 행은 `output1` — 종목코드 `pdno`, 종목명 `prdt_name`,
  * 보유수량 `hldg_qty`, 매입평균가 `pchs_avg_pric`, 현재가 `prpr`, 당일 누적 매수·매도 수량 `thdt_buyqty`·`thdt_sll_qty`. 수량이 0 인 행은 뺀다.
+ * 계좌 요약은 `output2` 첫 행 — 그중 `prvs_rcdl_excc_amt`(D+2 정산 예수금)가 오늘 체결까지 다 반영한 현금이다
+ * (2026-10-13 실측: 매수·매도 체결 즉시 체결금액±수수료만큼 움직이고, 보유가 0 이면 총자산과 같다. `dnca_tot_amt`·`nxdy_excc_amt` 는 장중에 안 변한다).
  * 게이트웨이는 이 응답을 원문 그대로 `kis_balance` 에 쌓고, 칸 이름이 바뀌면 여기만 고친다.
  */
 object KisBalanceParser {
@@ -36,6 +38,9 @@ object KisBalanceParser {
                 soldToday = row.decimalOrNull("thdt_sll_qty"),
             ).takeIf { it.quantity > BigDecimal.ZERO }
         }
+
+    /** 오늘 체결까지 반영한 현금(`output2[0].prvs_rcdl_excc_amt`). 응답에 없으면 null. */
+    fun cash(response: JsonNode): BigDecimal? = response.path("output2").path(0).path("prvs_rcdl_excc_amt").asText().toBigDecimalOrNull()
 }
 
 /** 칸이 없거나 비어 있으면 null — 0 으로 읽으면 "오늘 거래 없음"으로 착각한다. */

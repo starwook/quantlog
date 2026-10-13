@@ -12,7 +12,6 @@ import com.quantlog.broker.Side
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.FillProgress
-import com.quantlog.position.PortfolioService
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.FixedPercentExitRule
@@ -89,7 +88,7 @@ class ExitServiceTest {
         holdingSync: FillProgress = Mockito.mock(FillProgress::class.java),
     ) = ExitService(
         broker,
-        RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
+        RiskGuard { null },
         FixedPercentExitRule(BigDecimal.ONE, BigDecimal.ONE),
         // 설정 행 없음 → 전역 익절/손절 규칙으로 폴백
         Mockito.mock(SymbolStrategyService::class.java),
@@ -185,7 +184,7 @@ class ExitServiceTest {
         val cycle = MartingaleCycle.from(trades)
         return ExitService(
             broker,
-            RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
+            RiskGuard { null },
             FixedPercentExitRule(BigDecimal("0.5"), null),
             symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", martingale = true, stopLoss = stopLoss)),
             tradeService,
@@ -234,7 +233,7 @@ class ExitServiceTest {
             val broker = FakeBroker(BigDecimal(price))
             ExitService(
                 broker,
-                RiskGuard(RiskProperties(), Mockito.mock(PortfolioService::class.java)),
+                RiskGuard { null },
                 FixedPercentExitRule(BigDecimal.ONE, BigDecimal.ONE),
                 symbolStrategyServiceOf(symbolStrategy(Market.KR, "005930", takeProfit = "2")),
                 Mockito.mock(TradeService::class.java),

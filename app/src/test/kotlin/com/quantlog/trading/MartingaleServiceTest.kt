@@ -12,8 +12,6 @@ import com.quantlog.broker.Side
 import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.FillProgress
-import com.quantlog.position.PortfolioService
-import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import com.quantlog.watchlist.symbolStrategy
@@ -258,29 +256,27 @@ class MartingaleServiceTest {
     }
 
     @Test
-    fun `리스크 가드가 거부하면 쿨다운 동안 다시 시도하지 않는다`() {
+    fun `리스크 가드가 거부해도 쿨다운 없이 다음 틱에 다시 판정한다`() {
         holding(2)
-        Mockito.doThrow(RiskViolationException("자본 배분 초과")).`when`(riskGuard).checkBuy(anyNonNull())
+        Mockito.doThrow(RiskViolationException("주문가능금액 부족")).`when`(riskGuard).checkBuy(anyNonNull())
         val service = service()
 
         runCatching { tick(service) }
-        tick(service, at = krOpen.plusSeconds(1))
-        tick(service, at = krOpen.plusSeconds(2))
+        runCatching { tick(service, at = krOpen.plusSeconds(1)) }
+        runCatching { tick(service, at = krOpen.plusSeconds(2)) }
 
         assertTrue(broker.orders.isEmpty())
-        // 첫 시도만 시세를 봤다(쿨다운 안에서는 시세 조회 전에 돌아간다)
-        assertEquals(1, broker.quoteCalls)
+        // 세 틱 모두 시세를 보고 판정했다(쿨다운 없음)
+        assertEquals(3, broker.quoteCalls)
     }
 
     @Test
     fun `리스크 가드는 실제 객체로도 통과한다`() {
         holding(2)
-        val portfolio = Mockito.mock(PortfolioService::class.java)
-        Mockito.`when`(portfolio.snapshot()).thenReturn(PortfolioSnapshot(emptyList(), emptyMap(), emptyMap()))
         val service =
             MartingaleService(
                 broker,
-                RiskGuard(RiskProperties(), portfolio),
+                RiskGuard { null },
                 symbolStrategyServiceOf(symbolStrategy(Market.KR, symbol, martingale = true)),
                 tradeService,
                 repository,
