@@ -1,5 +1,24 @@
 # TODO
 
+## 문서만 바뀌면 배포 생략 (2026-10-13 논의, 보류)
+지금은 어떤 파일이 바뀌든 `main` 머지마다 `deploy.yml` 이 빌드·테스트·배포를 돈다. 문서만 고친 머지는 jar 도 서버 파일도 안 바뀌니 생략하고 싶다는 요청이 있었으나 **일단 보류**(사용자 결정: 무엇이 바뀌든 재배포).
+- 하려면 `deploy.yml` 의 `on.push` 에 `paths` 필터: `"**"`, `"!docs/**"`, `"!README.md"`, `"!CLAUDE.md"`, `"!playbook/**"`, `"playbook/principles.md"`(뒤에서 다시 포함 — 이 파일은 배포가 서버로 올리고 `PrinciplesAlignmentTest` 가 읽는다). 코드·`deploy/`·워크플로가 섞이면 배포되고 `workflow_dispatch` 는 그대로다. `deploy/DEPLOY.md` 의 배포 설명도 같이 고친다.
+- GitHub 이 이 필터를 의도대로 평가하는지는 문서만 바뀐 머지로 확인한다. 안 먹히면 `paths-ignore` 로 단순화.
+
+## 일지·제안 DB 이전 뒤처리 (PR #118, 2026-10-13) — DB 를 볼 수 있는 세션에서
+일지·원칙 변경 제안을 파일(`playbook/journal/`, `proposals/`)에서 DB(`review_journal`, `review_proposal`)로 옮겼다. 서버의 옛 파일은 앱이 뜰 때 `ReviewFileImporter` 가 한 번 DB 로 옮긴다. 아래는 그 임시 장치와 옛 파일을 걷어내는 일이다. **1번(이전 확인)이 끝나기 전에는 2번 이후를 하지 않는다.**
+
+1. **서버에서 이전이 됐는지 확인한다** (배포 직후 한 번)
+   - 앱 로그에 `[리뷰] 옛 일지·제안 파일 N건을 DB 로 옮겼다` 가 있는지. `날짜 이름이 아닌 일지 파일은 건너뜀` / `이름 형식이 다른 제안 파일은 건너뜀` 경고가 있으면 그 파일이 못 옮겨진 것이다.
+   - 건수 대조: 서버 `playbook/journal/*.md` 안의 `## HH:mm:ss KST` 줄 수 = `SELECT COUNT(*) FROM review_journal WHERE source IS NOT NULL`, `playbook/proposals/*.md` 개수 = `SELECT COUNT(*) FROM review_proposal WHERE source IS NOT NULL`.
+   - 제안이 맞는 날짜에 붙었는지 샘플 확인: `SELECT review_day, created_at, title FROM review_proposal ORDER BY created_at` (이전 규칙: 제안 파일 날짜 이하에서 가장 최근 일지의 날짜. 일지가 하나도 없던 제안은 파일 날짜 그대로라 날짜 목록에는 제안만 있는 날로 보인다).
+   - `/review` 화면에서 옛 날짜가 보이고, 날짜를 열면 일지·제안이 나오는지.
+2. **임시 임포터를 지운다** — `app` `review/ReviewFileImporter.kt`, 테스트 `review/ReviewFileImporterTest.kt` 삭제. 임포터만 쓰던 저장소 메서드 `existsBySource`, `findFirstByDayLessThanEqualOrderByDayDesc`(`review/ReviewEntities.kt` 의 두 저장소)도 삭제.
+3. **`source` 열을 걷어낸다** — 엔티티 `ReviewJournal`·`ReviewProposal` 의 `source` 필드와 `uniqueConstraints = [UniqueConstraint(columnNames = ["source"])]` 를 코드에서 지운다. `ddl-auto: update` 는 열·인덱스를 지우지 않으므로 DB 에서 직접: `SHOW INDEX FROM review_journal;` 로 `source` 유니크 인덱스 이름을 확인한 뒤 `ALTER TABLE review_journal DROP INDEX <이름>, DROP COLUMN source;` 를 `review_proposal` 에도 같이 한다. (남겨 둬도 동작에는 문제가 없다 — 정리하는 일.)
+4. **서버의 옛 파일을 지운다** — `/opt/quantlog/playbook/journal/`, `playbook/proposals/` 폴더. `playbook/principles.md` 는 배포가 올리는 원칙 파일이라 건드리지 않는다. `deploy/docker-compose.yml` 의 `./playbook:/app/playbook` 마운트는 원칙 파일 때문에 **유지**한다.
+5. **문서에서 임포터 언급을 지운다** — `docs/기획서.md` 6.4 의 "서버에 쌓인 옛 파일은 `ReviewFileImporter` 가 … 옮긴다" 문장, `deploy/DEPLOY.md`·`deploy/deploy.sh` 의 "옛 일지·제안 파일 … 앱이 뜰 때 한 번 DB 로 옮긴다" 설명.
+6. 이 절을 지운다.
+
 ## 게이트웨이 = 한투 원문 통로 — 구현 끝, 배포·실측 대기 (2026-10-08)
 **구현됨(브랜치 `feat-gateway-raw-rest`):** 체결통보(`kis_broker_fill`)·시세(`raw`)·REST(`/api/kis/**`)·주문(`kis_order` 멱등)·잔고(`kis_balance`)·분봉(`kis_minute_chart`)을 게이트웨이가 **해석 없이** 전달·저장하고, 앱이 한투 문서대로 읽는다(`KisBrokerClient`·`Kis*Parser`·`*Projector`). 모의 체결(`paper/`·`paper_order`)은 앱으로 옮겼다. 형식은 [`contracts/README.md`](contracts/README.md) 한 장, 이유·흐름은 [`서버-분리.md`](서버-분리.md).
 
