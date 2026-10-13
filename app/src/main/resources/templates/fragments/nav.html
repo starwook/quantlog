@@ -1,25 +1,39 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <body>
-<!-- 공통 상단 메뉴(화면 위에 고정). 사용: <nav th:replace="~{fragments/nav :: menu('orders')}"></nav> (active: orders|chart|backtest|futures|review|settings|errors)
-     자주 쓰는 메뉴는 왼쪽, 점검용인 오류는 오른쪽 끝에 작게 둔다. -->
-<nav th:fragment="menu(active)" class="menu">
+<!-- 공통 메뉴. 1단은 쓰는 시점으로 묶은 그룹 3개(거래·분석·설정), 2단은 그룹 안의 화면. 화면 위에 고정된다.
+     사용: <nav th:replace="~{fragments/nav :: menu('orders')}"></nav>
+     active: orders|chart|futures (거래) · review|backtest (분석) · settings|errors (설정)
+     새 화면은 상단에 늘리지 말고 어느 그룹의 2단에 넣을지 먼저 정한다. 실현손익 같은 하위 화면은 부모 화면의 active 를 쓴다. -->
+<nav th:fragment="menu(active)" class="menu"
+     th:with="group=${active == 'orders' or active == 'chart' or active == 'futures'} ? 'trade' : (${active == 'review' or active == 'backtest'} ? 'analysis' : 'config')">
     <style>
-        .menu { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 2px; margin: -24px -16px 16px; padding: 0 12px;
-                background: var(--bg, #f2f4f6); border-bottom: 1px solid var(--border, #eceef1); overflow-x: auto; }
-        .menu a { padding: 14px 12px; font-size: 15px; font-weight: 600; color: var(--muted, #8b95a1); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
-        .menu a.active { color: var(--text, #191f28); border-bottom-color: var(--text, #191f28); }
-        .menu .spacer { flex: 1; }
-        .menu a.minor { font-size: 13px; font-weight: 500; }
+        .menu { position: sticky; top: 0; z-index: 10; margin: -24px -16px 16px; background: var(--bg, #f2f4f6); border-bottom: 1px solid var(--border, #eceef1); }
+        .menu .row { display: flex; overflow-x: auto; }
+        .menu .groups a { flex: 1; padding: 14px 8px; text-align: center; font-size: 16px; font-weight: 700; color: var(--muted, #8b95a1); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
+        .menu .groups a.on { color: var(--text, #191f28); border-bottom-color: var(--text, #191f28); }
+        .menu .subs { gap: 6px; padding: 8px 12px; background: var(--card, #fff); }
+        .menu .subs a { padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--muted, #8b95a1); text-decoration: none; white-space: nowrap; }
+        .menu .subs a.on { background: var(--text, #191f28); color: #fff; }
     </style>
-    <a href="/orders" th:classappend="${active == 'orders'} ? 'active'">주문</a>
-    <a href="/chart/KR/005930" th:classappend="${active == 'chart'} ? 'active'">관심종목</a>
-    <a href="/backtest/KR/005930" th:classappend="${active == 'backtest'} ? 'active'">백테스트</a>
-    <a href="/futures" th:classappend="${active == 'futures'} ? 'active'">선물옵션</a>
-    <a href="/review" th:classappend="${active == 'review'} ? 'active'">리뷰</a>
-    <a href="/settings" th:classappend="${active == 'settings'} ? 'active'">설정</a>
-    <span class="spacer"></span>
-    <a href="/errors" class="minor" th:classappend="${active == 'errors'} ? 'active'">오류</a>
+    <div class="row groups">
+        <a href="/orders" th:classappend="${group == 'trade'} ? 'on'">거래</a>
+        <a href="/review" th:classappend="${group == 'analysis'} ? 'on'">분석</a>
+        <a href="/settings" th:classappend="${group == 'config'} ? 'on'">설정</a>
+    </div>
+    <div class="row subs" th:if="${group == 'trade'}">
+        <a href="/orders" th:classappend="${active == 'orders'} ? 'on'">주문</a>
+        <a href="/futures" th:classappend="${active == 'futures'} ? 'on'">선물옵션</a>
+        <a href="/chart/KR/005930" th:classappend="${active == 'chart'} ? 'on'">관심종목</a>
+    </div>
+    <div class="row subs" th:if="${group == 'analysis'}">
+        <a href="/review" th:classappend="${active == 'review'} ? 'on'">리뷰</a>
+        <a href="/backtest/KR/005930" th:classappend="${active == 'backtest'} ? 'on'">백테스트</a>
+    </div>
+    <div class="row subs" th:if="${group == 'config'}">
+        <a href="/settings" th:classappend="${active == 'settings'} ? 'on'">종목 설정</a>
+        <a href="/errors" th:classappend="${active == 'errors'} ? 'on'">오류</a>
+    </div>
 </nav>
 
 <!-- 한 종목의 화면 3개(차트·진입 백테스트·마틴게일)를 오가는 탭. 종목 선택 바로 아래에 둔다.
