@@ -75,6 +75,13 @@
         .pnl { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--bg); }
         .pnl .amount { font-size: 16px; font-weight: 800; }
         .pnl .detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+        .chips { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 12px; scrollbar-width: none; }
+        .chips::-webkit-scrollbar { display: none; }
+        .chip { flex: none; min-height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--border); background: var(--card); font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; }
+        .chip .n { margin-left: 4px; font-weight: 700; }
+        .chip.active { background: var(--text); color: #fff; border-color: var(--text); }
+        .chip.WIN.active { background: var(--buy); border-color: var(--buy); }
+        .chip.LOSS.active { background: var(--sell); border-color: var(--sell); }
         .empty { padding: 20px 0; text-align: center; font-size: 14px; color: var(--muted); }
     </style>
 </head>
@@ -115,7 +122,8 @@
     </section>
 
     <section class="card">
-        <h2>체결 내역</h2>
+        <h2>체결 내역 <span class="sub">(최근 100건)</span></h2>
+        <div class="chips" id="fillChips" role="tablist" aria-label="체결 내역 필터"></div>
         <div id="done"></div>
     </section>
 </main>
@@ -127,6 +135,15 @@
     const orders = new Map(); // key -> 주문
     let fills = []; // 체결 내역(체결통보 1건 = 1줄), 최근 순
     const MAX_FILLS = 100;
+    // 체결 내역 필터. 수익/손실은 매도 중 실현손익이 +/- 인 것(pnlCss 가 pos/neg)이다 — 한국 시장 색(수익 빨강, 손실 파랑)을 칩에도 쓴다.
+    const FILL_FILTERS = [
+        { id: 'ALL', label: '전체', match: () => true, empty: '체결 내역이 없습니다.' },
+        { id: 'BUY', label: '매수', match: (f) => f.side === 'BUY', empty: '매수 체결이 없습니다.' },
+        { id: 'SELL', label: '매도', match: (f) => f.side === 'SELL', empty: '매도 체결이 없습니다.' },
+        { id: 'WIN', label: '매도 수익', match: (f) => f.side === 'SELL' && f.pnlCss === 'pos', empty: '수익으로 끝난 매도가 없습니다.' },
+        { id: 'LOSS', label: '매도 손실', match: (f) => f.side === 'SELL' && f.pnlCss === 'neg', empty: '손실로 끝난 매도가 없습니다.' },
+    ];
+    let fillFilter = FILL_FILTERS.some((x) => x.id === localStorage.getItem('fillFilter')) ? localStorage.getItem('fillFilter') : 'ALL';
     let holdings = [];
     const STATE_TEXT = { CHECKING: '체결 확인중', OPEN: '미체결', PARTIAL: '일부 체결', FILLED: '체결' };
     const isWaiting = (o) => o.state === 'CHECKING' || o.state === 'OPEN' || o.state === 'PARTIAL';
@@ -220,6 +237,21 @@
         if (flash) { box.classList.remove('flash'); void box.offsetWidth; box.classList.add('flash'); }
     }
 
+    // 필터 칩: 누르면 바로 바뀌고(다시 불러오지 않는다) 선택은 기억한다. 칩마다 해당 건수를 보여줘서 눌러 보지 않아도 어디에 뭐가 있는지 보인다.
+    function renderChips(myFills) {
+        const box = document.getElementById('fillChips');
+        box.replaceChildren();
+        FILL_FILTERS.forEach((x) => {
+            const b = el('button', 'chip ' + x.id + (x.id === fillFilter ? ' active' : ''), x.label);
+            b.type = 'button';
+            b.setAttribute('role', 'tab');
+            b.setAttribute('aria-selected', x.id === fillFilter);
+            b.appendChild(el('span', 'n', myFills.filter(x.match).length));
+            b.onclick = () => { fillFilter = x.id; localStorage.setItem('fillFilter', x.id); render(); };
+            box.appendChild(b);
+        });
+    }
+
     function renderList(container, list, renderRow, emptyText) {
         container.replaceChildren();
         if (list.length === 0) container.appendChild(el('div', 'empty', emptyText));
@@ -240,7 +272,9 @@
         renderHoldings();
         renderList(document.getElementById('waiting'), waiting, (o) => renderOrder(o, flashKey), '대기 중인 주문이 없습니다.');
         const myFills = fills.filter((f) => f.market === market);
-        renderList(document.getElementById('done'), myFills, (f) => renderFill(f, flashKey), '체결 내역이 없습니다.');
+        const active = FILL_FILTERS.find((x) => x.id === fillFilter);
+        renderChips(myFills);
+        renderList(document.getElementById('done'), myFills.filter(active.match), (f) => renderFill(f, flashKey), active.empty);
         tick();
     }
 
