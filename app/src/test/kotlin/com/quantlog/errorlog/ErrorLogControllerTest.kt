@@ -50,4 +50,17 @@ class ErrorLogControllerTest {
             .andExpect(status().isOk)
             .andExpect(content().string(containsString("오류 기록이 없습니다")))
     }
+
+    @Test
+    fun `레벨을 바꿨을 때 그 레벨에 없는 분류가 남아 있어도 비어 보이지 않는다`() {
+        val at = Instant.now()
+        val warn = ErrorLog("w", "WARN", "KIS 한도 초과", "c.W", "한도 초과", firstSeen = at, lastSeen = at, count = 3)
+        val error = ErrorLog("e", "ERROR", "동기화 불일치", "c.E", "[동기화 불일치] 수량 다름", firstSeen = at, lastSeen = at, count = 2)
+        Mockito.`when`(repository.findAllByLastSeenAfterOrderByLastSeenDesc(any(Instant::class.java) ?: at)).thenReturn(listOf(warn, error))
+
+        mvc.perform(get("/errors").param("level", "ERROR").param("category", "KIS 한도 초과"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(containsString("[동기화 불일치] 수량 다름")))
+            .andExpect(content().string(containsString("1건")))
+    }
 }
