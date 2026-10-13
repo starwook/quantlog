@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <body>
-<!-- 공통 메뉴. 1단은 쓰는 시점으로 묶은 그룹 3개(거래·분석·설정), 2단은 그룹 안의 화면. 화면 위에 고정된다.
+<!-- 공통 메뉴. 1단은 쓰는 시점으로 묶은 그룹 3개(거래·분석·관리), 2단은 그룹 안의 화면. 화면 위에 고정된다.
      사용: <nav th:replace="~{fragments/nav :: menu('orders')}"></nav>
-     active: orders|chart|futures (거래) · review|backtest (분석) · settings|errors (설정)
+     active: orders|chart|futures (거래) · review|backtest (분석) · settings|errors (관리)
      새 화면은 상단에 늘리지 말고 어느 그룹의 2단에 넣을지 먼저 정한다. 실현손익 같은 하위 화면은 부모 화면의 active 를 쓴다. -->
 <nav th:fragment="menu(active)" class="menu"
      th:with="group=${active == 'orders' or active == 'chart' or active == 'futures'} ? 'trade' : (${active == 'review' or active == 'backtest'} ? 'analysis' : 'config')">
@@ -19,7 +19,7 @@
     <div class="row groups">
         <a href="/orders" th:classappend="${group == 'trade'} ? 'on'">거래</a>
         <a href="/review" th:classappend="${group == 'analysis'} ? 'on'">분석</a>
-        <a href="/settings" th:classappend="${group == 'config'} ? 'on'">설정</a>
+        <a href="/settings" th:classappend="${group == 'config'} ? 'on'">관리</a>
     </div>
     <div class="row subs" th:if="${group == 'trade'}">
         <a href="/orders" th:classappend="${active == 'orders'} ? 'on'">주문</a>
@@ -31,7 +31,7 @@
         <a href="/backtest/KR/005930" th:classappend="${active == 'backtest'} ? 'on'">백테스트</a>
     </div>
     <div class="row subs" th:if="${group == 'config'}">
-        <a href="/settings" th:classappend="${active == 'settings'} ? 'on'">종목 설정</a>
+        <a href="/settings" th:classappend="${active == 'settings'} ? 'on'">설정</a>
         <a href="/errors" th:classappend="${active == 'errors'} ? 'on'">오류</a>
     </div>
 </nav>
