@@ -100,4 +100,26 @@ class HoldingSyncServiceTest {
             .thenReturn(trade(now.plusSeconds(1)))
         assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
     }
+
+    @Test
+    fun `동기화가 지나가도 방금 낸 주문의 체결통보가 안 왔으면 미반영으로 본다`() {
+        Mockito.`when`(repository.findAll()).thenReturn(emptyList())
+        service.sync(emptyList(), now)
+        val recent = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("9000"), "1", "ok", executedAt = Instant.now().minusSeconds(30))
+        Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(recent)
+        assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
+
+        recent.cancel()
+        assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
+    }
+
+    @Test
+    fun `3분이 지난 미체결 주문은 더 기다리지 않는다`() {
+        Mockito.`when`(repository.findAll()).thenReturn(emptyList())
+        service.sync(emptyList(), Instant.now())
+        val old = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("9000"), "1", "ok", executedAt = Instant.now().minusSeconds(200))
+        Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(old)
+
+        assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
+    }
 }

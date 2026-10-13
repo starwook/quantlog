@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.MathContext
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 
@@ -122,13 +121,13 @@ class HoldingBalanceSync(
 
     /**
      * 이 종목에 앱이 낸 주문 중 체결통보가 아직 다 안 온 주문이 있는가(취소된 주문은 뺀다). 있으면 잔고와의 어긋남은 그 통보가 늦는 탓일 수 있다.
-     * 주문이 영영 안 끝나 보유 대조가 막히지 않도록 [IN_FLIGHT_LIMIT] 이전 주문은 보지 않는다.
+     * 주문이 영영 안 끝나 보유 대조가 막히지 않도록 [ORDER_IN_FLIGHT_LIMIT] 이전 주문은 보지 않는다.
      */
     private fun hasOrderInFlight(
         key: Pair<Market, String>,
         fetchedAt: Instant,
     ): Boolean =
-        tradeRepository.findAllByMarketAndSymbolAndExecutedAtAfter(key.first, key.second, fetchedAt.minus(IN_FLIGHT_LIMIT))
+        tradeRepository.findAllByMarketAndSymbolAndExecutedAtAfter(key.first, key.second, fetchedAt.minus(ORDER_IN_FLIGHT_LIMIT))
             .any { !it.canceled && orderFills.projected(it.orderNo, OrderFills.dayOf(it.executedAt)).total().quantity < it.quantity }
 
     private fun label(
@@ -200,8 +199,6 @@ class HoldingBalanceSync(
     private companion object {
         val AVERAGE_TOLERANCE: BigDecimal = BigDecimal("0.0001")
 
-        /** 앱이 주문 체결을 기다리는 최대 시간(10초 뒤 취소 시도 + 2분 뒤 포기, `trading/PendingOrders.kt`)보다 넉넉히. */
-        val IN_FLIGHT_LIMIT: Duration = Duration.ofMinutes(3)
         const val AREA = "잔고 동기화"
     }
 }
