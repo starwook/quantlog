@@ -55,8 +55,6 @@ data class PortfolioSnapshot(
     val trades: List<Trade>,
     val realizedPnlByTradeId: Map<Long, RealizedPnl>,
     val summaryByCurrency: Map<String, PortfolioSummary>,
-    /** 매도 주문별 체결 직전 평단(취소된 주문 포함 — 일부 체결 뒤 취소돼도 체결된 몫의 손익이 있다). 체결 내역 줄의 손익 계산에 쓴다. */
-    val avgCostBeforeByOrder: Map<Pair<Market, String>, BigDecimal> = emptyMap(),
 )
 
 private class RealizedAcc {
@@ -142,9 +140,7 @@ class PortfolioService(
                 )
             }
 
-        val avgCostBeforeByOrder =
-            allTrades.mapNotNull { trade -> trade.avgCostBefore?.let { (trade.market to trade.orderNo) to it } }.toMap()
-        return PortfolioSnapshot(trades, pnlByTradeId, summaryByCurrency, avgCostBeforeByOrder)
+        return PortfolioSnapshot(trades, pnlByTradeId, summaryByCurrency)
     }
 
     private class Realized(val amount: BigDecimal, val cost: BigDecimal, val quantity: Int)

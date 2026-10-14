@@ -13,6 +13,8 @@ import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.CashChangedEvent
 import com.quantlog.position.FillAppliedEvent
 import com.quantlog.position.HoldingsChangedEvent
+import com.quantlog.position.OrderFillState
+import com.quantlog.position.OrderFillStates
 import com.quantlog.position.OrderFills
 import com.quantlog.position.OrderState
 import com.quantlog.position.PortfolioService
@@ -20,6 +22,7 @@ import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.RealizedPnl
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeChangedEvent
+import com.quantlog.position.TradeService
 import com.quantlog.watchlist.SymbolStrategyService
 import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
@@ -45,6 +48,8 @@ class PortfolioLiveBroadcaster(
     private val sessions: LiveSessions,
     private val valuation: LiveValuation,
     private val cash: AccountCashService,
+    private val fillStates: OrderFillStates,
+    private val tradeService: TradeService,
 ) {
     // 틱 푸시 전용 스레드. 스프링 스케줄러(스레드 하나를 모든 @Scheduled 가 공유)나 KIS 수신 스레드에 얹으면 느린 호출·클라이언트에 막혀 화면이 멎는다.
     private val pushExecutor = Executors.newSingleThreadExecutor { Thread(it, "portfolio-live-push").apply { isDaemon = true } }
@@ -94,18 +99,25 @@ class PortfolioLiveBroadcaster(
         } else {
             broadcast(mapOf("type" to "order", "order" to trade.toView(null)))
         }
+        // 일부 체결된 주문이 취소되면 체결 내역 줄의 상태(일부 체결 후 취소)도 바뀐다.
+        if (trade.canceled) {
+            orderFillRow(trade.orderNo, OrderFills.dayOf(trade.executedAt))?.let {
+                broadcast(mapOf("type" to "fill", "fill" to it))
+            }
+        }
     }
 
     /**
-     * 체결통보 한 건이 반영되면 체결 내역에 한 줄을 바로 밀어 준다(주문 단위가 아니라 체결 단위). 매도면 오늘 손익 요약도 같이 보낸다.
-     * 원장 저장이 커밋된 뒤에 불러야 요약에 그 체결이 들어간다.
+     * 주문의 체결이 늘면(체결통보·체결조회) 체결 내역의 그 주문 줄을 새 값으로 다시 보낸다(같은 키 — 화면이 줄을 바꿔 끼운다). 매도면 오늘 손익 요약도 같이 보낸다.
+     * 커밋된 뒤에 불러야 주문별 체결 합계·요약에 그 체결이 들어간다.
      */
     @TransactionalEventListener(fallbackExecution = true)
     fun onFillApplied(event: FillAppliedEvent) {
         if (sessions.isEmpty()) return
-        val fill = FillLiveView.of(event, symbolStrategyService.displayName(event.market, event.symbol))
-        val message = mutableMapOf<String, Any?>("type" to "fill", "fill" to fill)
-        if (event.side == Side.SELL) message["summary"] = summaryView(portfolioService.snapshot())
+        val snapshot = portfolioService.snapshot()
+        val row = orderFillRow(event.orderNo, OrderFills.dayOf(event.filledAt), snapshot) ?: return
+        val message = mutableMapOf<String, Any?>("type" to "fill", "fill" to row)
+        if (event.side == Side.SELL) message["summary"] = summaryView(snapshot)
         broadcast(message)
     }
 
@@ -177,20 +189,37 @@ class PortfolioLiveBroadcaster(
     }
 
     /**
-     * 체결 내역 = 원장(`kis_broker_fill`) 줄 중 오늘(KST) 것 전부, 최근 순. 하루치라 하루가 끝나면 비워진다. 손익은 그 주문의 체결 직전 평단
-     * ([com.quantlog.position.Trade.avgCostBefore]) 기준이다.
+     * 체결 내역 = 오늘(KST) 체결이 1주라도 있는 주문 전부(`order_fill`), 마지막 체결이 최근인 순. 하루치라 하루가 끝나면 비워진다.
+     * 펼치면 그 주문의 건별 체결(원장 `kis_broker_fill` 줄)과 체결조회로 채운 몫이 보인다. 손익은 [PortfolioService] 가 확정한 값이다.
      */
-    private fun todaysFills(snapshot: PortfolioSnapshot): List<FillLiveView> =
-        orderFills.projectedAll()
-            .filter { OrderFills.dayOf(it.filledAt) == OrderFills.today() }
-            .sortedByDescending { it.id }
-            .map {
-                FillLiveView.of(
-                    it,
-                    snapshot.avgCostBeforeByOrder[it.market to it.orderNo],
-                    symbolStrategyService.displayName(it.market, it.symbol),
-                )
-            }
+    private fun todaysFills(snapshot: PortfolioSnapshot): List<OrderFillLiveView> {
+        val today = OrderFills.today()
+        val ledger = orderFills.projectedAll().filter { OrderFills.dayOf(it.filledAt) == today }.groupBy { it.orderNo }
+        return fillStates.ofDay(today)
+            .filter { it.filled.quantity > 0 }
+            .map { row(it, ledger[it.orderNo].orEmpty(), snapshot) }
+            .sortedByDescending { it.placedAtEpochMs }
+    }
+
+    private fun orderFillRow(
+        orderNo: String,
+        day: LocalDate,
+        snapshot: PortfolioSnapshot = portfolioService.snapshot(),
+    ): OrderFillLiveView? {
+        val fill = fillStates.find(orderNo, day)?.takeIf { it.filled.quantity > 0 } ?: return null
+        val ledger = orderFills.projected(orderNo, day)
+        return row(fill, ledger, snapshot)
+    }
+
+    private fun row(
+        fill: OrderFillState,
+        ledger: List<com.quantlog.position.OrderFill>,
+        snapshot: PortfolioSnapshot,
+    ): OrderFillLiveView {
+        val trade = tradeService.findByOrderNo(fill.market, fill.orderNo)?.takeIf { OrderFills.dayOf(it.executedAt) == fill.tradeDate }
+        val pnl = trade?.id?.let { snapshot.realizedPnlByTradeId[it] }
+        return OrderFillLiveView.of(fill, ledger, trade, pnl, symbolStrategyService.displayName(fill.market, fill.symbol))
+    }
 
     private fun Trade.toView(pnl: RealizedPnl?) = OrderLiveView.of(this, symbolStrategyService.displayName(market, symbol), pnl)
 
