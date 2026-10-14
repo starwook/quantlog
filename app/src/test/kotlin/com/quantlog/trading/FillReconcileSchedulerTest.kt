@@ -35,7 +35,7 @@ class FillReconcileSchedulerTest {
 
     @Test
     fun `한투 연결이 끊기면 매도까지 막고 다시 붙어 체결조회가 끝나야 연다`() {
-        Mockito.`when`(service.reconcile(anyNonNull())).thenReturn(ReconcileResult(1, 1, 1))
+        Mockito.`when`(service.reconcile(anyNonNull(), Mockito.anyBoolean())).thenReturn(ReconcileResult(1, 1, 1))
         val t = Instant.parse("2026-10-14T02:00:02Z")
 
         scheduler.onKisLink(KisFillNoticeLinkChanged(false, t, t))
@@ -51,7 +51,7 @@ class FillReconcileSchedulerTest {
     @Test
     fun `체결조회가 실패하면 멈춘 채 다시 시도하고 성공해야 연다`() {
         val calls = AtomicInteger()
-        Mockito.`when`(service.reconcile(anyNonNull())).thenAnswer {
+        Mockito.`when`(service.reconcile(anyNonNull(), Mockito.anyBoolean())).thenAnswer {
             if (calls.incrementAndGet() < 3) throw IllegalStateException("EGW00201 초당 거래건수 초과")
             ReconcileResult()
         }
@@ -66,7 +66,7 @@ class FillReconcileSchedulerTest {
 
     @Test
     fun `멈추지 않는 확인 요청은 실패해도 거래를 막지 않는다`() {
-        Mockito.`when`(service.reconcile(anyNonNull())).thenThrow(IllegalStateException("조회 실패"))
+        Mockito.`when`(service.reconcile(anyNonNull(), Mockito.anyBoolean())).thenThrow(IllegalStateException("조회 실패"))
 
         scheduler.onRequested(FillReconcileRequested("취소 거부 주문 확인", halting = false))
         Thread.sleep(100)

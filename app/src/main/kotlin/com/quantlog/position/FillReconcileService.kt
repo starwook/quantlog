@@ -41,15 +41,23 @@ class FillReconcileService(
     private val applier: HoldingFillApplier,
     private val tradeService: TradeService,
     private val writeLock: HoldingWriteLock,
+    private val balanceSync: HoldingBalanceSync,
 ) {
-    fun reconcile(now: Instant = Instant.now()): ReconcileResult {
+    /**
+     * [confirmBalance] 면(거래를 멈추고 맞추는 경우) 마지막에 증권사 잔고를 한 번 받아 보유와 대조한다([HoldingBalanceSync.sync]) — 체결조회로 채운 몫은
+     * 실제 체결 순서와 다르게 반영될 수 있어(예: 빠진 매수를 그 뒤의 매도보다 늦게 반영) 보유·평단이 잠깐 어긋날 수 있는데, 다시 열기 전에 증권사 값으로 맞춘다.
+     */
+    fun reconcile(
+        now: Instant = Instant.now(),
+        confirmBalance: Boolean = false,
+    ): ReconcileResult {
         val today = now.atZone(KST).toLocalDate()
         writeLock.run { applier.rebuildToday(now) }
         val candidates =
             tradeRepository.findAll().filter {
                 it.market == Market.KR && it.executedAt.atZone(KST).toLocalDate() == today && !fillStates.settled(it.orderNo, today)
             }
-        if (candidates.isEmpty()) return ReconcileResult()
+        if (candidates.isEmpty()) return ReconcileResult().also { if (confirmBalance) confirmBalance() }
 
         val totals: Map<String, OrderFillTotal?> =
             CallPriority.urgent {
@@ -77,7 +85,15 @@ class FillReconcileService(
                 }
             }
         }
+        if (confirmBalance) confirmBalance()
         return ReconcileResult(candidates.size, corrected, settled)
+    }
+
+    /** 증권사 잔고를 받아 보유와 대조한다. [HoldingBalanceSync] 는 같은 시점(당일 누적이 같을 때)일 때만 덮어쓰고 다르면 보고한다. 조회가 실패하면 예외. */
+    private fun confirmBalance() {
+        val fetchedAt = Instant.now()
+        val holdings = CallPriority.urgent { broker.holdingsForReconcile(Market.KR) } ?: return
+        writeLock.run { balanceSync.sync(holdings, fetchedAt) }
     }
 
     private companion object {

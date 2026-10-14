@@ -14,7 +14,7 @@ class FillProgressTracker(
     /**
      * 이 종목의 마지막 주문의 체결통보가 아직 다 반영되지 않았으면 true — 보유 현황이 그 주문을 아직 반영하지 못한 상태라
      * 스케줄러는 이 종목 판단(추가 매수·청산)을 미룬다. 보유 현황은 체결통보로만 바뀌므로(잔고는 같은 시점일 때만 대조한다), 동기화가 지나갔는지가 아니라
-     * 통보가 왔는지로 본다. 취소된 주문과 [ORDER_IN_FLIGHT_LIMIT] 이전 주문은 기다리지 않는다. 첫 동기화 전에도 true.
+     * 통보가 왔는지로 본다. 끝난 주문과 [ORDER_IN_FLIGHT_LIMIT] 이전 주문은 기다리지 않는다. 첫 동기화 전에도 true.
      */
     override fun hasUnsyncedTrade(
         market: Market,
@@ -22,8 +22,9 @@ class FillProgressTracker(
     ): Boolean {
         val synced = state.lastSyncedAt ?: return true
         val last = tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(market, symbol) ?: return false
-        // 체결을 이미 다 반영한 주문이면 동기화를 기다릴 필요가 없다.
-        if (last.canceled || isOrderFilled(last.orderNo)) return false
+        // 끝난 주문(체결을 다 반영했거나 체결조회가 남은 수량 0 으로 확인)이면 기다릴 필요가 없다. 취소만 된 주문은 취소 전 일부 체결의 통보가
+        // 빠졌을 수 있어 체결조회로 끝난 게 확인될 때까지 기다린다(2026-10-14).
+        if (isOrderClosed(last.orderNo)) return false
         return last.executedAt.isAfter(synced) || last.executedAt.isAfter(Instant.now().minus(ORDER_IN_FLIGHT_LIMIT))
     }
 

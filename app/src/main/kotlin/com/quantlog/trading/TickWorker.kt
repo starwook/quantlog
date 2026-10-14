@@ -19,7 +19,7 @@ class TickWorker(threads: Int) {
     fun submit(
         failureMessage: () -> String,
         work: () -> Unit,
-    ) = executor.execute { runCatching(work).onFailure { log.warn(it) { failureMessage() } } }
+    ) = executor.execute { runCatching(work).onFailure { log.warnUnlessHalted(it, failureMessage) } }
 
     fun stop() {
         (executor as? ExecutorService)?.shutdown()

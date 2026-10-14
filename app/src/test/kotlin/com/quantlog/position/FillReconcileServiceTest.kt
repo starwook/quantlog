@@ -22,7 +22,9 @@ class FillReconcileServiceTest {
     private val applier = Mockito.mock(HoldingFillApplier::class.java)
     private val tradeService = Mockito.mock(TradeService::class.java)
     private val fills = InMemoryOrderFillStates()
-    private val service = FillReconcileService(broker, tradeRepository, fills.states, applier, tradeService, HoldingWriteLock())
+    private val balanceSync = Mockito.mock(HoldingBalanceSync::class.java)
+    private val service =
+        FillReconcileService(broker, tradeRepository, fills.states, applier, tradeService, HoldingWriteLock(), balanceSync)
 
     private fun trade(
         orderNo: String,
@@ -103,5 +105,18 @@ class FillReconcileServiceTest {
         Mockito.`when`(broker.orderFillTotal(Market.KR, "D1")).thenThrow(IllegalStateException("EGW00201"))
 
         assertFailsWith<IllegalStateException> { service.reconcile(now) }
+    }
+
+    @Test
+    fun `거래를 멈추고 맞출 때는 마지막에 증권사 잔고로 보유를 대조하고 그냥 확인할 때는 안 한다`() {
+        val kis = listOf(com.quantlog.broker.Holding(Market.KR, "005930", "삼성전자", BigDecimal(10), BigDecimal("70000"), BigDecimal("70100")))
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(emptyList())
+        Mockito.`when`(broker.holdingsForReconcile(Market.KR)).thenReturn(kis)
+
+        service.reconcile(now)
+        verify(balanceSync, never()).sync(Mockito.anyList() ?: kis, Mockito.any(Instant::class.java) ?: now)
+
+        service.reconcile(now, confirmBalance = true)
+        verify(balanceSync).sync(Mockito.eq(kis) ?: kis, Mockito.any(Instant::class.java) ?: now)
     }
 }

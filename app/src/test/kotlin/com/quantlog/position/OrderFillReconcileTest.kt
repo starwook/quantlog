@@ -141,4 +141,21 @@ class OrderFillReconcileTest {
         assertEquals(100, held())
         assertTrue(reports.isEmpty())
     }
+
+    @Test
+    fun `부분 매도 사이에 매수가 체결돼 평단이 바뀌어도 매도 손익은 체결 몫마다 그때의 평단으로 계산한다`() {
+        holdings[symbol] = AccountHolding(Market.KR, symbol, 100, BigDecimal("10000"), BigDecimal("10000"))
+        val sellNo = "S1"
+
+        fun sell(quantity: Int) = fillNotice(Side.SELL, quantity, "10100", sellNo, symbol = symbol, orderQuantity = 100)
+
+        service.applyRecorded(ledger, sell(40), now) // 평단 10,000 에 40주
+        service.applyRecorded(ledger, fillNotice(Side.BUY, 100, "9600", "B1", symbol = symbol), now) // 60주@10,000 + 100주@9,600 → 평단 9,750
+        service.applyRecorded(ledger, sell(60), now) // 평단 9,750 에 60주
+
+        val fill = service.fills.of(sellNo)!!
+        // 원가 = 40×10,000 + 60×9,750 = 985,000, 체결금액 = 100×10,100 = 1,010,000
+        assertEquals(0, BigDecimal("985000").compareTo(fill.costBasisAmount))
+        assertEquals(0, BigDecimal("25000").compareTo(fill.realizedPnl))
+    }
 }

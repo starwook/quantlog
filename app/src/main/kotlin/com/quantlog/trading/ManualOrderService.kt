@@ -8,8 +8,10 @@ import com.quantlog.broker.OrderStatus
 import com.quantlog.broker.Quote
 import com.quantlog.broker.Side
 import com.quantlog.position.AccountHoldingRepository
+import com.quantlog.position.FillReconcileRequested
 import com.quantlog.position.TradeService
 import mu.KotlinLogging
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.time.ZonedDateTime
@@ -27,6 +29,8 @@ class ManualOrderService(
     private val riskGuard: RiskGuard,
     private val tradeService: TradeService,
     private val accountHoldingRepository: AccountHoldingRepository,
+    /** 취소한(또는 이미 체결된) 주문이 어떻게 끝났는지 체결조회로 확인해 달라는 요청([FillReconcileRequested]). */
+    private val events: ApplicationEventPublisher = ApplicationEventPublisher { },
 ) {
     /** 살 수 없으면 [IllegalStateException]/[RiskViolationException] (메시지는 화면에 그대로 보여준다). [limitPrice] 가 null 이면 즉시 체결가. */
     fun buy(
@@ -79,8 +83,12 @@ class ManualOrderService(
         check(trade.filledPrice == null) { "이미 체결된 주문이라 취소할 수 없습니다" }
         // 화면의 상태가 낡았을 수 있으니 취소 직전에 증권사에 다시 물어서, 미체결이 확인된 주문만 취소한다.
         val status = broker.orderStatus(trade.market, trade.orderNo, trade.quantity)
+        if (status is OrderStatus.Filled) {
+            // 체결됐는데 통보가 빠진 주문이다. 매매 기록만 고치지 않고 체결조회로 보유·평단까지 맞춘다(order_fill).
+            events.publishEvent(FillReconcileRequested("수동 취소 시 체결 확인 주문 ${trade.orderNo}", halting = false))
+            throw IllegalStateException("이미 체결된 주문이라 취소할 수 없습니다")
+        }
         tradeService.applyStatus(trade, status)
-        check(status !is OrderStatus.Filled) { "이미 체결된 주문이라 취소할 수 없습니다" }
         check(status == OrderStatus.Open) { "증권사가 아직 이 주문을 확인해 주지 않았습니다 — 잠시 뒤 다시 시도하세요" }
         check(trade.branchNo != null) { "주문조직번호가 없는 옛 주문이라 취소할 수 없습니다 — 증권사 앱에서 취소하세요" }
         broker.cancelOrder(
@@ -88,6 +96,8 @@ class ManualOrderService(
         )
         tradeService.markCanceled(trade)
         log.info { "[수동 취소] ${trade.market} ${trade.symbol} 주문번호=${trade.orderNo}" }
+        // 취소 전에 일부 체결됐는데 통보가 빠졌을 수 있어 체결조회로 끝난 것을 확인한다.
+        events.publishEvent(FillReconcileRequested("수동 취소한 주문 ${trade.orderNo} 확인", halting = false))
     }
 
     /** 호가 단위에 안 맞는 가격은 증권사가 거부하므로 미리 막고 안내한다. */

@@ -160,11 +160,14 @@ class HoldingFillApplier(
         events.publishEvent(
             FillAppliedEvent(market, fill.symbol, fill.side, fill.orderNo, quantity, price, row?.avgCost, filledAt, noticeId),
         )
+        // 매도 원가는 이 몫이 빠지는 지금의 평단으로 쌓는다(부분 매도 사이에 매수가 끼어 평단이 바뀌어도 손익이 맞게).
+        if (fill.side == Side.SELL && row != null) fill.addCostBasis(minOf(quantity, row.quantity), row.avgCost)
         val change =
             when (fill.side) {
                 Side.BUY -> applyBuy(row, fill, name, quantity, price)
                 Side.SELL -> applySell(row, fill, name, quantity, price) ?: return null
             }
+        fillStates.save(fill)
         state.markFillApplied(market to fill.symbol, now)
         events.publishEvent(HoldingsChangedEvent)
         return change

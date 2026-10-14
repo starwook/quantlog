@@ -25,6 +25,8 @@ import java.time.LocalDate
  *
  * 주문의 체결 수량은 늘기만 하므로 수량이 큰 쪽이 더 최신이다 — 무엇이 먼저 오든, 같은 체결을 양쪽에서 봐도 두 번 세지 않는다.
  * [settled] 는 체결조회가 "남은 수량 0"(`rmn_qty`)으로 답해 이 주문이 끝났다고 확인된 것. 끝난 주문은 다시 조회하지 않는다.
+ * 매도는 체결 몫이 보유에 반영될 **그때의 평단** × 수량을 [costBasisAmount] 에 쌓는다 — 부분 매도 사이에 매수가 체결돼 평단이 바뀌어도
+ * 매도 손익(체결금액 − 원가)이 맞다(이동평균). 보유가 없던 매도처럼 평단을 모르는 몫은 [costBasisQuantity] 에 안 들어간다.
  * 원장 줄은 내용이 똑같아도 다른 체결이다(같은 초·같은 가격·같은 수량이 따로 체결된다, 2026-10-14 실측) — 원문으로 중복을 거르지 않는다.
  */
 @Entity
@@ -63,6 +65,14 @@ class OrderFillState(
 
     @Column(name = "inquiry_amount", nullable = false, precision = 19, scale = 6)
     var inquiryAmount: BigDecimal = BigDecimal.ZERO
+        private set
+
+    @Column(name = "cost_basis_amount", nullable = false, precision = 19, scale = 6)
+    var costBasisAmount: BigDecimal = BigDecimal.ZERO
+        private set
+
+    @Column(name = "cost_basis_quantity", nullable = false)
+    var costBasisQuantity: Int = 0
         private set
 
     /** 마지막으로 체결조회 결과를 적은 시각. 조회한 적이 없으면 null. */
@@ -108,6 +118,22 @@ class OrderFillState(
         inquiredAt = now
         updatedAt = now
     }
+
+    /** 매도 몫 [quantity] 주가 평단 [avgCost] 일 때 보유에서 빠졌다. */
+    fun addCostBasis(
+        quantity: Int,
+        avgCost: BigDecimal,
+    ) {
+        costBasisAmount += avgCost * BigDecimal(quantity)
+        costBasisQuantity += quantity
+    }
+
+    /** 매도 손익(체결금액 − 원가). 체결된 몫 전부의 원가를 알 때만, 아니면 null. */
+    val realizedPnl: BigDecimal?
+        get() {
+            val known = side == Side.SELL && filled.quantity > 0 && costBasisQuantity == filled.quantity
+            return if (known) filled.amount - costBasisAmount else null
+        }
 
     /** 체결통보만으로 주문수량을 다 채웠으면 조회 없이도 끝난 주문이다. */
     fun settleIfFull(orderQuantity: Int) {
@@ -156,9 +182,9 @@ class OrderFillStates(
         market: Market = Market.KR,
     ): Boolean = repository.findByTradeDateAndMarketAndOrderNo(day, market, orderNo)?.settled == true
 
-    /** 체결이 1주라도 있는 주문(시장·주문번호·날짜). */
-    fun filledOrderKeys(): Set<Triple<Market, String, LocalDate>> =
-        repository.findAll().filter { it.filled.quantity > 0 }.map { Triple(it.market, it.orderNo, it.tradeDate) }.toSet()
+    /** 모든 날의 주문별 체결(시장·주문번호·날짜 → 체결 상태). */
+    fun allByOrder(): Map<Triple<Market, String, LocalDate>, OrderFillState> =
+        repository.findAll().associateBy { Triple(it.market, it.orderNo, it.tradeDate) }
 
     /** [day] 의 주문별 체결 전부. */
     fun ofDay(day: LocalDate): List<OrderFillState> = repository.findAllByTradeDate(day)

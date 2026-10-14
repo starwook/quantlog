@@ -90,7 +90,8 @@ class FillReconcileScheduler(
         while (true) {
             val startedGeneration = generation.get()
             val trigger = lastTrigger
-            val result = runCatching { service.reconcile() }
+            // 거래를 멈추고 맞추는 중이면 다시 열기 전에 증권사 잔고로 보유까지 확인한다.
+            val result = runCatching { service.reconcile(confirmBalance = halt.holds(HaltReason.RECONCILE)) }
             result.onSuccess { r ->
                 if (!halt.holds(HaltReason.RECONCILE)) {
                     if (r.corrected > 0) log.info { "[체결 대조] $trigger: 조회 ${r.checked}건, 보정 ${r.corrected}건" }

@@ -104,7 +104,7 @@ class ExitService(
             try {
                 checkHolding(position, key)
             } catch (e: Exception) {
-                log.warn(e) { "[청산 감시] 실패: ${position.market} ${position.symbol}" }
+                log.warnUnlessHalted(e) { "[청산 감시] 실패: ${position.market} ${position.symbol}" }
             }
         }
     }

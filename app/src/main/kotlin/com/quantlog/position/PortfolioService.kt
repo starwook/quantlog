@@ -86,10 +86,12 @@ class PortfolioService(
         val trades = allTrades.filterNot { it.canceled }.sortedBy { it.executedAt }
         // 체결이 반영된 주문만 손익·횟수에 넣는다 — 체결 원장(kis_broker_fill)에 있거나, 통보가 빠져 체결조회로 채운 주문(order_fill).
         // 일부만 체결된 뒤 취소됐어도 체결된 몫은 실제 거래라 넣는다.
-        // 매도 손익은 그 매도의 체결 직전 평단으로 확정한다([realizedOf]). 미체결·확인 전 주문은 기록 화면에만 보인다.
+        // 매도 손익은 체결 몫마다 그때의 평단으로 쌓은 원가(order_fill)로, 그게 없으면(옛 기록) 체결 직전 평단으로 확정한다([realizedOf]).
+        // 미체결·확인 전 주문은 기록 화면에만 보인다.
         // 주문번호는 날마다 다시 시작하므로 날짜까지 같아야 같은 주문이다.
         val noticedOrders = orderFills.projectedAll().map { Triple(it.market, it.orderNo, OrderFills.dayOf(it.filledAt)) }.toSet()
-        val ledgerOrders = noticedOrders + fillStates.filledOrderKeys()
+        val fillsByOrder = fillStates.allByOrder()
+        val ledgerOrders = noticedOrders + fillsByOrder.filterValues { it.filled.quantity > 0 }.keys
         val filledTrades =
             allTrades.filter { Triple(it.market, it.orderNo, OrderFills.dayOf(it.executedAt)) in ledgerOrders }.sortedBy { it.executedAt }
         val today = Instant.now().atZone(KST).toLocalDate()
@@ -104,7 +106,10 @@ class PortfolioService(
                 val counts = if (trade.side == Side.BUY) buyCountTodayByCurrency else sellCountTodayByCurrency
                 counts.merge(trade.market.currency, 1, Int::plus)
             }
-            if (trade.side == Side.SELL) realizedOf(trade)?.let { record(trade, it, realizedByCurrency, pnlByTradeId, today) }
+            if (trade.side == Side.SELL) {
+                val fill = fillsByOrder[Triple(trade.market, trade.orderNo, OrderFills.dayOf(trade.executedAt))]
+                realizedOf(trade, fill)?.let { record(trade, it, realizedByCurrency, pnlByTradeId, today) }
+            }
         }
 
         val holdingsByCurrency = holdingViews()
@@ -144,8 +149,15 @@ class PortfolioService(
 
     private class Realized(val amount: BigDecimal, val cost: BigDecimal, val quantity: Int)
 
-    /** 매도 주문의 손익 = (평균 체결가 − 체결 직전 평단) × 체결수량. 평단이나 체결가를 모르면 null — 짐작으로 채우지 않는다. */
-    private fun realizedOf(trade: Trade): Realized? {
+    /**
+     * 매도 주문의 손익. 체결 몫마다 그때의 평단으로 쌓은 원가가 있으면(`order_fill`, 2026-10-14~) 체결금액 − 원가 — 부분 매도 사이에 매수가 체결돼
+     * 평단이 바뀌어도 맞다. 없으면(옛 기록) (평균 체결가 − 체결 직전 평단) × 체결수량. 평단이나 체결가를 모르면 null — 짐작으로 채우지 않는다.
+     */
+    private fun realizedOf(
+        trade: Trade,
+        fill: OrderFillState?,
+    ): Realized? {
+        fill?.realizedPnl?.let { pnl -> return Realized(pnl, fill.costBasisAmount, fill.filled.quantity) }
         val average = trade.avgCostBefore ?: return null
         val price = trade.filledPrice ?: return null
         val quantity = trade.filledQuantity ?: trade.quantity

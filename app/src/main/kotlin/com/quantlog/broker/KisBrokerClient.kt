@@ -93,6 +93,8 @@ class KisBrokerClient(
 
     override fun holdings(market: Market): List<Holding> = KisBalanceParser.parse(balance())
 
+    override fun holdingsForReconcile(market: Market): List<Holding> = holdings(market)
+
     /** 주식잔고조회(VTTC8434R) 응답 원문. 계좌번호는 게이트웨이가 끼운다. */
     private fun balance(): JsonNode = get("/uapi/domestic-stock/v1/trading/inquire-balance", "VTTC8434R", KisBalanceParser.REQUEST_PARAMS)
 

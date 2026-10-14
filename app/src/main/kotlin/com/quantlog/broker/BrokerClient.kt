@@ -57,6 +57,12 @@ interface BrokerClient {
     /** 수량 0인 종목은 제외한다. */
     fun holdings(market: Market): List<Holding>
 
+    /**
+     * 우리 DB 보유와 대조할 증권사 잔고(당일 누적 매수·매도 수량 포함). 증권사 잔고가 정본인 구현체만 준다 — 모킹 체결처럼 앱이 스스로 계산하는 구현체는 null.
+     * 체결조회로 맞춘 뒤 거래를 다시 열기 전에 확인하는 데 쓴다([com.quantlog.position.FillReconcileService]).
+     */
+    fun holdingsForReconcile(market: Market): List<Holding>? = null
+
     fun placeOrder(order: OrderRequest): OrderReceipt
 
     /** 미체결 주문을 취소한다. 이미 체결됐으면 증권사가 거부한다. 취소를 지원하지 않는 구현체는 예외. */

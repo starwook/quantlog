@@ -2,6 +2,7 @@ package com.quantlog.trading
 
 import com.quantlog.broker.OrderRequest
 import com.quantlog.position.OrderableCash
+import mu.KLogger
 import org.springframework.stereotype.Component
 
 open class RiskViolationException(message: String) : RuntimeException(message)
@@ -10,6 +11,15 @@ open class RiskViolationException(message: String) : RuntimeException(message)
 class TradingHaltedException(message: String) : RiskViolationException(message) {
     override fun fillInStackTrace(): Throwable = this
 }
+
+/**
+ * 주문 경로의 실패를 경고로 남기되, 거래 정지로 막힌 것은 경고로 찍지 않는다 — WARN 은 웹훅 알림이 되는데(notification/ErrorLogNotifier.kt)
+ * 정지는 매시 정각마다 있고 정지·재개는 `sync_event` 에 이미 남는다.
+ */
+internal fun KLogger.warnUnlessHalted(
+    e: Throwable,
+    message: () -> String,
+) = if (e is TradingHaltedException) debug { "${message()} — ${e.message}" } else warn(e) { message() }
 
 /**
  * 주문 직전 검문소. 모든 주문 경로는 이 검사를 통과해야 한다 (AI/규칙 어느 쪽이 낸 주문이든 우회 불가).

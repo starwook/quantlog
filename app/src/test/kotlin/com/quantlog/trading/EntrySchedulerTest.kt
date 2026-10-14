@@ -126,9 +126,10 @@ class EntrySchedulerTest {
         configs: List<SymbolStrategy> = defaultConfigs,
         holdingSync: FillProgress = Mockito.mock(FillProgress::class.java),
         realtimeFeed: RealtimePriceFeed = Mockito.mock(RealtimePriceFeed::class.java),
+        halt: TradingHalt = TradingHalt(),
     ) = EntryScheduler(
         broker,
-        RiskGuard { null },
+        RiskGuard(halt) { null },
         entryRuleReturning(signal),
         symbolStrategyServiceOf(*configs.toTypedArray()).also { service ->
             // 감시 종목 목록은 DB(symbol_strategy) 행 목록 — 이 테스트에서 감시 중인 종목의 설정만 돌려준다.
@@ -308,9 +309,11 @@ class EntrySchedulerTest {
         bounceQuantity: Int = 1,
         intervalMinutes: Int = 5,
         rebuy: Boolean = true,
+        halt: TradingHalt = TradingHalt(),
     ) = scheduler(
         broker,
         signal,
+        halt = halt,
         portfolioService = if (held) portfolioServiceHeldBy(buy(1, "10000")) else noopPortfolioService(),
         tradeService = tradeServiceWith(),
         configs =
@@ -381,6 +384,21 @@ class EntrySchedulerTest {
             bounceQuantity = 5,
         ).checkEntries(krOpen)
         assertEquals(listOf(3, 5), broker.orders.map { it.quantity })
+    }
+
+    @Test
+    fun `거래 정지로 막힌 재매수는 이번 주기를 쓰지 않아 정지가 풀리면 바로 산다`() {
+        val broker = FakeBroker()
+        val halt = TradingHalt()
+        val s = rebuyScheduler(broker, held = false, halt = halt)
+
+        halt.hold(HaltReason.KIS_DOWN, "정각 끊김")
+        s.checkEntries(krOpen)
+        assertTrue(broker.orders.isEmpty())
+
+        halt.release(HaltReason.KIS_DOWN, "재구독")
+        s.checkEntries(krOpen.plusSeconds(2))
+        assertEquals(1, broker.orders.size)
     }
 
     @Test
