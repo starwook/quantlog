@@ -5,12 +5,6 @@
 - 하려면 `deploy.yml` 의 `on.push` 에 `paths` 필터: `"**"`, `"!docs/**"`, `"!README.md"`, `"!CLAUDE.md"`, `"!playbook/**"`, `"playbook/principles.md"`(뒤에서 다시 포함 — 이 파일은 배포가 서버로 올리고 `PrinciplesAlignmentTest` 가 읽는다). 코드·`deploy/`·워크플로가 섞이면 배포되고 `workflow_dispatch` 는 그대로다. `deploy/DEPLOY.md` 의 배포 설명도 같이 고친다.
 - GitHub 이 이 필터를 의도대로 평가하는지는 문서만 바뀐 머지로 확인한다. 안 먹히면 `paths-ignore` 로 단순화.
 
-## 일지·제안 DB 이전 뒤처리 — 코드 정리 끝, 서버·DB 정리 남음 (2026-10-14)
-이전은 서버에서 확인했다(일지 2건·제안 5건, 파일 수와 일치). 임포터·`source` 필드는 코드에서 지웠다. **이 코드가 배포된 뒤에** 아래를 한다(먼저 지우면 옛 앱이 `source` 열을 써서 깨진다).
-1. DB 에서 `source` 열 제거: `SHOW INDEX FROM review_journal;` 로 `source` 유니크 인덱스 이름을 확인한 뒤 `ALTER TABLE review_journal DROP INDEX <이름>, DROP COLUMN source;` 를 `review_proposal` 에도 같이 한다. (`ddl-auto: update` 는 열·인덱스를 지우지 않는다. 남겨 둬도 동작엔 문제없다.)
-2. 서버 `/opt/quantlog/playbook/journal/`, `playbook/proposals/` 폴더 삭제. `playbook/principles.md` 와 `docker-compose.yml` 의 `./playbook` 마운트는 유지.
-3. 끝나면 이 절을 지운다.
-
 ## 게이트웨이 = 한투 원문 통로 — 구현 끝, 배포·실측 대기 (2026-10-08)
 **구현됨(브랜치 `feat-gateway-raw-rest`):** 체결통보(`kis_broker_fill`)·시세(`raw`)·REST(`/api/kis/**`)·주문(`kis_order` 멱등)·잔고(`kis_balance`)·분봉(`kis_minute_chart`)을 게이트웨이가 **해석 없이** 전달·저장하고, 앱이 한투 문서대로 읽는다(`KisBrokerClient`·`Kis*Parser`·`*Projector`). 모의 체결(`paper/`·`paper_order`)은 앱으로 옮겼다. 형식은 [`contracts/README.md`](contracts/README.md) 한 장, 이유·흐름은 [`서버-분리.md`](서버-분리.md).
 
