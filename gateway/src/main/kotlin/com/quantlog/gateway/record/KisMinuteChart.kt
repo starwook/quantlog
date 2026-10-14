@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 /**
@@ -32,5 +33,8 @@ class KisMinuteChart(
 }
 
 interface KisMinuteChartRepository : JpaRepository<KisMinuteChart, Long> {
+    // 파생 삭제 쿼리는 트랜잭션이 있어야 돈다. 호출하는 CandleCollector.prune 은 트랜잭션 밖이라 여기서 연다
+    // (없으면 TransactionRequiredException 으로 "오래된 원문을 못 지웠다" 경고만 나고 분봉 원문이 계속 쌓인다).
+    @Transactional
     fun deleteByReceivedAtBefore(cutoff: Instant): Long
 }
