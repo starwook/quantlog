@@ -30,6 +30,4 @@ class KisBalance(
         protected set
 }
 
-interface KisBalanceRepository : JpaRepository<KisBalance, Long> {
-    fun deleteByReceivedAtBefore(cutoff: Instant): Long
-}
+interface KisBalanceRepository : JpaRepository<KisBalance, Long>

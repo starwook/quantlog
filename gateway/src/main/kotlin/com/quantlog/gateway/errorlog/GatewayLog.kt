@@ -14,8 +14,6 @@ import java.time.Instant
 data class ErrorLogProperties(
     /** false 면 로그를 DB에 쌓지 않는다(테스트가 개발자 DB에 행을 남기지 않게 끈다). */
     val enabled: Boolean = true,
-    /** 이 일수보다 오래된 행은 매일 새벽에 지운다. 앱이 그 전에 읽어 가는 게 전제다. */
-    val retentionDays: Long = 14,
 )
 
 /**
@@ -46,6 +44,4 @@ class GatewayLog(
         protected set
 }
 
-interface GatewayLogRepository : JpaRepository<GatewayLog, Long> {
-    fun deleteByLoggedAtBefore(before: Instant): Long
-}
+interface GatewayLogRepository : JpaRepository<GatewayLog, Long>
