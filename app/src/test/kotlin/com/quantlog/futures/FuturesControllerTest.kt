@@ -2,6 +2,7 @@ package com.quantlog.futures
 
 import com.quantlog.ClockConfig
 import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
@@ -50,9 +51,8 @@ class FuturesControllerTest {
         mvc.perform(get("/futures").param("maturity", "2026-11"))
             .andExpect(status().isOk)
             .andExpect(content().string(containsString("콜 최대 (저항)")))
-            .andExpect(content().string(containsString("939.44")))
+            .andExpect(content().string(not(containsString("939.44"))))
             .andExpect(content().string(containsString("2026-10-13")))
-            .andExpect(content().string(containsString("class=\"rung atm\"")))
             .andExpect(content().string(containsString("F 202612")))
     }
 

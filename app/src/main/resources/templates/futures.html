@@ -107,13 +107,14 @@
     <div class="tools">
         <a th:href="@{/futures(maturity=${maturity}, chart='M')}" th:class="${chartUnit != 'D'} ? 'tab on' : 'tab'">1분봉</a>
         <a th:href="@{/futures(maturity=${maturity}, chart='D')}" th:class="${chartUnit == 'D'} ? 'tab on' : 'tab'">일봉</a>
-        <span class="note" style="margin: 0;">1분봉은 정규장(~15:45)과 야간장(18:00~)을 이어 붙여 보여줍니다(사이는 장이 없습니다). 가로선은 아래 옵션 매물대(점선: 저항·지지·맥스페인, 검정 실선: KOSPI200 종가)입니다. 옵션 지수는 저장 시점(장 마감) 값이라 야간에 움직인 선물 가격과 다를 수 있고, 아래 목록의 거리(%)는 선물 현재가 기준입니다.</span>
+        <span class="note" style="margin: 0;">1분봉은 정규장(~15:45)과 야간장(18:00~)을 이어 붙여 보여줍니다(사이는 장이 없습니다). 가로선은 아래 옵션 매물대(점선: 저항·지지·맥스페인)입니다. 아래 목록의 거리(%)는 선물 현재가 기준입니다.</span>
     </div>
     <div class="msg error" th:if="${chartError}" th:text="'차트 조회 실패: ' + ${chartError}"></div>
     <div class="card" th:if="${candleChart != null}">
         <div class="quote">
             <b id="last">-</b>
             <b id="pct"></b>
+            <span th:if="${candleChart.dayChange != null}" th:text="'주간 전일 대비 ' + (${candleChart.dayChange.signum() > 0} ? '+' : '') + ${candleChart.dayChange} + '%'"></span>
             <span id="ohlc"></span>
         </div>
         <div id="fchart"></div>
@@ -125,7 +126,6 @@
     <th:block th:if="${board != null}">
         <div class="card summary">
             <div>풋/콜 비율<b th:text="${board.putCallRatio != null} ? ${board.putCallRatio} : '-'"></b></div>
-            <div>KOSPI200<b th:text="${board.underlying != null} ? ${board.underlying} : '-'"></b></div>
         </div>
         <div class="card levels">
             <div class="level" th:each="l : ${levels}" th:classappend="${l.reference} ? 'now'">
@@ -133,12 +133,12 @@
                 <span><b th:text="${l.price}"></b><span class="gap" th:if="${l.gapPercent != null}" th:text="(${l.gapPercent.signum() > 0} ? '+' : '') + ${l.gapPercent} + '%'"></span></span>
             </div>
         </div>
-        <p class="note">저장한 시각 <span th:text="${snapshotAt}"></span> · 위가 높은 가격입니다. 노란 줄이 지수에 가장 가까운 행사가이고, 막대가 긴 가격대일수록 매물이 많이 걸려 있습니다.</p>
+        <p class="note">저장한 시각 <span th:text="${snapshotAt}"></span> · 위가 높은 가격입니다. 노란 줄이 선물 현재가에 가장 가까운 행사가이고, 막대가 긴 가격대일수록 매물이 많이 걸려 있습니다.</p>
 
         <div class="card">
             <div class="legend"><span class="p">◀ 풋 (아래 지지)</span><span class="c">콜 (위 저항) ▶</span></div>
             <div class="ladder">
-                <div class="rung" th:each="s : ${board.strikesTopDown}" th:classappend="${s.strike == board.atmStrike} ? 'atm'">
+                <div class="rung" th:each="s : ${board.strikesTopDown}" th:classappend="${s.strike == atmStrike} ? 'atm'">
                     <div class="put">
                         <span th:if="${s.putOi > 0}" th:text="${#numbers.formatInteger(s.putOi, 1, 'COMMA')}"></span>
                         <span class="bar put" th:style="'width:' + ${board.maxOi > 0 ? s.putOi * 70 / board.maxOi : 0} + '%'"></span>
@@ -197,12 +197,12 @@
     volume.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     volume.setData(points.map(p => ({ time: p.time, value: p.volume, color: p.close >= p.open ? '#f0445266' : '#3182f666' })));
 
-    // 옵션 매물대: 저항(빨강)·지지(파랑)·맥스페인(회색)·KOSPI200 종가(검정 실선).
+    // 옵션 매물대: 저항(빨강)·지지(파랑)·맥스페인(회색).
     levels.forEach(l => candles.createPriceLine({
         price: l.price,
         title: l.label,
-        color: l.label.startsWith('콜') ? '#f04452' : l.label.startsWith('풋') ? '#3182f6' : l.label.startsWith('KOSPI200') ? '#191f28' : '#8b95a1',
-        lineStyle: l.label.startsWith('KOSPI200') ? 0 : 2,
+        color: l.label.startsWith('콜') ? '#f04452' : l.label.startsWith('풋') ? '#3182f6' : '#8b95a1',
+        lineStyle: 2,
         lineWidth: 1,
     }));
 

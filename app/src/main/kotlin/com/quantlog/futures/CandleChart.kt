@@ -39,12 +39,13 @@ data class ChartLine(
 /**
  * 차트 한 장에 필요한 값. [candles] 는 과거 → 최근 순서이고 비어 있으면 안 된다. 그리기와 확대·축소는 브라우저가 한다.
  * [apiBase] 는 한투 API 가 준 기준 종가(정규장이면 전일 종가, 야간이면 그날 주간 종가)로, 있으면 이것을 쓰고
- * 없을 때만 봉 목록에서 직접 찾는다.
+ * 없을 때만 봉 목록에서 직접 찾는다. [dayChange] 는 야간일 때 보여주기만 하는 주간 종가의 전일 대비 등락률(%).
  */
 class CandleChart(
     val candles: List<Candle>,
     levels: List<KeyLevel>,
     apiBase: BigDecimal? = null,
+    val dayChange: BigDecimal? = null,
 ) {
     private val daily = candles.first().time == null
 
