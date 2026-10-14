@@ -9,6 +9,7 @@ import com.quantlog.broker.symbolKey
 import com.quantlog.common.KST
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.FillProgress
+import com.quantlog.position.FillReconcileRequested
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.PortfolioSnapshot
 import com.quantlog.position.TradeService
@@ -21,6 +22,7 @@ import com.quantlog.watchlist.SymbolStrategyService
 import com.quantlog.watchlist.martingaleProperties
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
@@ -67,12 +69,17 @@ class EntryScheduler(
     private val holdingSync: FillProgress,
     private val realtimeFeed: RealtimePriceFeed,
     private val properties: EntryProperties,
+    /** 주문이 어떻게 끝났는지 체결조회로 확인해 달라는 요청을 낸다([FillReconcileRequested]). */
+    private val events: ApplicationEventPublisher = ApplicationEventPublisher { },
 ) {
     private val lastSignalAt = ConcurrentHashMap<String, Instant>()
     private val lastRebuyCheckAt = ConcurrentHashMap<String, Instant>()
 
     /** 저점 판단 진입을 뺀 진입 주문(주기 재매수·폴링 마틴게일)의 체결 확인 대기. [EntryProperties.fillTimeout] 안에 체결이 안 되면 취소한다. */
-    private val pending = PendingOrders("진입", broker, tradeService, holdingSync, properties.fillTimeout)
+    private val pending =
+        PendingOrders("진입", broker, tradeService, holdingSync, properties.fillTimeout) {
+            events.publishEvent(FillReconcileRequested(it, halting = false))
+        }
     private val inFlight = KeyedLock()
 
     @Scheduled(

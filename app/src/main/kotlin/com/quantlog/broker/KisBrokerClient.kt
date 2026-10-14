@@ -158,13 +158,25 @@ class KisBrokerClient(
         return if (filledQty >= quantity) OrderStatus.Filled(row.decimal("avg_prvs")) else OrderStatus.Open
     }
 
-    /** 필드명(odno, tot_ccld_qty, avg_prvs)은 2026-09-29 실측으로 확인됐다. 체결이 0인 주문은 뺀다. 여러 쪽이면 이어서 받는다. */
-    override fun todayOrderFills(market: Market): List<OrderFillTotal> =
-        dailyCcld("", maxPages = MAX_PAGES).mapNotNull { row ->
-            val quantity = row.path("tot_ccld_qty").asText("0").toIntOrNull() ?: 0
-            if (quantity <= 0) return@mapNotNull null
-            OrderFillTotal(row.path("odno").asText(), quantity, row.decimal("avg_prvs"))
-        }
+    /**
+     * 필드명(odno, tot_ccld_qty, avg_prvs, tot_ccld_amt, rmn_qty)은 실측으로 확인됐다(2026-09-29, 2026-10-14 응답 원문). 주문 하나가 한 줄이고 체결 시각 칸은 없다
+     * (`ord_tmd`·`infm_tmd` 는 주문 시각). 체결이 0 인 주문도 넣는다 — 취소로 끝났는지(`rmn_qty`=0) 알아야 해서다. 여러 쪽이면 이어서 받는다.
+     */
+    override fun todayOrderFills(market: Market): List<OrderFillTotal> = dailyCcld("", maxPages = MAX_PAGES).map { it.toFillTotal() }
+
+    override fun orderFillTotal(
+        market: Market,
+        orderNo: String,
+    ): OrderFillTotal? = dailyCcld(orderNo, maxPages = 1).firstOrNull { it.path("odno").asText() == orderNo }?.toFillTotal()
+
+    private fun JsonNode.toFillTotal() =
+        OrderFillTotal(
+            orderNo = path("odno").asText(),
+            filledQuantity = path("tot_ccld_qty").asText("0").toIntOrNull() ?: 0,
+            averagePrice = decimal("avg_prvs"),
+            filledAmount = path("tot_ccld_amt").asText("").toBigDecimalOrNull(),
+            remainingQuantity = path("rmn_qty").asText("").toIntOrNull(),
+        )
 
     /**
      * 오늘 주문 체결 전체의 `output1` 행. [orderNo] 를 주면 그 주문만, 비우면 오늘 주문 전부.

@@ -198,12 +198,11 @@ class HoldingSyncServiceFillTest {
     fun `원장에 기록됐어도 앱이 아직 반영하지 않은 체결로는 체결 완료로 보지 않는다`() {
         val trade = Trade(Market.KR, symbol, Side.BUY, 2, BigDecimal("9000"), "P2", "ok")
         Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "P2")).thenReturn(listOf(trade))
-        val id = ledger.record(notice(Side.BUY, 2, "9000", orderNo = "P2"), now)
-
-        ledger.projectedUpTo = id - 1
+        val filled = notice(Side.BUY, 2, "9000", orderNo = "P2")
+        ledger.record(filled, now)
         assertFalse(service.isOrderFilled("P2"))
 
-        ledger.projectedUpTo = id
+        service.applyRecorded(ledger, filled, now)
         assertTrue(service.isOrderFilled("P2"))
     }
 }

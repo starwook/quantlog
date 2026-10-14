@@ -170,7 +170,7 @@ class MartingaleServiceTest {
         val service = service()
         tick(service)
 
-        Mockito.`when`(holdingSync.isOrderFilled("A1")).thenReturn(true)
+        Mockito.`when`(holdingSync.isOrderClosed("A1")).thenReturn(true)
         holding(4, avg = "10050") // 체결통보가 DB 를 4주·평단 10,050 으로 고쳤다 → 트리거 10,000 이하라 다음 단계
 
         tick(service)
@@ -180,7 +180,7 @@ class MartingaleServiceTest {
     }
 
     @Test
-    fun `10초가 지나도 미체결이면 주문을 취소하고 쿨다운 없이 다음 틱에 다시 판정한다`() {
+    fun `10초가 지나도 미체결이면 주문을 취소하고 체결조회로 끝난 게 확인되면 쿨다운 없이 다시 판정한다`() {
         holding(2)
         val trade = Trade(Market.KR, symbol, Side.BUY, 2, BigDecimal("10050"), "A1", "ok")
         Mockito.`when`(tradeService.findByOrderNo(Market.KR, "A1")).thenReturn(trade)
@@ -196,7 +196,12 @@ class MartingaleServiceTest {
         assertEquals("00950", cancel.branchNo)
         Mockito.verify(tradeService).markCanceled(trade)
 
+        // 취소 전에 일부 체결됐는데 통보가 빠졌을 수 있어, 끝난 주문으로 확인될 때까지는 다시 판정하지 않는다.
         tick(service, at = krOpen.plusSeconds(11))
+        assertEquals(1, broker.orders.size)
+
+        Mockito.`when`(holdingSync.isOrderClosed("A1")).thenReturn(true)
+        tick(service, at = krOpen.plusSeconds(12))
         assertEquals(2, broker.orders.size)
     }
 
@@ -214,16 +219,19 @@ class MartingaleServiceTest {
     }
 
     @Test
-    fun `취소가 계속 거부돼 첫 시도로부터 2분이 지나면 포기하고 다시 판정한다`() {
+    fun `취소가 계속 거부돼도 시간으로는 포기하지 않고 체결조회로 끝난 게 확인될 때 다시 판정한다`() {
         holding(2)
         val service = service()
         tick(service)
         broker.cancelFails = true
 
         service.expirePending(krOpen.plusSeconds(11))
-        service.expirePending(krOpen.plusSeconds(11 + 121))
-        tick(service, at = krOpen.plusSeconds(11 + 122))
+        service.expirePending(krOpen.plusSeconds(11 + 600))
+        tick(service, at = krOpen.plusSeconds(11 + 601))
+        assertEquals(1, broker.orders.size)
 
+        Mockito.`when`(holdingSync.isOrderClosed("A1")).thenReturn(true)
+        tick(service, at = krOpen.plusSeconds(11 + 602))
         assertEquals(2, broker.orders.size)
     }
 
@@ -244,11 +252,11 @@ class MartingaleServiceTest {
     }
 
     @Test
-    fun `이미 체결 반영된 주문은 만료 점검에서 취소하지 않는다`() {
+    fun `이미 끝난 주문은 만료 점검에서 취소하지 않는다`() {
         holding(2)
         val service = service()
         tick(service)
-        Mockito.`when`(holdingSync.isOrderFilled("A1")).thenReturn(true)
+        Mockito.`when`(holdingSync.isOrderClosed("A1")).thenReturn(true)
 
         service.expirePending(krOpen.plusSeconds(30))
 

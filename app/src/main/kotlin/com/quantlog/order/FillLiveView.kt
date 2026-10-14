@@ -71,7 +71,7 @@ data class FillLiveView(
                     avgCostBefore = event.avgCostBefore,
                     filledAt = event.filledAt,
                 ),
-                key = ledgerKey(event.noticeId),
+                key = event.noticeId?.let(::ledgerKey) ?: "ic:${event.orderNo}:${event.filledAt.toEpochMilli()}",
                 symbolName = symbolName,
             )
 

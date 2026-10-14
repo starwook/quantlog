@@ -22,7 +22,7 @@ private val log = KotlinLogging.logger {}
  *
  * **같은 시점끼리만 비교한다.** 체결통보는 한투 체결보다 몇 초~20초 늦게 올 수 있다(2026-10-12 실측 최대 18.8초). 그 사이 온 잔고는 체결이 끝난 값이라
  * 그대로 덮어쓰면, 뒤늦게 오는 체결통보가 같은 체결을 한 번 더 얹는다(2026-10-12 226490: 평단 65,980 → 65,937.5 로 틀어져 매도 손익이 425원 어긋났다).
- * 잔고에는 종목별 당일 누적 매수·매도 수량이 있으니, **앱이 반영한 원장의 당일 누적과 같을 때만** "같은 시점"으로 보고 수량·평단을 비교한다.
+ * 잔고에는 종목별 당일 누적 매수·매도 수량이 있으니, **앱이 반영한 당일 누적(주문별 체결 합계 `order_fill`)과 같을 때만** "같은 시점"으로 보고 수량·평단을 비교한다.
  * 누적이 다르면 이유는 둘 중 하나다. ① 앱이 낸 주문의 체결통보가 아직 안 왔다 → 그 주문이 끝날 때까지 수량·평단은 건드리지 않는다(현재가만 갱신).
  * ② 기다릴 주문이 없는데 다르다(통보를 놓쳤다) → 시간을 재지 않고 바로 증권사 값으로 고친다.
  * 직접 거래는 하지 않는다는 전제라, 잔고에 누적이 없거나 종목이 사라졌을 때도 같은 규칙을 쓴다.
@@ -33,7 +33,7 @@ class HoldingBalanceSync(
     private val symbolNames: SymbolStrategyService,
     private val events: ApplicationEventPublisher,
     private val state: HoldingUpdateTimes,
-    private val orderFills: OrderFills,
+    private val fillStates: OrderFillStates,
     private val tradeRepository: TradeRepository,
 ) {
     /**
@@ -96,15 +96,14 @@ class HoldingBalanceSync(
         holding: Holding,
     ) = row.quantity == holding.quantity.toInt() && !averageDiffers(row.avgCost, holding.averagePrice)
 
-    /** 앱이 반영을 끝낸 원장 중 [day] 의 종목별 누적 매수·매도 수량. */
+    /** 앱이 보유 현황에 반영한 [day] 의 종목별 누적 매수·매도 수량(주문별 체결 합계 `order_fill` — 체결통보와, 통보가 빠졌으면 체결조회로 채운 몫). */
     private fun ledgerTotalsOf(day: LocalDate): Map<Pair<Market, String>, Totals> =
-        orderFills.projectedAll()
-            .filter { OrderFills.dayOf(it.filledAt) == day }
+        fillStates.ofDay(day)
             .groupBy { it.market to it.symbol }
             .mapValues { (_, fills) ->
                 Totals(
-                    bought = fills.filter { it.side == Side.BUY }.sumOf { it.quantity },
-                    sold = fills.filter { it.side == Side.SELL }.sumOf { it.quantity },
+                    bought = fills.filter { it.side == Side.BUY }.sumOf { it.filled.quantity },
+                    sold = fills.filter { it.side == Side.SELL }.sumOf { it.filled.quantity },
                 )
             }
 
@@ -128,7 +127,7 @@ class HoldingBalanceSync(
         fetchedAt: Instant,
     ): Boolean =
         tradeRepository.findAllByMarketAndSymbolAndExecutedAtAfter(key.first, key.second, fetchedAt.minus(ORDER_IN_FLIGHT_LIMIT))
-            .any { !it.canceled && orderFills.projected(it.orderNo, OrderFills.dayOf(it.executedAt)).total().quantity < it.quantity }
+            .any { !it.canceled && fillStates.filled(it.orderNo, OrderFills.dayOf(it.executedAt), it.market).quantity < it.quantity }
 
     private fun label(
         market: Market,

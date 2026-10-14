@@ -8,7 +8,7 @@ import java.time.Instant
 @Component
 class FillProgressTracker(
     private val tradeRepository: TradeRepository,
-    private val orderFills: OrderFills,
+    private val fillStates: OrderFillStates,
     private val state: HoldingUpdateTimes,
 ) : FillProgress {
     /**
@@ -28,11 +28,16 @@ class FillProgressTracker(
     }
 
     /**
-     * 이 주문의 체결을 주문수량만큼 다 반영했는가. 마틴게일의 "단계 진행 중"이 풀리는 기준이다. 원장(`kis_broker_fill`) 중 앱이 반영을 끝낸 줄로 구해
-     * 재시작해도 같고, 보유 현황에 아직 안 들어간 체결로 대기를 먼저 풀지 않는다.
+     * 이 주문의 체결을 주문수량만큼 다 반영했는가. 마틴게일의 "단계 진행 중"이 풀리는 기준이다. 주문별 체결 합계(`order_fill`)로 구해
+     * 재시작해도 같고, 보유 현황에 아직 안 들어간 체결로 대기를 먼저 풀지 않는다(보유 반영과 합계 갱신이 한 트랜잭션이다).
      */
     override fun isOrderFilled(orderNo: String): Boolean {
         val trade = tradeRepository.findByOrderNo(Market.KR, orderNo) ?: return false
-        return orderFills.projected(orderNo).total().quantity >= trade.quantity
+        return fillStates.filled(orderNo).quantity >= trade.quantity
+    }
+
+    override fun isOrderClosed(orderNo: String): Boolean {
+        val trade = tradeRepository.findByOrderNo(Market.KR, orderNo) ?: return false
+        return fillStates.isClosed(orderNo, trade.quantity)
     }
 }

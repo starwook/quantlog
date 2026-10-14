@@ -15,6 +15,10 @@ private val log = KotlinLogging.logger {}
 object SyncMismatchReporter {
     const val TAG = "[동기화 불일치]"
 
+    /** 보고를 한 건씩 시각과 함께 남기는 곳([SyncEventRecorder] 가 기동할 때 건다). 없으면(테스트) 로그만 남긴다. */
+    @Volatile
+    var sink: ((subject: String, detail: String) -> Unit)? = null
+
     /**
      * @param area 어떤 동기화인가 (예: "잔고 동기화"). 오류 기록에서 같은 종류끼리 묶이는 기준의 일부다.
      * @param subject 무엇이 어긋났나 (예: 종목명, 주문번호).
@@ -30,5 +34,6 @@ object SyncMismatchReporter {
         action: String,
     ) {
         log.error { "$TAG $area $subject: DB=$db / 증권사=$external — $action" }
+        runCatching { sink?.invoke("$area $subject", "DB=$db / 증권사=$external — $action") }
     }
 }

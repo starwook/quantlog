@@ -77,16 +77,19 @@ class PortfolioService(
     private val tradeRepository: TradeRepository,
     private val accountHoldingRepository: AccountHoldingRepository,
     private val orderFills: OrderFills,
+    private val fillStates: OrderFillStates,
 ) {
     fun snapshot(): PortfolioSnapshot = buildSnapshot()
 
     private fun buildSnapshot(): PortfolioSnapshot {
         val allTrades = tradeRepository.findAll()
         val trades = allTrades.filterNot { it.canceled }.sortedBy { it.executedAt }
-        // 체결 원장(kis_broker_fill)에 체결이 반영된 주문만 손익·횟수에 넣는다. 일부만 체결된 뒤 취소됐어도 체결된 몫은 실제 거래라 넣는다.
+        // 체결이 반영된 주문만 손익·횟수에 넣는다 — 체결 원장(kis_broker_fill)에 있거나, 통보가 빠져 체결조회로 채운 주문(order_fill).
+        // 일부만 체결된 뒤 취소됐어도 체결된 몫은 실제 거래라 넣는다.
         // 매도 손익은 그 매도의 체결 직전 평단으로 확정한다([realizedOf]). 미체결·확인 전 주문은 기록 화면에만 보인다.
         // 주문번호는 날마다 다시 시작하므로 날짜까지 같아야 같은 주문이다.
-        val ledgerOrders = orderFills.projectedAll().map { Triple(it.market, it.orderNo, OrderFills.dayOf(it.filledAt)) }.toSet()
+        val noticedOrders = orderFills.projectedAll().map { Triple(it.market, it.orderNo, OrderFills.dayOf(it.filledAt)) }.toSet()
+        val ledgerOrders = noticedOrders + fillStates.filledOrderKeys()
         val filledTrades =
             allTrades.filter { Triple(it.market, it.orderNo, OrderFills.dayOf(it.executedAt)) in ledgerOrders }.sortedBy { it.executedAt }
         val today = Instant.now().atZone(KST).toLocalDate()

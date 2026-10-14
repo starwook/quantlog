@@ -66,7 +66,9 @@ class ProjectorsTest {
 
         assertEquals(0, projector.project())
         assertEquals(40L, cursorStore["kis_broker_fill"])
-        Mockito.verifyNoInteractions(holdingSync)
+        // 오늘 주문별 체결 합계를 원장으로 다시 채우는 것 말고는 반영하지 않는다.
+        Mockito.verify(holdingSync).rebuildToday(anyNonNull())
+        Mockito.verifyNoMoreInteractions(holdingSync)
     }
 
     private val applied = mutableListOf<Triple<FillNotice, Long, Instant>>()

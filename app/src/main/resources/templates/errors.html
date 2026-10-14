@@ -107,6 +107,24 @@
         </div>
     </div>
 
+    <div class="card" th:if="${!#lists.isEmpty(syncEvents)}">
+        <div class="row">
+            <div class="top"><span>동기화·연결 기록</span><span class="count" th:text="${#lists.size(syncEvents)} + '건'"></span></div>
+            <div class="meta">한투 연결 끊김·재연결, 거래 정지·재개, 증권사와 DB 가 달랐던 일을 한 건씩 남깁니다(최근 300건).</div>
+            <details>
+                <summary>펼쳐 보기</summary>
+                <div class="row" th:each="e : ${syncEvents}">
+                    <div class="top">
+                        <span><span class="badge" th:classappend="${e.kindCss}" th:text="${e.kind}"></span>
+                            <span th:text="' ' + ${e.subject}"></span></span>
+                        <span class="count" th:text="${e.at}"></span>
+                    </div>
+                    <div class="msg" th:text="${e.detail}"></div>
+                </div>
+            </details>
+        </div>
+    </div>
+
     <div class="card">
         <div class="empty" th:if="${#lists.isEmpty(rows)}">이 조건에 맞는 오류 기록이 없습니다.</div>
         <div class="row" th:each="r : ${rows}">

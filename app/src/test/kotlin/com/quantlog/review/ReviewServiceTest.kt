@@ -7,6 +7,7 @@ import com.quantlog.playbook.Playbook
 import com.quantlog.playbook.PlaybookProperties
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.InMemoryBrokerFills
+import com.quantlog.position.InMemoryOrderFillStates
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeRepository
@@ -107,7 +108,8 @@ class ReviewServiceTest {
         Files.writeString(dir.resolve("principles.md"), "# 원칙\n- 롱만 한다")
         val trades = Mockito.mock(TradeRepository::class.java)
         Mockito.`when`(trades.findAll()).thenReturn(listOf(trade(Side.BUY, 10, "100000"), trade(Side.SELL, 11, "100500", avg = "100000")))
-        val portfolio = PortfolioService(trades, Mockito.mock(AccountHoldingRepository::class.java), ledger)
+        val portfolio =
+            PortfolioService(trades, Mockito.mock(AccountHoldingRepository::class.java), ledger, InMemoryOrderFillStates().states)
         return ReviewService(
             portfolio,
             Playbook(PlaybookProperties(dir.toString())),

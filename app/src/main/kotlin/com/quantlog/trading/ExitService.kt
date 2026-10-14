@@ -9,6 +9,7 @@ import com.quantlog.broker.Side
 import com.quantlog.broker.symbolKey
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.FillProgress
+import com.quantlog.position.FillReconcileRequested
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.ExitSignal
 import com.quantlog.strategy.FixedPercentExitRule
@@ -16,6 +17,7 @@ import com.quantlog.watchlist.SymbolStrategy
 import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.time.Duration
@@ -57,9 +59,14 @@ class ExitService(
     private val accountHoldingRepository: AccountHoldingRepository,
     private val holdingSync: FillProgress,
     private val properties: ExitProperties,
+    /** 주문이 어떻게 끝났는지 체결조회로 확인해 달라는 요청을 낸다([FillReconcileRequested]). */
+    private val events: ApplicationEventPublisher = ApplicationEventPublisher { },
 ) {
     /** 매도 주문은 냈는데 체결 확인이 아직 안 된 종목. */
-    private val pending = PendingOrders("청산", broker, tradeService, holdingSync, properties.fillTimeout)
+    private val pending =
+        PendingOrders("청산", broker, tradeService, holdingSync, properties.fillTimeout) {
+            events.publishEvent(FillReconcileRequested(it, halting = false))
+        }
     private val inFlight = KeyedLock()
 
     /** 보유 종목 전체를 판정한다. [exclude] 가 true 인 종목은 다른 경로(실시간)가 맡고 있으니 건너뛴다. */

@@ -105,9 +105,14 @@ data class BuyingPower(
     val maxQuantity: BigDecimal,
 )
 
-/** 증권사가 알려 준 주문 한 건의 체결 누적(쪼개진 체결 한 건씩이 아니다). [averagePrice] 는 체결평균가. */
+/**
+ * 증권사가 알려 준 주문 한 건의 체결 누적(쪼개진 체결 한 건씩이 아니다 — 체결 시각도 없다). [averagePrice] 는 체결평균가(`avg_prvs`),
+ * [filledAmount] 는 총 체결금액(`tot_ccld_amt`), [remainingQuantity] 는 아직 호가창에 남은 수량(`rmn_qty`, 0 이면 전량 체결 또는 취소로 끝난 주문). 모르면 null.
+ */
 data class OrderFillTotal(
     val orderNo: String,
     val filledQuantity: Int,
     val averagePrice: BigDecimal,
+    val filledAmount: BigDecimal? = null,
+    val remainingQuantity: Int? = null,
 )
