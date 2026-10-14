@@ -42,7 +42,9 @@ quantlog:
     token: ${QUANTLOG_GATEWAY_TOKEN:}
     candle-collection:
       enabled: ${QUANTLOG_GATEWAY_CANDLES_ENABLED:true}
-      interval-millis: 1000
+      # 분봉은 1분에 하나 생기고, 실시간이 붙은 종목은 앱이 틱으로 직접 만든다. 1초마다 부르면 한투 호출 줄(1.1초 간격)을 분봉이 독차지해
+      # 잔고·체결조회가 밀리고 초당 한도 초과가 났다(2026-10-14) — 1분마다 한 바퀴만 돈다.
+      interval-millis: 60000
     balance:
       enabled: ${QUANTLOG_GATEWAY_BALANCE_ENABLED:true}
       interval-millis: 10000

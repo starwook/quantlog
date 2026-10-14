@@ -29,6 +29,13 @@ private val log = KotlinLogging.logger {}
 data class RawRealtimeMessage(val raw: String)
 
 /**
+ * 한투 실시간 연결로 체결통보를 받을 수 있는 상태가 바뀌었다. StreamHub 가 앱에 `kis_ws` 로 그대로 전한다(해석·정책은 앱).
+ * [fillNoticeLive] 는 연결이 붙고 체결통보 구독 성공 응답까지 받았는가 — 연결만 붙고 구독이 안 됐으면 false 다.
+ * [downSince] 는 다시 붙었을 때(true) 처음 끊긴 시각, 끊겼을 때(false)도 그 끊김이 시작된 시각이다.
+ */
+data class KisConnectionChanged(val fillNoticeLive: Boolean, val at: Instant, val downSince: Instant?)
+
+/**
  * KIS 실시간 WebSocket 구독. 시세(H0STCNT0)는 받은 한투 메시지를 **해석하지 않고 원문 그대로** [RawRealtimeMessage] 이벤트로 내보낸다
  * (StreamHub 가 앱에 전달 — 틱·분봉·최신가 해석은 앱이 한투 문서대로 한다).
  * KIS 키가 없으면 켜지 않고(연결 안 됨 → isLive=false) REST 폴링만으로 동작한다.
@@ -54,6 +61,18 @@ class KisRealtimeClient(
 
     /** 재연결을 한 번만 예약하려는 표시(onError 와 onClose 가 둘 다 불릴 수 있다). */
     private val reconnectScheduled = AtomicBoolean(false)
+
+    /** 체결통보 구독까지 성공해 통보를 받을 수 있는 상태인가. */
+    @Volatile
+    private var fillNoticeLive = false
+
+    /** 체결통보를 못 받기 시작한 시각(끊긴 시각). 다시 구독되면 비운다. */
+    @Volatile
+    private var downSince: Instant? = null
+
+    /** 마지막으로 기다리지 않고 바로 다시 붙인 시각. 바로 붙이기가 연달아 실패하면 [RECONNECT_DELAY] 간격으로 늦춘다. */
+    @Volatile
+    private var lastImmediateReconnectAt: Instant = Instant.EPOCH
 
     /** 지금 KIS 에 구독 걸려 있는 종목. 연결이 끊기면 비운다(재연결 뒤 [refreshSubscriptions] 가 다시 건다). */
     private val subscribed = ConcurrentHashMap.newKeySet<String>()
@@ -106,11 +125,53 @@ class KisRealtimeClient(
             }
     }
 
-    private fun scheduleReconnect(delay: Duration = RECONNECT_DELAY) {
-        if (!reconnectScheduled.compareAndSet(false, true)) return
+    /**
+     * 다시 연결을 예약한다. [immediate] 면 기다리지 않고 바로 붙는다 — 한투가 매시 정각에 끊는데(2026-10-14 실측) 5초를 기다리면 그 사이 체결통보가
+     * 유실되기 때문이다(버그 수정). 다만 바로 붙이기를 [RECONNECT_DELAY] 안에 또 하게 되면(붙자마자 또 끊김·연결 실패) 한투를 두드리지 않게 [RECONNECT_DELAY] 를 기다린다.
+     */
+    private fun scheduleReconnect(
+        immediate: Boolean = false,
+        fixedDelay: Duration? = null,
+    ): Duration? {
+        if (!reconnectScheduled.compareAndSet(false, true)) return null
+        val now = Instant.now()
+        val delay =
+            when {
+                fixedDelay != null -> fixedDelay
+                immediate && Duration.between(lastImmediateReconnectAt, now) >= RECONNECT_DELAY -> {
+                    lastImmediateReconnectAt = now
+                    Duration.ZERO
+                }
+                else -> RECONNECT_DELAY
+            }
         CompletableFuture
             .delayedExecutor(delay.toMillis(), TimeUnit.MILLISECONDS)
             .execute { connect() }
+        return delay
+    }
+
+    /** 체결통보를 못 받게 됐다(연결 끊김·에러·접속키 무효). 끊김이 이어지는 동안 [downSince] 는 처음 끊긴 시각을 지킨다. */
+    private fun markFillNoticesDown() {
+        val now = Instant.now()
+        val since = downSince ?: now.also { downSince = it }
+        val wasLive = fillNoticeLive
+        fillNoticeLive = false
+        if (wasLive) eventPublisher.publishEvent(KisConnectionChanged(false, now, since))
+    }
+
+    /** 체결통보 구독 성공 응답을 받았다 — 이제 통보를 받는다. 끊겼다 다시 붙은 것이면 끊겨 있던 시간을 기록으로 남긴다. */
+    private fun markFillNoticesLive() {
+        if (fillNoticeLive) return
+        val now = Instant.now()
+        val since = downSince
+        downSince = null
+        fillNoticeLive = true
+        if (since != null) {
+            log.warn { "[실시간 시세] 체결통보 재구독 완료 — 끊긴 지 ${Duration.between(since, now).toMillis()}ms (그 사이 체결통보는 다시 오지 않는다)" }
+        } else {
+            log.info { "[실시간 시세] 체결통보 구독 완료" }
+        }
+        eventPublisher.publishEvent(KisConnectionChanged(true, now, since))
     }
 
     /** DB 기준 구독 목록과 실제 구독을 맞춘다. 종목이 추가·삭제되면 이 주기 안에 따라온다. */
@@ -179,7 +240,12 @@ class KisRealtimeClient(
         val trId = node.path("header").path("tr_id").asText()
         when {
             trId == "PINGPONG" -> webSocket?.sendPong(ByteBuffer.wrap(raw.toByteArray()))
-            trId in KisFillNoticeHandler.TR_IDS -> fillNotices.onSubscribeResponse(trId, node)
+            trId in KisFillNoticeHandler.TR_IDS ->
+                if (fillNotices.onSubscribeResponse(trId, node)) {
+                    markFillNoticesLive()
+                } else {
+                    log.warn { "[체결통보] $trId 구독 실패 — 연결은 붙어 있어도 체결통보를 받지 못한다: ${node.path("body").path("msg1").asText()}" }
+                }
             trId == NIGHT_FUTURES_TR_ID -> log.info { "[야간선물] 구독 응답: ${node.path("body").path("msg1").asText()}" }
         }
         if (trId != "PINGPONG") {
@@ -199,8 +265,9 @@ class KisRealtimeClient(
         tokenProvider.invalidateApprovalKey()
         connected = false
         subscribed.clear()
+        markFillNoticesDown()
         runCatching { webSocket?.abort() }
-        scheduleReconnect(APPROVAL_RETRY_DELAY)
+        scheduleReconnect(fixedDelay = APPROVAL_RETRY_DELAY)
     }
 
     /** 시세 메시지는 해석 없이 원문 그대로 내보낸다. 칸 번호가 어긋나도 게이트웨이는 영향이 없다. */
@@ -240,8 +307,9 @@ class KisRealtimeClient(
             connected = false
             subscribed.clear()
             subscribedFutures.clear()
-            log.warn { "[실시간 시세] 연결 종료(code=$statusCode, $reason) — ${RECONNECT_DELAY.seconds}초 후 재연결" }
-            scheduleReconnect()
+            markFillNoticesDown()
+            val delay = scheduleReconnect(immediate = true)
+            log.warn { "[실시간 시세] 연결 종료(code=$statusCode, $reason) — ${delay?.let { "${it.toMillis()}ms 후 재연결" } ?: "재연결 예약됨"}" }
             return null
         }
 
@@ -253,9 +321,10 @@ class KisRealtimeClient(
             connected = false
             subscribed.clear()
             subscribedFutures.clear()
-            log.warn(error) { "[실시간 시세] 에러 — ${RECONNECT_DELAY.seconds}초 후 재연결" }
+            markFillNoticesDown()
             runCatching { webSocket.abort() }
-            scheduleReconnect()
+            val delay = scheduleReconnect(immediate = true)
+            log.warn(error) { "[실시간 시세] 에러 — ${delay?.let { "${it.toMillis()}ms 후 재연결" } ?: "재연결 예약됨"}" }
         }
     }
 

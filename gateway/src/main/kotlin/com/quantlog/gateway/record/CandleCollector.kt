@@ -36,7 +36,7 @@ class CandleCollector(
     private var lastPrunedAt: Instant = Instant.EPOCH
 
     @Scheduled(
-        fixedDelayString = "\${quantlog.gateway.candle-collection.interval-millis:1000}",
+        fixedDelayString = "\${quantlog.gateway.candle-collection.interval-millis:60000}",
         initialDelayString = "\${quantlog.gateway.candle-collection.initial-delay-millis:20000}",
     )
     fun run() {

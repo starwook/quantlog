@@ -1,6 +1,7 @@
 package com.quantlog.gateway.stream
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.quantlog.gateway.kis.KisConnectionChanged
 import com.quantlog.gateway.kis.RawRealtimeMessage
 import com.quantlog.gateway.lease.CONTRACT_VERSION
 import com.quantlog.gateway.lease.LeaseService
@@ -26,6 +27,7 @@ private val log = KotlinLogging.logger {}
  *   느린 앱이 증권사 수신 스레드를 막지 못하게, 보내기 대기가 [RAW_BACKLOG_LIMIT] 건을 넘으면 새 시세는 버린다.
  * - 체결 알림(`fill`)·잔고 알림(`balance`)은 빠짐없이 보낸다. 다만 정본은 DB 원장이고 이 메시지는 "새 행이 생겼다"는 빠른 알림일 뿐이다
  *   (앱이 꺼져 있었다면 DB 에서 마지막으로 처리한 ID 이후를 읽어 따라잡는다).
+ * - 한투 연결 상태(`kis_ws`)는 바뀔 때마다 보내고, 새로 붙은 앱에는 `hello` 뒤에 지금 상태를 한 번 보낸다(무엇을 할지는 앱이 정한다).
  * 모든 전송은 전용 스레드 하나에서 한다 — 연결마다 보내기 시간·버퍼 상한이 있어 느린 연결은 끊긴다.
  */
 @Component
@@ -35,6 +37,9 @@ class StreamHub(
 ) {
     private val sessions = ConcurrentHashMap<String, WebSocketSession>()
     private val rawBacklog = AtomicInteger()
+
+    /** 마지막으로 알게 된 한투 연결 상태. 아직 한 번도 바뀐 적이 없으면(기동 직후·KIS 키 없음) null 이라 보내지 않는다. */
+    @Volatile private var kisState: KisConnectionChanged? = null
     private val executor =
         Executors.newSingleThreadScheduledExecutor { Thread(it, "gateway-stream").apply { isDaemon = true } }
 
@@ -58,9 +63,19 @@ class StreamHub(
                         "contractVersion" to CONTRACT_VERSION,
                     ),
                 )
+                kisState?.let { sendTo(decorated, "kis_ws", it.payload()) }
             }
         }
     }
+
+    @EventListener
+    fun onKisConnection(event: KisConnectionChanged) {
+        kisState = event
+        executor.execute { safely { send("kis_ws", event.payload()) } }
+    }
+
+    private fun KisConnectionChanged.payload(): Map<String, Any?> =
+        mapOf("fillNoticeLive" to fillNoticeLive, "at" to at.toString(), "downSince" to downSince?.toString())
 
     fun unregister(session: WebSocketSession) {
         sessions.remove(session.id)
