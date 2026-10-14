@@ -67,7 +67,7 @@ class GatewayLogProjector(
 
     private fun GatewayLogRow.toRecord() = LogRecord(loggedAt, level, logger, message, exceptionClass, exceptionMessage, stackTrace)
 
-    private companion object {
+    internal companion object {
         const val CURSOR = "gateway_log"
         const val DEDUPE_MILLIS = 60_000L
     }
