@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>선물옵션 · quantlog</title>
+    <title>KOSPI200 · quantlog</title>
     <style>
         :root {
             --bg: #f2f3f5;
@@ -82,7 +82,7 @@
 <main>
     <nav th:replace="~{fragments/nav :: menu('futures')}"></nav>
 
-    <h1>선물옵션</h1>
+    <h1>KOSPI200</h1>
     <p class="note">
         코스피200 옵션의 행사가별 미결제약정으로 매물대를 봅니다. 콜이 몰린 행사가는 위쪽 저항, 풋이 몰린 행사가는 아래쪽 지지로 읽는 참고 지표이고,
         맥스페인은 만기 때 매수자 손실이 가장 큰 행사가입니다. 평일 16:00 에 지수 위아래 8% 범위를 자동으로 모아 저장하고, 아래 표는 가장 최근 저장본입니다.
