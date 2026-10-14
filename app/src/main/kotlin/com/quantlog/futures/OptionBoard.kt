@@ -32,7 +32,8 @@ data class KeyLevel(
 
 /**
  * 한 만기월의 행사가별 콜·풋. 옵션 매물대(미결제약정이 몰린 행사가)를 여기서 계산한다.
- * 한투는 매물대 API 가 없어, 행사가별 미결제약정으로 앱이 구한다. [underlying] 은 기초지수(KOSPI200).
+ * 한투는 매물대 API 가 없어, 행사가별 미결제약정으로 앱이 구한다. [underlying] 은 저장 시점의 KOSPI200 지수로,
+ * 수집 범위를 정할 때만 쓰고 화면에는 보이지 않는다(전날 종가라 오늘 선물과 비교할 수 없다).
  */
 class OptionBoard(
     strikes: List<OptionStrike>,
@@ -63,8 +64,8 @@ class OptionBoard(
             }
         }?.strike
 
-    /** 기초지수에 가장 가까운 행사가(등가격). */
-    val atmStrike: BigDecimal? = underlying?.let { index -> strikes.minByOrNull { (it.strike - index).abs() }?.strike }
+    /** [price](선물 현재가)에 가장 가까운 행사가(등가격). */
+    fun atmStrike(price: BigDecimal?): BigDecimal? = price?.let { p -> strikes.minByOrNull { (it.strike - p).abs() }?.strike }
 
     /** 막대 길이를 맞추는 기준(콜·풋 통틀어 가장 큰 미결제약정). */
     val maxOi: Long = strikes.maxOfOrNull { maxOf(it.callOi, it.putOi) } ?: 0
@@ -73,24 +74,20 @@ class OptionBoard(
     val strikesTopDown: List<OptionStrike> = this.strikes.reversed()
 
     /**
-     * 저항·지지·맥스페인·KOSPI200 종가를 높은 가격부터 나열한다. 매수·매도 타점을 가늠하는 기준선.
-     * [futuresPrice](선물 현재가)를 주면 그것이 거리(%)의 기준이고, 없으면 KOSPI200 종가가 기준이다.
-     * 옵션 저장본의 지수는 저장 시점(장 마감) 값이라, 야간에 선물이 움직여도 그대로다.
+     * 저항·지지·맥스페인·선물 현재가를 높은 가격부터 나열한다. 매수·매도 타점을 가늠하는 기준선.
+     * 거리(%)의 기준은 [futuresPrice](선물 현재가)이고, 없으면 거리를 붙이지 않는다.
      */
-    fun keyLevels(futuresPrice: BigDecimal? = null): List<KeyLevel> {
-        val base = futuresPrice ?: underlying
-        return listOfNotNull(
+    fun keyLevels(futuresPrice: BigDecimal? = null): List<KeyLevel> =
+        listOfNotNull(
             callWall?.let { "콜 최대 (저항)" to it.strike },
-            underlying?.let { "KOSPI200 종가" to it },
             maxPain?.let { "맥스페인" to it },
             putWall?.let { "풋 최대 (지지)" to it.strike },
             futuresPrice?.let { "선물 현재가" to it },
         ).sortedByDescending { it.second }.map { (label, price) ->
-            val reference = if (futuresPrice != null) label == "선물 현재가" else label == "KOSPI200 종가"
+            val reference = label == "선물 현재가"
             val gap =
-                base?.takeIf { it.signum() != 0 && !reference }
+                futuresPrice?.takeIf { it.signum() != 0 && !reference }
                     ?.let { (price - it).multiply(BigDecimal(100)).divide(it, 2, RoundingMode.HALF_UP) }
             KeyLevel(label, price, gap, reference)
         }
-    }
 }

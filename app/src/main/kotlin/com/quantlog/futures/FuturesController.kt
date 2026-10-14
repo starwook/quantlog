@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.servlet.mvc.support.RedirectAttributes
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Clock
 import java.time.LocalDate
 import java.time.YearMonth
@@ -54,6 +55,7 @@ class FuturesController(
                 (model.getAttribute("board") as? OptionBoard)?.let { board ->
                     val last = (model.getAttribute("candleChart") as? CandleChart)?.candles?.last()?.close
                     model.addAttribute("levels", board.keyLevels(last))
+                    model.addAttribute("atmStrike", board.atmStrike(last))
                 }
             }
             .onFailure {
@@ -74,13 +76,17 @@ class FuturesController(
             .onSuccess { candles ->
                 if (candles.isEmpty()) return@onSuccess
                 val levels = (model.getAttribute("board") as? OptionBoard)?.keyLevels().orEmpty()
-                model.addAttribute("candleChart", CandleChart(candles, levels, apiBase(code, unit, candles)))
+                val base = apiBase(code, unit, candles)
+                model.addAttribute("candleChart", CandleChart(candles, levels, base?.close, base?.dayChange))
             }
             .onFailure {
                 log.warn { "[선물옵션] 캔들 조회 실패: ${it.message}" }
                 model.addAttribute("chartError", it.message)
             }
     }
+
+    /** 등락률 기준 종가. [dayChange] 는 야간일 때만 있는, 그 주간 종가의 전일 대비 등락률(%)로 보여주기용이다. */
+    private data class ApiBase(val close: BigDecimal, val dayChange: BigDecimal? = null)
 
     /**
      * 등락률 기준 종가를 한투 API 로 구한다(직접 계산하지 않는다). 정규장이면 전일 종가(`inquire-price`),
@@ -90,14 +96,18 @@ class FuturesController(
         code: String,
         unit: String,
         candles: List<Candle>,
-    ): BigDecimal? {
+    ): ApiBase? {
         if (unit == "D") return null
         return runCatching {
             if (isNightBar(candles.last())) {
                 val dayDate = candles.lastOrNull { !isNightBar(it) }?.date ?: return@runCatching null
-                client.candles(code, false, LocalDate.now(clock)).lastOrNull { it.date == dayDate }?.close
+                val daily = client.candles(code, false, LocalDate.now(clock))
+                val index = daily.indexOfFirst { it.date == dayDate }.takeIf { it >= 0 } ?: return@runCatching null
+                val close = daily[index].close
+                val prev = daily.getOrNull(index - 1)?.close?.takeIf { it.signum() != 0 }
+                ApiBase(close, prev?.let { (close - it).multiply(BigDecimal(100)).divide(it, 2, RoundingMode.HALF_UP) })
             } else {
-                client.previousClose(code)
+                client.previousClose(code)?.let { ApiBase(it) }
             }
         }.getOrNull()
     }
