@@ -167,7 +167,8 @@ class KisRealtimeClient(
         downSince = null
         fillNoticeLive = true
         if (since != null) {
-            log.warn { "[실시간 시세] 체결통보 재구독 완료 — 끊긴 지 ${Duration.between(since, now).toMillis()}ms (그 사이 체결통보는 다시 오지 않는다)" }
+            // 매시 정각마다 있는 일이라 INFO 로 둔다(WARN 은 앱이 웹훅 알림으로 보낸다). 끊긴 시간은 앱이 kis_ws 로 받아 sync_event 에 남긴다.
+            log.info { "[실시간 시세] 체결통보 재구독 완료 — 끊긴 지 ${Duration.between(since, now).toMillis()}ms (그 사이 체결통보는 다시 오지 않는다)" }
         } else {
             log.info { "[실시간 시세] 체결통보 구독 완료" }
         }
