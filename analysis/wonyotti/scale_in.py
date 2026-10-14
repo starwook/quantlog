@@ -42,8 +42,9 @@ for t, sym, s, q, p, oid in fills:
         if not dq:
             cur[sym] = c = {"side": s, "first": p, "t": t, "adds": {}, "rq": 0, "rw": 0.0, "mae": 0.0}
         else:
-            avg = sum(l[1] * l[2] for l in dq) / sum(l[1] for l in dq)
-            a = c["adds"].setdefault(oid, [0.0, 0])  # 주문 단위로 묶는다
+            held = sum(l[1] for l in dq)
+            avg = sum(l[1] * l[2] for l in dq) / held
+            a = c["adds"].setdefault(oid, [0.0, 0, held])  # 주문 단위로 묶는다 (held = 이 주문 시작 시점 보유 수량)
             a[0] += s * (avg - p) / avg * 100 * rem  # 평단보다 싸게(롱) 살수록 +
             a[1] += rem
             c["mae"] = max(c["mae"], s * (c["first"] - p) / c["first"])
@@ -52,6 +53,7 @@ for t, sym, s, q, p, oid in fills:
 for c in cycles:
     c["ret"] = c["rw"] / c["rq"] * 100 if c["rq"] else 0.0
     c["ao"] = [(v[0] / v[1], v[1]) for v in c["adds"].values()]
+    c["ratio"] = [v[1] / v[2] for v in c["adds"].values()]  # 추매 수량 ÷ 추매 직전 보유 수량
 
 
 def pct(xs, ps):
@@ -70,6 +72,8 @@ def report(label, cs):
     print(f" 평단 대비 추매 깊이 p10/25/50/75/90 {pct(ds, [.1, .25, .5, .75, .9])}, 평단보다 유리한 가격 {sum(d <= 0 for d in ds) / len(ds) * 100:.0f}%")
     for a, b in [(-99, 0), (0, .5), (.5, 1), (1, 2), (2, 3), (3, 5), (5, 10), (10, 999)]:
         print(f"   깊이 {a}~{b}%: {sum(a < d <= b for d in ds) / len(ds) * 100:.0f}%")
+    rs = [r for c in wa for r in c["ratio"]]
+    print(f" 추매 수량 ÷ 직전 보유 수량 p10/25/50/75/90 {pct(rs, [.1, .25, .5, .75, .9])}, 2배 이상(≥1.0) {sum(r >= 1 for r in rs) / len(rs) * 100:.0f}%")
     print(" 최대 추매 깊이별 최종 결과:")
     for a, b in [(-99, 1), (1, 3), (3, 5), (5, 10), (10, 999)]:
         g = [c for c in wa if a < max(d for d, _ in c["ao"]) <= b]
