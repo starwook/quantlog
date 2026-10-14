@@ -3,7 +3,7 @@
 서버 공통 정보(접속, 방화벽, MySQL 구성)는 `~/.claude/agents/deploy-agent.md` 참고. 여기는 quantlog 전용 내용만 둔다.
 
 ## 구조
-- 서버: `/opt/quantlog` — `gateway.jar`, `app.jar`, `Dockerfile`, `docker-compose.yml`, `remote-deploy.sh`, `playbook/principles.md` (배포 때마다 올라감) + `.env`, `application-local.yml`, `playbook/` 의 옛 일지·제안 파일 (서버에만 있음 — 일지·제안은 이제 DB 에 쌓이고, 옛 파일은 앱이 뜰 때 한 번 DB 로 옮긴다)
+- 서버: `/opt/quantlog` — `gateway.jar`, `app.jar`, `Dockerfile`, `docker-compose.yml`, `remote-deploy.sh`, `playbook/principles.md` (배포 때마다 올라감) + `.env`, `application-local.yml` (일지·제안은 DB 에 쌓인다)
 - 컨테이너 둘: **`quantlog-gateway`**(증권사 키·REST·실시간·주문·원장 기록, 포트 8081은 호스트에 열지 않고 앱이 컴포즈 네트워크로 `http://gateway:8081` 접속)와 **`quantlog`**(앱, 포트 **8080**). 설계는 `docs/서버-분리.md`.
 - DB: 서버에 설치된 호스트 MySQL의 `quantlog` DB, 유저 `admin`. 컨테이너에서 `host.docker.internal:3306`으로 접속 (둘이 같은 DB를 쓴다)
 - 두 배포 방식은 같은 `deploy/deploy.sh`를 쓴다 (jar 둘을 올리고 서버에서 `remote-deploy.sh` 가 서비스별로 `docker compose up -d --build <서비스>`)
