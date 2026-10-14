@@ -1,6 +1,8 @@
 package com.quantlog.errorlog
 
 import com.quantlog.common.KST
+import com.quantlog.gatewayclient.GatewayStart
+import com.quantlog.gatewayclient.GatewayStartRepository
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
@@ -27,12 +29,19 @@ data class ErrorLogRowView(
 
 data class CategoryChip(val name: String, val count: Int)
 
+/** 게이트웨이가 새로 뜬 기록 한 줄. [previousHeartbeat] 는 직전 인스턴스가 마지막으로 살아 있던 시각(모르면 null). */
+data class GatewayStartView(val startedAt: String, val previousHeartbeat: String?)
+
 /**
  * 서버 오류 기록 화면. 같은 종류의 WARN 이상 로그가 한 줄로 묶여 있고(몇 번, 언제부터 언제까지),
  * 분류(로그 앞 `[태그]`)·레벨·기간으로 걸러 본다. 로그를 서버에서 직접 못 읽는 상황에서 오류를 놓치지 않으려는 화면이다.
+ * 같은 기간에 게이트웨이가 새로 뜬 시각도 함께 보여 준다 — 증권사 웹소켓 끊김이 재시작 때문인지 시각으로 가려 보려고.
  */
 @Controller
-class ErrorLogController(private val repository: ErrorLogRepository) {
+class ErrorLogController(
+    private val repository: ErrorLogRepository,
+    private val gatewayStarts: GatewayStartRepository,
+) {
     @GetMapping("/errors")
     fun page(
         @RequestParam(defaultValue = "ALL") level: String,
@@ -41,7 +50,8 @@ class ErrorLogController(private val repository: ErrorLogRepository) {
         model: Model,
     ): String {
         val period = days.takeIf { it in PERIOD_DAYS } ?: 7L
-        val inPeriod = repository.findAllByLastSeenAfterOrderByLastSeenDesc(Instant.now().minus(Duration.ofDays(period)))
+        val since = Instant.now().minus(Duration.ofDays(period))
+        val inPeriod = repository.findAllByLastSeenAfterOrderByLastSeenDesc(since)
         val byLevel = inPeriod.filter { level == "ALL" || it.level == level }
         // 레벨 칩을 눌러도 분류가 URL 에 남는다. 그 분류가 이 레벨에는 없으면(WARN 분류 선택 후 ERROR 로 바꾼 경우)
         // 0건으로 비어 보이니 분류 필터를 풀고 전체를 보여 준다.
@@ -62,8 +72,11 @@ class ErrorLogController(private val repository: ErrorLogRepository) {
             "categories",
             byLevel.groupingBy { it.category }.eachCount().map { CategoryChip(it.key, it.value) }.sortedByDescending { it.count },
         )
+        model.addAttribute("gatewayStarts", gatewayStarts.findAllByStartedAtAfterOrderByStartedAtDesc(since).map { it.toView() })
         return "errors"
     }
+
+    private fun GatewayStart.toView() = GatewayStartView(TIME.format(startedAt), previousHeartbeatAt?.let { TIME.format(it) })
 
     private fun ErrorLog.toView() =
         ErrorLogRowView(

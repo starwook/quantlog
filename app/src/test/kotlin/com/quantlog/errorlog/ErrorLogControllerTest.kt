@@ -1,5 +1,7 @@
 package com.quantlog.errorlog
 
+import com.quantlog.gatewayclient.GatewayStart
+import com.quantlog.gatewayclient.GatewayStartRepository
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
@@ -20,6 +22,9 @@ class ErrorLogControllerTest {
 
     @MockBean
     lateinit var repository: ErrorLogRepository
+
+    @MockBean
+    lateinit var gatewayStarts: GatewayStartRepository
 
     @Test
     fun `오류 기록을 분류와 횟수와 함께 그린다`() {
@@ -42,6 +47,24 @@ class ErrorLogControllerTest {
             .andExpect(content().string(containsString("[청산 감시] 실패: KR 005930")))
             .andExpect(content().string(containsString("1,234회")))
             .andExpect(content().string(containsString("청산 감시 1")))
+    }
+
+    @Test
+    fun `게이트웨이가 새로 뜬 시각을 한국 시간으로 보여준다`() {
+        val start =
+            GatewayStart(
+                "g2",
+                Instant.parse("2026-10-13T21:20:48Z"),
+                Instant.parse("2026-10-13T21:20:31Z"),
+                Instant.parse("2026-10-13T21:20:50Z"),
+            )
+        Mockito.`when`(gatewayStarts.findAllByStartedAtAfterOrderByStartedAtDesc(any(Instant::class.java) ?: Instant.now()))
+            .thenReturn(listOf(start))
+
+        mvc.perform(get("/errors"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(containsString("10-14 06:20:48 시작")))
+            .andExpect(content().string(containsString("10-14 06:20:31")))
     }
 
     @Test

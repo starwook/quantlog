@@ -70,6 +70,7 @@
 | `paper_order` | 앱만 | 모킹 체결(`QUANTLOG_BROKER_TYPE=paper`) 기록 |
 | `option_open_interest` | 앱만 | 코스피200 옵션 매물대 저장본(하루 한 번, 날짜·월물·행사가별 콜/풋 미결제약정). 게이트웨이는 모른다 — `docs/kis-api/futures-options.md` |
 | `gateway_log` | 게이트웨이 → 앱 | 게이트웨이의 WARN 이상 로그 **원본**(append-only, 묶지 않음). `id, logged_at, level, logger, message, exception_class, exception_message, stack_trace`. 앱 `GatewayLogProjector` 가 읽어 자기 `error_log` 에 묶어 넣고 웹훅으로 알린다. 14일 지난 줄은 게이트웨이가 지운다 |
+| `gateway_start` | **앱만** | 게이트웨이가 새로 뜬 기록, 인스턴스마다 한 줄(2026-10-14). `instance_id`(유일), `started_at`(= `gateway_instance.started_at`), `previous_heartbeat_at`(앱이 직전 인스턴스에서 마지막으로 본 하트비트, 모르면 null), `detected_at`. 앱 `GatewayStartRecorder` 가 `gateway_instance.instance_id` 가 처음 보는 값일 때 쓴다(/errors 화면). 게이트웨이는 모른다 |
 | `error_log` | **앱만** | 앱의 WARN 이상 로그와 `gateway_log` 에서 옮겨 온 줄을 같은 종류끼리 묶은 것(/errors 화면) |
 | `broker_projection_cursor` | 앱 → 앱 | 앱이 원장을 어디까지 처리했는지(`kis_broker_fill`·`kis_balance`·`kis_minute_chart`·`gateway_log` = 각 테이블의 마지막 처리 id) |
 
