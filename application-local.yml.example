@@ -16,6 +16,10 @@ kis:
 quantlog:
   anthropic:
     api-key: "여기에 Anthropic API 키"   # Claude API 용(일일 리뷰 등). 콘솔(console.anthropic.com) 크레딧으로 결제 — Claude 구독과 별개
+  news:
+    naver-client-id: ""      # 분석 > 뉴스. 네이버 개발자센터(검색 API) 발급. 비우면 네이버 뉴스 꺼짐
+    naver-client-secret: ""
+    dart-api-key: ""         # opendart.fss.or.kr 에서 무료 발급. 비우면 공시 꺼짐
   review:
     enabled: false           # true 면 평일 15:40 에 자동 리뷰. 수동은 POST /review/run
   notify:

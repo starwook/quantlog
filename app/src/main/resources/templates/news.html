@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>뉴스 · quantlog</title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --err: #f04452;
+            --ok: #0f9d58;
+            --disc: #3182f6;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 24px 16px 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; }
+        h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+        .note { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+        .card { background: var(--card); border-radius: 16px; margin-bottom: 12px; padding: 14px 20px; }
+        .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+        .tab { padding: 7px 12px; border-radius: 10px; background: var(--card); color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none; }
+        .tab.on { background: var(--text); color: #fff; }
+        .src { font-size: 12px; color: var(--muted); line-height: 1.7; }
+        .src b { color: var(--text); }
+        .src .bad { color: var(--err); }
+        .src .off { color: var(--muted); }
+        .item a { color: var(--text); text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.4; }
+        .item .meta { margin-top: 4px; font-size: 12px; color: var(--muted); }
+        .item .tag { font-weight: 700; color: var(--muted); }
+        .item .tag.disc { color: var(--disc); }
+        .item .desc { margin-top: 4px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+        .empty { text-align: center; color: var(--muted); font-size: 14px; }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('news')}"></nav>
+
+    <h1>뉴스·공시</h1>
+    <p class="note">
+        주식 관련 뉴스(네이버 뉴스 검색)와 상장사 공시(DART)를 최신순으로 모아 봅니다. 사람이 보는 용도이고 매매 판단에는 아직 쓰지 않습니다.
+        뉴스는 몇 분 늦을 수 있고, 공시는 날짜만 알 수 있습니다. 1분 안에 다시 열면 직전 결과를 보여 줍니다.
+    </p>
+
+    <div class="card src">
+        <div th:each="s : ${sources}">
+            <b th:text="${s.name}">네이버 뉴스</b>
+            <span th:if="${s.disabled}" class="off">꺼짐 — API 키가 없습니다 (application-local.yml 의 quantlog.news)</span>
+            <span th:if="${s.error != null}" class="bad" th:text="'오류: ' + ${s.error}"></span>
+            <span th:if="${!s.disabled and s.error == null}" th:text="${#lists.size(s.items)} + '건'"></span>
+        </div>
+        <div>가져온 시각 <span th:text="${fetchedAt}"></span></div>
+    </div>
+
+    <div class="tools">
+        <a th:href="@{/news}" th:class="${kind == null} ? 'tab on' : 'tab'">전체</a>
+        <a th:href="@{/news(kind='NEWS')}" th:class="${kind == 'NEWS'} ? 'tab on' : 'tab'">뉴스</a>
+        <a th:href="@{/news(kind='DISCLOSURE')}" th:class="${kind == 'DISCLOSURE'} ? 'tab on' : 'tab'">공시</a>
+        <a th:href="@{/news(kind=${kind}, refresh=true)}" class="tab">새로고침</a>
+    </div>
+
+    <div class="card empty" th:if="${#lists.isEmpty(items)}">보여 줄 항목이 없습니다.</div>
+    <div class="card item" th:each="i : ${items}">
+        <a th:href="${i.link}" target="_blank" rel="noopener noreferrer" th:text="${i.title}">제목</a>
+        <div class="meta">
+            <span th:class="${i.disclosure} ? 'tag disc' : 'tag'" th:text="${i.kind}">뉴스</span>
+            · <span th:text="${i.time}">10-15 09:12</span>
+            <span th:if="${i.disclosure}" th:text="'· ' + ${i.summary} + (${i.symbol} != null ? ' (' + ${i.symbol} + ')' : '')"></span>
+        </div>
+        <div class="desc" th:if="${!i.disclosure and i.summary != ''}" th:text="${i.summary}"></div>
+    </div>
+</main>
+</body>
+</html>
