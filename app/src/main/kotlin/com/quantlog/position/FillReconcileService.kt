@@ -26,7 +26,10 @@ data class FillReconcileRequested(val trigger: String, val halting: Boolean)
  * 보유 현황에 반영한다([HoldingFillApplier.applyInquiry]). 체결통보는 한투 웹소켓이 끊긴 동안 빠지고 다시 오지 않으므로(2026-10-14 실측: 매시 정각에 끊긴다)
  * 이 조회가 빠진 체결을 채운다. 어긋났던 주문은 [com.quantlog.sync.SyncMismatchReporter] 로 보고된다(applyInquiry 안).
  *
- * - 확인할 주문이 적으면 주문번호로 하나씩, 많으면 오늘 전체를 받는다(한 쪽에 15건, 1.1초 간격 — 하나씩 부르는 것보다 빠를 때).
+ * - 확인할 주문이 적으면 주문번호로 하나씩, 많으면 오늘 전체를 받는다(한 쪽에 15건, 1.1초 간격 — 하나씩 부르는 것보다 빠를 때). 전체 조회는 최신 주문부터
+ *   10쪽(150건)까지만 받아서 오래된 주문은 안 잡힌다 — 안 잡힌 주문은 주문번호로 따로 묻는다(한 번에 [MAX_FALLBACK] 건까지, 나머지는 다음에).
+ * - **거래를 멈추고 맞출 때([confirmBalance])는 아직 열려 있는 주문(취소가 확인되지 않은 것)만 본다.** 취소된 주문은 취소 전 일부 체결의 통보가 빠졌는지만 남은 일이라
+ *   멈추지 않는 확인에서 처리한다 — 안 그러면 오늘 취소된 수십 건을 매번 다시 조회해 거래가 40초 넘게 멈췄다(2026-10-15 실측: 조회 47건·끝남 0건, 정지 44초).
  * - 체결조회에 아직 안 잡힌 주문은 그대로 둔다(다음 조회가 본다). 남은 수량이 0 이면 끝난 주문으로 적고, 덜 체결된 채 끝났으면 매매 기록을 취소로 바꾼다.
  * - 한투 호출은 잠금 밖에서, 반영은 [HoldingWriteLock] 안에서 한다. 조회가 실패하면 예외를 그대로 던진다(부른 쪽이 다시 시도한다).
  * - 조회는 즉발 우선순위로 보낸다 — 거래를 멈추고 기다리는 조회라 분봉·잔고 같은 주기 호출 뒤에 줄 서면 안 된다(broker/CallPriority.kt).
@@ -55,19 +58,13 @@ class FillReconcileService(
         writeLock.run { applier.rebuildToday(now) }
         val candidates =
             tradeRepository.findAll().filter {
-                it.market == Market.KR && it.executedAt.atZone(KST).toLocalDate() == today && !fillStates.settled(it.orderNo, today)
+                it.market == Market.KR && it.executedAt.atZone(KST).toLocalDate() == today &&
+                    !fillStates.settled(it.orderNo, today) && (!confirmBalance || !it.canceled)
             }
         if (candidates.isEmpty()) return ReconcileResult().also { if (confirmBalance) confirmBalance() }
 
-        val totals: Map<String, OrderFillTotal?> =
-            CallPriority.urgent {
-                if (candidates.size > BULK_THRESHOLD) {
-                    val all = broker.todayOrderFills(Market.KR).associateBy { it.orderNo }
-                    candidates.associate { it.orderNo to all[it.orderNo] }
-                } else {
-                    candidates.associate { it.orderNo to broker.orderFillTotal(Market.KR, it.orderNo) }
-                }
-            }
+        // 거래를 멈추고 기다리는 조회만 즉발 우선순위다. 멈추지 않는 확인은 주기 호출과 같은 줄에 선다.
+        val totals: Map<String, OrderFillTotal?> = if (confirmBalance) CallPriority.urgent { fetch(candidates) } else fetch(candidates)
 
         var corrected = 0
         var settled = 0
@@ -89,6 +86,17 @@ class FillReconcileService(
         return ReconcileResult(candidates.size, corrected, settled)
     }
 
+    private fun fetch(candidates: List<Trade>): Map<String, OrderFillTotal?> {
+        if (candidates.size <= BULK_THRESHOLD) return candidates.associate { it.orderNo to broker.orderFillTotal(Market.KR, it.orderNo) }
+        val all = broker.todayOrderFills(Market.KR).associateBy { it.orderNo }
+        val found = candidates.associate { it.orderNo to all[it.orderNo] }.toMutableMap()
+        // 전체 조회에 안 잡힌 오래된 주문은 주문번호로 따로 묻는다. 한 번에 몇 건까지만 — 나머지는 다음 확인이 이어서 한다.
+        candidates.filter {
+            found[it.orderNo] == null
+        }.take(MAX_FALLBACK).forEach { found[it.orderNo] = broker.orderFillTotal(Market.KR, it.orderNo) }
+        return found
+    }
+
     /** 증권사 잔고를 받아 보유와 대조한다. [HoldingBalanceSync] 는 같은 시점(당일 누적이 같을 때)일 때만 덮어쓰고 다르면 보고한다. 조회가 실패하면 예외. */
     private fun confirmBalance() {
         val fetchedAt = Instant.now()
@@ -99,5 +107,8 @@ class FillReconcileService(
     private companion object {
         /** 확인할 주문이 이보다 많으면 하나씩 부르지 않고 오늘 전체를 받는다. */
         const val BULK_THRESHOLD = 3
+
+        /** 전체 조회에 안 잡힌 주문을 주문번호로 따로 묻는 상한(호출 1.1초 간격이라 한 번에 많이 하면 오래 걸린다). */
+        const val MAX_FALLBACK = 5
     }
 }
