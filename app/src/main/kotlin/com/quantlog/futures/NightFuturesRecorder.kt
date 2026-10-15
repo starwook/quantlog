@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 /** 게이트웨이가 넘긴 시세 원문 중 야간선물 체결(`H0MFCNT0`)을 1분봉으로 쌓는다. 틱은 따로 저장하지 않는다. */
 @Component
@@ -30,14 +31,23 @@ class NightFuturesRecorder(
         }
     }
 
-    /** 체결 시각(HHmmss)에 날짜를 붙인다. 자정을 막 넘겨 받은 직전 시각의 체결은 전날로 본다. */
-    private fun minuteOf(tick: NightFuturesTick): LocalDateTime {
-        val now = LocalDateTime.now(clock)
-        val date = if (tick.time.isAfter(now.toLocalTime().plusHours(1))) now.toLocalDate().minusDays(1) else now.toLocalDate()
-        return date.atTime(tick.time.hour, tick.time.minute)
-    }
+    private fun minuteOf(tick: NightFuturesTick): LocalDateTime = minuteOf(tick.time, LocalDateTime.now(clock))
 
     /** 가장 최근 봉 [limit] 개를 과거 → 최근 순서로. */
     @Transactional(readOnly = true)
     fun recent(code: String): List<Candle> = repository.findTop300ByCodeOrderByMinuteStartDesc(code).reversed().map { it.toCandle() }
+
+    companion object {
+        /**
+         * 체결 시각(HHmmss)에 날짜를 붙인다. 지금보다 1시간 넘게 앞선 시각이면 자정 전 체결을 막 받은 것이라 전날로 본다.
+         * 시각끼리(LocalTime)만 비교하면 23시대에 now+1시간이 00시대로 넘어가 23시 이후 체결이 전부 전날 봉에 섞이므로, 날짜까지 붙여 비교한다.
+         */
+        fun minuteOf(
+            time: LocalTime,
+            now: LocalDateTime,
+        ): LocalDateTime {
+            val today = now.toLocalDate().atTime(time.hour, time.minute)
+            return if (today.isAfter(now.plusHours(1))) today.minusDays(1) else today
+        }
+    }
 }
