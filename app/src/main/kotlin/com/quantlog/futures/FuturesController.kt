@@ -126,24 +126,11 @@ class FuturesController(
         }.getOrNull()
     }
 
-    /**
-     * 일봉은 한투 일봉, 1분봉은 한투 정규장 분봉에 앱이 실시간 체결로 쌓은 분봉을 합친다(한투 분봉은 야간을 주지 않는다).
-     * 같은 분이 양쪽에 있으면 실시간으로 쌓은 쪽을 쓴다(더 최신이다).
-     */
+    /** 일봉은 한투 일봉, 1분봉은 앱이 실시간 체결(주간·야간 구독)로 쌓은 분봉이다. 1분봉은 한투를 부르지 않아 폴링해도 호출이 늘지 않는다. */
     private fun candlesOf(
         code: String,
         unit: String,
-    ): List<Candle> {
-        val today = LocalDate.now(clock)
-        if (unit == "D") return client.candles(code, false, today)
-        val regular = runCatching { client.candles(code, true, today) }
-        val nightCandles = night.recent(code)
-        // 정규장 조회가 실패해도 야간 봉이 있으면 보여준다. 둘 다 없으면 정규장 오류를 그대로 알린다.
-        regular.exceptionOrNull()?.takeIf { nightCandles.isEmpty() }?.let { throw it }
-        return (regular.getOrDefault(emptyList()).associateBy { it.date to it.time } + nightCandles.associateBy { it.date to it.time })
-            .values
-            .sortedWith(compareBy({ it.date }, { it.time }))
-    }
+    ): List<Candle> = if (unit == "D") client.candles(code, false, LocalDate.now(clock)) else night.recent(code)
 
     /** 매물대를 지금 한 번 모은다. 한투 호출 100번 안팎에 5분쯤 걸려 뒤에서 돌린다. */
     @PostMapping("/futures/collect")

@@ -64,11 +64,11 @@ class FuturesControllerTest {
     ) = Candle(date, time, BigDecimal("100"), BigDecimal("110"), BigDecimal("90"), BigDecimal("105"), 1)
 
     @Test
-    fun `기본은 1분봉이고 정규장 분봉과 야간 분봉을 시간순으로 이어 붙인다`() {
-        val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
+    fun `기본은 1분봉이고 앱이 쌓은 주간·야간 분봉을 그린다`() {
         Mockito.`when`(client.futuresBoard()).thenReturn(board)
-        Mockito.`when`(client.candles("A01612", true, today)).thenReturn(listOf(candle("20261013", "154500")))
-        Mockito.`when`(night.recent("A01612")).thenReturn(listOf(candle("20261013", "180100"), candle("20261014", "020100")))
+        Mockito.`when`(
+            night.recent("A01612"),
+        ).thenReturn(listOf(candle("20261013", "154500"), candle("20261013", "180100"), candle("20261014", "020100")))
 
         mvc.perform(get("/futures"))
             .andExpect(status().isOk)
@@ -81,10 +81,10 @@ class FuturesControllerTest {
 
     @Test
     fun `야간 봉이 300개를 채워도 주간 종가 기준 등락률이 남는다`() {
-        val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
-        val nightBars = (0 until 300).map { candle("20261014", "%02d%02d00".format(it / 60, it % 60)) }
+        val nightBars =
+            listOf(candle("20261013", "154500")) +
+                (0 until 300).map { candle("20261014", "%02d%02d00".format(it / 60, it % 60)) }
         Mockito.`when`(client.futuresBoard()).thenReturn(board)
-        Mockito.`when`(client.candles("A01612", true, today)).thenReturn(listOf(candle("20261013", "154500")))
         Mockito.`when`(client.lastRegularQuote("A01612")).thenReturn(RegularQuote(BigDecimal("861.30"), BigDecimal("-8.78")))
         Mockito.`when`(night.recent("A01612")).thenReturn(nightBars)
 
@@ -92,17 +92,6 @@ class FuturesControllerTest {
             .andExpect(status().isOk)
             .andExpect(content().string(containsString("주간 전일 대비 -8.78%")))
             .andExpect(content().string(containsString("861.3")))
-    }
-
-    @Test
-    fun `정규장 분봉 조회가 실패해도 야간 분봉이 있으면 그린다`() {
-        Mockito.`when`(client.futuresBoard()).thenReturn(board)
-        Mockito.`when`(client.candles("A01612", true, LocalDate.now(ZoneId.of("Asia/Seoul")))).thenThrow(IllegalStateException("모의 미지원"))
-        Mockito.`when`(night.recent("A01612")).thenReturn(listOf(candle("20261014", "020100")))
-
-        mvc.perform(get("/futures"))
-            .andExpect(status().isOk)
-            .andExpect(content().string(containsString("id=\"fchart\"")))
     }
 
     @Test
