@@ -87,6 +87,9 @@
         .chips + .chips { margin-top: -4px; }
         .more { display: block; width: 100%; min-height: 44px; margin: 8px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; }
         .empty { padding: 20px 0; text-align: center; font-size: 14px; color: var(--muted); }
+        .fill-details { margin-top: 6px; font-size: 13px; color: var(--muted); }
+        .fill-details summary { cursor: pointer; padding: 4px 0; }
+        .fill-details .line { padding: 2px 0 2px 8px; }
     </style>
 </head>
 <body>
@@ -128,7 +131,7 @@
     </section>
 
     <section class="card">
-        <h2>체결 내역 <span class="sub">오늘 <span id="fillTotal">0</span>건</span></h2>
+        <h2>체결 내역 <span class="sub">오늘 주문 <span id="fillTotal">0</span>건</span></h2>
         <div class="chips" id="fillChips" role="tablist" aria-label="체결 내역 필터"></div>
         <div class="chips sub-chips" id="fillSubChips" role="tablist" aria-label="매도 결과 필터" hidden></div>
         <div id="done"></div>
@@ -140,7 +143,7 @@
     // 포맷·색상 판정은 서버가 끝내서 보내므로 여기서는 찍기만 한다.
     const market = 'KR';
     const orders = new Map(); // key -> 주문
-    let fills = []; // 체결 내역(체결통보 1건 = 1줄), 최근 순
+    let fills = []; // 체결 내역(주문 1건 = 1줄, 체결이 늘면 같은 key 의 줄이 새 값으로 온다), 마지막 체결이 최근인 순
     const PAGE = 100; // 한 번에 보여 주는 체결 줄 수. 하루치 전부를 받아 두고 "더 보기"로 늘린다.
     let shownLimit = PAGE;
     // 체결 내역 필터는 2단이다. 위: 전체·매수·매도, 매도를 고르면 아래에 수익·손실이 나타난다. 수익/손실은 매도 중 실현손익이 +/- 인 것(pnlCss 가 pos/neg)이고
@@ -201,11 +204,12 @@
         return row;
     }
 
-    // 체결 내역 한 줄. 사유는 같은 주문번호의 주문 기록(orders)에서 찾아 붙인다 — 체결통보가 주문 응답보다 먼저 오면 아직 없을 수 있다.
+    // 체결 내역 한 줄 = 주문 하나. 사유는 같은 주문번호의 주문 기록(orders)에서 찾아 붙인다 — 체결통보가 주문 응답보다 먼저 오면 아직 없을 수 있다.
+    // 펼치면 건별 체결(체결통보)과, 통보가 빠져 체결조회로 채운 몫이 보인다.
     function renderFill(f, flashKey) {
         const row = el('div', 'order' + (f.key === flashKey ? ' flash' : ''));
-        row.appendChild(line(sideAndName(f.side, f.market, f.symbolName, f.symbol), el('span', 'badge FILLED', '체결')));
-        row.appendChild(line(el('span', '', f.quantity + '주 @ ' + f.priceText), el('span', 'sub', f.timeText)));
+        row.appendChild(line(sideAndName(f.side, f.market, f.symbolName, f.symbol), el('span', 'badge ' + f.stateCss, f.stateText)));
+        row.appendChild(line(el('span', '', f.quantity + '주 @ 평균 ' + f.priceText), el('span', 'sub', f.timeText)));
         if (f.pnlText) {
             const box = el('div', 'pnl');
             box.appendChild(el('div', 'amount ' + f.pnlCss, '실현손익 ' + f.pnlText));
@@ -214,6 +218,12 @@
         }
         const reason = (orders.get(f.market + ':' + f.orderNo) || {}).reason;
         if (reason) row.appendChild(el('div', 'reason', reason));
+        if (f.details.length > 0) {
+            const details = el('details', 'fill-details');
+            details.appendChild(el('summary', '', '체결 ' + f.details.length + '건 보기'));
+            f.details.forEach((d) => details.appendChild(line(el('span', '', d.text), el('span', 'sub', d.timeText))));
+            row.appendChild(details);
+        }
         return row;
     }
 
@@ -356,7 +366,8 @@
                 renderSummary(msg.summary, true);
                 render(msg.order.key);
             } else if (msg.type === 'fill') {
-                if (!fills.some((f) => f.key === msg.fill.key)) fills = [msg.fill, ...fills];
+                // 같은 주문 줄이 있으면 새 값으로 바꾸고 맨 위로 올린다.
+                fills = [msg.fill, ...fills.filter((f) => f.key !== msg.fill.key)];
                 if (msg.summary) renderSummary(msg.summary, true);
                 render(msg.fill.key);
             } else if (msg.type === 'price') {

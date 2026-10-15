@@ -182,6 +182,12 @@ class OrderFillStates(
         market: Market = Market.KR,
     ): Boolean = repository.findByTradeDateAndMarketAndOrderNo(day, market, orderNo)?.settled == true
 
+    fun find(
+        orderNo: String,
+        day: LocalDate,
+        market: Market = Market.KR,
+    ): OrderFillState? = repository.findByTradeDateAndMarketAndOrderNo(day, market, orderNo)
+
     /** 모든 날의 주문별 체결(시장·주문번호·날짜 → 체결 상태). */
     fun allByOrder(): Map<Triple<Market, String, LocalDate>, OrderFillState> =
         repository.findAll().associateBy { Triple(it.market, it.orderNo, it.tradeDate) }
