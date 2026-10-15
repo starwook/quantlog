@@ -14,7 +14,7 @@ class PortfolioServiceLedgerTest {
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
     private val holdingRepository = Mockito.mock(AccountHoldingRepository::class.java)
     private val ledger = InMemoryBrokerFills()
-    private val service = PortfolioService(tradeRepository, holdingRepository, ledger)
+    private val service = PortfolioService(tradeRepository, holdingRepository, ledger, InMemoryOrderFillStates().states)
 
     private val now = Instant.now()
     private var nextId = 1L

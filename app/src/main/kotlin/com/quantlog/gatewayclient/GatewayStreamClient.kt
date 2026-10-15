@@ -24,9 +24,15 @@ data class RealtimeRawReceived(val raw: String)
 data class GatewayNotified(val kind: String)
 
 /**
+ * 한투 체결통보를 받을 수 있는 상태가 바뀌었다(게이트웨이 스트림 `kis_ws`, docs/contracts/README.md). [live] 는 연결이 붙고 체결통보 구독까지 성공했는가,
+ * [downSince] 는 그 끊김이 처음 시작된 시각. 무엇을 할지(거래 정지·체결조회)는 [com.quantlog.trading.FillReconcileScheduler] 가 정한다.
+ */
+data class KisFillNoticeLinkChanged(val live: Boolean, val at: Instant, val downSince: Instant?)
+
+/**
  * 게이트웨이 → 앱 스트림(웹소켓) 수신. 형식은 docs/contracts/README.md.
  * 시세(`raw`)는 한투 메시지 원문이라 [KisRealtimeTickParser] 로 해석하고, [RealtimeCandleBuilder] 가 PriceTick·CandleUpdated 이벤트를 낸다(화면·청산·마틴게일이 그대로 쓴다).
- * 체결(`fill`)·잔고(`balance`) 알림은 [GatewayNotified] 로 발행한다. 끊기면 3초마다 다시 붙고, 20초 넘게 아무 메시지(ping 포함)가 없어도 끊고 다시 붙는다.
+ * 체결(`fill`)·잔고(`balance`) 알림은 [GatewayNotified] 로, 한투 연결 상태(`kis_ws`)는 [KisFillNoticeLinkChanged] 로 발행한다. 끊기면 3초마다 다시 붙고, 20초 넘게 아무 메시지(ping 포함)가 없어도 끊고 다시 붙는다.
  * 스트림이 끊겨 있어도 매매 흐름은 DB·HTTP 로 이어진다 — 시세만 폴링으로 돌아간다.
  */
 @Component
@@ -116,6 +122,14 @@ class GatewayStreamClient(
                 events.publishEvent(RealtimeRawReceived(data))
             }
             "fill", "balance" -> events.publishEvent(GatewayNotified(node.path("type").asText()))
+            "kis_ws" ->
+                events.publishEvent(
+                    KisFillNoticeLinkChanged(
+                        live = node.path("fillNoticeLive").asBoolean(false),
+                        at = Instant.parse(node.path("at").asText()),
+                        downSince = node.path("downSince").takeIf { it.isTextual }?.asText()?.let(Instant::parse),
+                    ),
+                )
             "hello" -> log.info { "[게이트웨이 스트림] hello 인스턴스=${node.path("instanceId").asText()} 계약=${node.path("contractVersion").asText()}" }
             else -> Unit // ping 등
         }

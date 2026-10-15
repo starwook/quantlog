@@ -9,12 +9,14 @@ import com.quantlog.broker.Side
 import com.quantlog.broker.symbolKey
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.FillProgress
+import com.quantlog.position.FillReconcileRequested
 import com.quantlog.position.TradeService
 import com.quantlog.strategy.MartingaleCycle
 import com.quantlog.strategy.MartingaleRule
 import com.quantlog.watchlist.SymbolStrategyService
 import com.quantlog.watchlist.martingaleProperties
 import mu.KotlinLogging
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.time.Instant
@@ -41,9 +43,14 @@ class MartingaleService(
     private val accountHoldingRepository: AccountHoldingRepository,
     private val holdingSync: FillProgress,
     private val properties: EntryProperties,
+    /** 주문이 어떻게 끝났는지 체결조회로 확인해 달라는 요청을 낸다([FillReconcileRequested]). */
+    private val events: ApplicationEventPublisher = ApplicationEventPublisher { },
 ) {
     /** 주문은 냈는데 체결이 아직 DB 에 반영 안 된 종목. */
-    private val pending = PendingOrders("마틴게일", broker, tradeService, holdingSync, properties.fillTimeout)
+    private val pending =
+        PendingOrders("마틴게일", broker, tradeService, holdingSync, properties.fillTimeout) {
+            events.publishEvent(FillReconcileRequested(it, halting = false))
+        }
     private val inFlight = KeyedLock()
 
     /** [tickPrice] 는 방금 온 체결가. 보유 중이 아니거나 마틴게일이 꺼진 종목, 아직 트리거까지 안 내려온 경우엔 아무것도 하지 않는다. */

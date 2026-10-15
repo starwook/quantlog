@@ -2,6 +2,9 @@ package com.quantlog.errorlog
 
 import com.quantlog.gatewayclient.GatewayStart
 import com.quantlog.gatewayclient.GatewayStartRepository
+import com.quantlog.sync.SyncEvent
+import com.quantlog.sync.SyncEventKind
+import com.quantlog.sync.SyncEventRepository
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
@@ -25,6 +28,9 @@ class ErrorLogControllerTest {
 
     @MockBean
     lateinit var gatewayStarts: GatewayStartRepository
+
+    @MockBean
+    lateinit var syncEvents: SyncEventRepository
 
     @Test
     fun `오류 기록을 분류와 횟수와 함께 그린다`() {
@@ -85,5 +91,19 @@ class ErrorLogControllerTest {
             .andExpect(status().isOk)
             .andExpect(content().string(containsString("[동기화 불일치] 수량 다름")))
             .andExpect(content().string(containsString("1건")))
+    }
+
+    @Test
+    fun `동기화·연결 사건을 한 건씩 한국 시간으로 보여준다`() {
+        val event = SyncEvent(Instant.parse("2026-10-14T02:00:02Z"), SyncEventKind.HALT.name, "한투 체결통보 끊김", "게이트웨이가 알림")
+        Mockito.`when`(
+            syncEvents.findTop300ByOccurredAtAfterOrderByOccurredAtDesc(any(Instant::class.java) ?: Instant.EPOCH),
+        ).thenReturn(listOf(event))
+
+        mvc.perform(get("/errors"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(containsString("동기화·연결 기록")))
+            .andExpect(content().string(containsString("거래 정지")))
+            .andExpect(content().string(containsString("10-14 11:00:02")))
     }
 }

@@ -18,7 +18,9 @@ internal const val FILL_CURSOR = "kis_broker_fill"
 /**
  * 게이트웨이가 원문 그대로 기록한 체결통보 원장(`kis_broker_fill`)을 한투 문서대로 읽어([KisFillNoticeParser]) 앱의 보유 현황(`account_holding`)·
  * 매매 기록(`trade`)에 반영한다. 어디까지 처리했는지는 `broker_projection_cursor` 에 둔다 — 앱이 꺼져 있던 동안 쌓인 통보도 재시작 후 그다음 줄부터
- * 이어서 처리한다(같은 통보 중복은 [HoldingFillApplier.applyFill] 이 막는다). 체결 내역 자체는 원장에만 있고 앱은 사본을 따로 쓰지 않는다([OrderFills]).
+ * 이어서 처리한다. 원장 줄 반영과 커서 이동이 한 트랜잭션이라 한 줄은 정확히 한 번 반영된다(내용이 같은 줄도 서로 다른 체결이라 내용으로 거르지 않는다).
+ * 체결 건별 내역은 원장([OrderFills])에, 주문별 체결 합계는 `order_fill`([com.quantlog.position.OrderFillState])에 있다. 앱이 처음 뜰 때 오늘 `order_fill` 이 비어 있으면
+ * 이미 반영한 오늘 원장으로 통보 합계를 다시 채운다([HoldingFillApplier.rebuildToday], 보유는 건드리지 않는다).
  * 커서가 없으면(처음 켠 때) 지금 있는 마지막 ID 부터 시작한다 — 그 이전 체결은 잔고 스냅샷이 맞춘다.
  *
  * 동기화 불일치 보고 불필요: 증권사와 DB 를 비교하는 게 아니라 원장 행을 옮겨 적는 일이다. 불일치 보고는 [HoldingBalanceSync] 가 한다.
@@ -33,9 +35,15 @@ class FillProjector(
 ) {
     private val tx = TransactionTemplate(transactionManager)
 
+    private var rebuilt = false
+
     /** 처리한 행 수를 돌려준다. */
     @Synchronized
     fun project(): Int {
+        if (!rebuilt) {
+            holdingSync.rebuildToday()
+            rebuilt = true
+        }
         var last = cursors.findById(CURSOR).map { it.lastId }.orElse(null)
         if (last == null) {
             last = notices.maxId() ?: 0

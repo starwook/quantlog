@@ -198,12 +198,24 @@ class HoldingSyncServiceFillTest {
     fun `원장에 기록됐어도 앱이 아직 반영하지 않은 체결로는 체결 완료로 보지 않는다`() {
         val trade = Trade(Market.KR, symbol, Side.BUY, 2, BigDecimal("9000"), "P2", "ok")
         Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "P2")).thenReturn(listOf(trade))
-        val id = ledger.record(notice(Side.BUY, 2, "9000", orderNo = "P2"), now)
-
-        ledger.projectedUpTo = id - 1
+        val filled = notice(Side.BUY, 2, "9000", orderNo = "P2")
+        ledger.record(filled, now)
         assertFalse(service.isOrderFilled("P2"))
 
-        ledger.projectedUpTo = id
+        service.applyRecorded(ledger, filled, now)
         assertTrue(service.isOrderFilled("P2"))
+    }
+
+    @Test
+    fun `취소만 되고 끝난 게 확인 안 된 주문은 기다리고 체결조회로 끝나면 기다리지 않는다`() {
+        val trade = Trade(Market.KR, symbol, Side.BUY, 10, BigDecimal("9000"), "C9", "ok").also { it.cancel() }
+        Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(trade)
+        Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "C9")).thenReturn(listOf(trade))
+        service.sync(emptyList(), now.minusSeconds(60))
+
+        assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
+
+        service.fillApplier.applyInquiry(trade, com.quantlog.broker.OrderFillTotal("C9", 0, BigDecimal.ZERO, BigDecimal.ZERO, 0), now)
+        assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
     }
 }

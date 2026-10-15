@@ -72,6 +72,8 @@
 | `gateway_log` | 게이트웨이 → 앱 | 게이트웨이의 WARN 이상 로그 **원본**(append-only, 묶지 않음). `id, logged_at, level, logger, message, exception_class, exception_message, stack_trace`. 앱 `GatewayLogProjector` 가 읽어 자기 `error_log` 에 묶어 넣고 웹훅으로 알린다. 14일 지난 줄은 **앱이** 지운다(앱이 이미 읽은 줄만, 앱 `GatewayRawPruner`) |
 | `gateway_start` | **앱만** | 게이트웨이가 새로 뜬 기록, 인스턴스마다 한 줄(2026-10-14). `instance_id`(유일), `started_at`(= `gateway_instance.started_at`), `previous_heartbeat_at`(앱이 직전 인스턴스에서 마지막으로 본 하트비트, 모르면 null), `detected_at`. 앱 `GatewayStartRecorder` 가 `gateway_instance.instance_id` 가 처음 보는 값일 때 쓴다(/errors 화면). 게이트웨이는 모른다 |
 | `error_log` | **앱만** | 앱의 WARN 이상 로그와 `gateway_log` 에서 옮겨 온 줄을 같은 종류끼리 묶은 것(/errors 화면) |
+| `order_fill` | **앱만** | 주문별 체결 합계(2026-10-14). `trade_date, market, order_no`(유일) · 체결통보 합계 `notice_quantity/amount` · 한투 체결조회 누적 `inquiry_quantity/amount` · `settled`(체결조회가 남은 수량 0 확인) — 앱이 보는 체결은 두 출처 중 수량이 큰 쪽. 게이트웨이는 모른다 |
+| `sync_event` | **앱만** | 동기화·연결 사건 기록(추가만, 2026-10-14). `occurred_at, kind, subject, detail` — 한투 끊김·재연결, 거래 정지·재개, 동기화 불일치, 체결조회 실패 (/errors) |
 | `broker_projection_cursor` | 앱 → 앱 | 앱이 원장을 어디까지 처리했는지(`kis_broker_fill`·`kis_balance`·`kis_minute_chart`·`gateway_log` = 각 테이블의 마지막 처리 id) |
 
 옛 형식(`broker_fill`, `trade_fill`, `broker_balance`, `broker_balance_meta`, `broker_order`)과 옛 커서 행(`fill`, `balance`)은 쓰지 않는다 — 데이터 초기화 때 지운다.

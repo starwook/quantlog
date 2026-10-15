@@ -109,8 +109,9 @@ class HoldingSyncServiceTest {
         Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(recent)
         assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
 
+        // 취소만으로는 끝난 게 아니다 — 취소 전 일부 체결의 통보가 빠졌을 수 있어 체결조회로 확인될 때까지 기다린다(2026-10-14).
         recent.cancel()
-        assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
+        assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
     }
 
     @Test

@@ -139,15 +139,16 @@ class ExitServiceTest {
         val scheduler = scheduler(broker, holdingSync = holdingSync)
         scheduler.checkAll(krOpen)
 
-        Mockito.`when`(holdingSync.isOrderFilled("1")).thenReturn(true)
+        Mockito.`when`(holdingSync.isOrderClosed("1")).thenReturn(true)
         scheduler.checkAll(krOpen.plusSeconds(1))
         assertEquals(2, broker.orders.size)
     }
 
     @Test
-    fun `10초가 지나도 미체결이면 주문을 취소하고 바로 다시 판정한다`() {
+    fun `10초가 지나도 미체결이면 주문을 취소하고 체결조회로 끝난 게 확인되면 다시 판정한다`() {
         val broker = FakeBroker(BigDecimal("274500"))
-        val scheduler = scheduler(broker)
+        val holdingSync = Mockito.mock(FillProgress::class.java)
+        val scheduler = scheduler(broker, holdingSync = holdingSync)
         scheduler.checkAll(krOpen)
 
         scheduler.expirePending(ZonedDateTime.now().plusSeconds(5))
@@ -156,7 +157,12 @@ class ExitServiceTest {
         scheduler.expirePending(ZonedDateTime.now().plusSeconds(11))
         assertEquals(1, broker.cancels.size)
 
+        // 취소 전에 일부 팔렸는데 통보가 빠졌을 수 있어 끝난 주문으로 확인될 때까지 다시 팔지 않는다.
         scheduler.checkAll(krOpen.plusSeconds(12))
+        assertEquals(1, broker.orders.size)
+
+        Mockito.`when`(holdingSync.isOrderClosed("1")).thenReturn(true)
+        scheduler.checkAll(krOpen.plusSeconds(13))
         assertEquals(2, broker.orders.size)
     }
 

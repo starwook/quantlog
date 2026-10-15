@@ -4,6 +4,7 @@ import com.quantlog.broker.Market
 import com.quantlog.broker.Side
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.InMemoryBrokerFills
+import com.quantlog.position.InMemoryOrderFillStates
 import com.quantlog.position.PortfolioService
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeRepository
@@ -50,7 +51,7 @@ class RealizedPnlReportTest {
         val tradeRepository = Mockito.mock(TradeRepository::class.java)
         val holdings = Mockito.mock(AccountHoldingRepository::class.java)
         Mockito.`when`(tradeRepository.findAll()).thenReturn(trades.toList())
-        return PortfolioService(tradeRepository, holdings, ledger).snapshot()
+        return PortfolioService(tradeRepository, holdings, ledger, InMemoryOrderFillStates().states).snapshot()
     }
 
     @Test

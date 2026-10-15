@@ -3,6 +3,7 @@ package com.quantlog.trading
 import com.quantlog.gatewayclient.BalanceProjector
 import com.quantlog.gatewayclient.FillProjector
 import com.quantlog.gatewayclient.GatewayNotified
+import com.quantlog.position.HoldingWriteLock
 import mu.KotlinLogging
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.context.event.EventListener
@@ -30,6 +31,7 @@ class HoldingSyncScheduler(
     private val fills: FillProjector,
     private val balance: BalanceProjector,
     private val properties: HoldingSyncProperties,
+    private val writeLock: HoldingWriteLock,
 ) {
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "holding-sync").apply { isDaemon = true } }
     private val running = AtomicBoolean(false)
@@ -56,9 +58,10 @@ class HoldingSyncScheduler(
     @EventListener
     fun onGatewayNotified(event: GatewayNotified) = run()
 
-    @Synchronized
-    fun syncNow() {
-        runCatching { fills.project() }.onFailure { log.warn(it) { "[체결 반영] 원장 읽기 실패, 다음 회차에 재시도: ${it.message}" } }
-        runCatching { balance.project() }.onFailure { log.warn(it) { "[잔고 반영] 스냅샷 읽기 실패, 다음 회차에 재시도: ${it.message}" } }
-    }
+    /** 보유 현황을 고치는 다른 경로(체결조회 반영)와 겹치지 않게 [HoldingWriteLock] 안에서 돈다. */
+    fun syncNow() =
+        writeLock.run {
+            runCatching { fills.project() }.onFailure { log.warn(it) { "[체결 반영] 원장 읽기 실패, 다음 회차에 재시도: ${it.message}" } }
+            runCatching { balance.project() }.onFailure { log.warn(it) { "[잔고 반영] 스냅샷 읽기 실패, 다음 회차에 재시도: ${it.message}" } }
+        }
 }

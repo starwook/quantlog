@@ -91,4 +91,21 @@ class GatewayStreamClientTest {
         assertEquals(listOf(GatewayNotified("fill"), GatewayNotified("balance")), published)
         assertTrue(published.none { it is PriceTick })
     }
+
+    @Test
+    fun `kis_ws 는 한투 체결통보 연결 상태 이벤트로 발행한다`() {
+        client.handle("""{"type":"kis_ws","fillNoticeLive":false,"at":"2026-10-14T02:00:02.100Z","downSince":"2026-10-14T02:00:02.100Z"}""")
+        client.handle("""{"type":"kis_ws","fillNoticeLive":true,"at":"2026-10-14T02:00:02.400Z","downSince":"2026-10-14T02:00:02.100Z"}""")
+        client.handle("""{"type":"kis_ws","fillNoticeLive":true,"at":"2026-10-14T02:05:00Z","downSince":null}""")
+
+        val down = java.time.Instant.parse("2026-10-14T02:00:02.100Z")
+        assertEquals(
+            listOf(
+                KisFillNoticeLinkChanged(false, down, down),
+                KisFillNoticeLinkChanged(true, java.time.Instant.parse("2026-10-14T02:00:02.400Z"), down),
+                KisFillNoticeLinkChanged(true, java.time.Instant.parse("2026-10-14T02:05:00Z"), null),
+            ),
+            published.filterIsInstance<KisFillNoticeLinkChanged>(),
+        )
+    }
 }

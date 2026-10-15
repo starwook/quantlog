@@ -14,6 +14,9 @@ interface FillProgress {
         symbol: String,
     ): Boolean
 
-    /** 이 주문을 체결통보로 주문수량만큼 다 반영했는가. */
+    /** 이 주문을 주문수량만큼 다 반영했는가(체결통보·체결조회 중 큰 쪽). */
     fun isOrderFilled(orderNo: String): Boolean
+
+    /** 이 주문이 끝났는가 — 주문수량만큼 체결을 반영했거나, 체결조회가 남은 수량 0(취소 포함)으로 확인했다. 대기를 푸는 기준이다. */
+    fun isOrderClosed(orderNo: String): Boolean
 }

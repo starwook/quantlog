@@ -24,7 +24,8 @@ class TradeServiceFillTest {
     private val notifier = Mockito.mock(Notifier::class.java)
     private val published = mutableListOf<Any>()
     private val ledger = InMemoryBrokerFills()
-    private val service = TradeService(repository, ledger, notifier, ApplicationEventPublisher { published += it })
+    private val fills = InMemoryOrderFillStates()
+    private val service = TradeService(repository, ledger, fills.states, notifier, ApplicationEventPublisher { published += it })
 
     private val order = OrderRequest(Market.KR, "005930", Side.BUY, 1, BigDecimal("278500"))
     private val receipt = OrderReceipt("A1", "ok", "00950")
@@ -47,6 +48,10 @@ class TradeServiceFillTest {
     ) {
         val id = ledger.record(notice)
         if (!notice.isFill) return service.onOrderNotice(notice)
+        // HoldingFillApplier 가 하는 일 중 주문별 체결 합계(order_fill) 갱신만 흉내 낸다.
+        val state = fills.of(notice.orderNo) ?: OrderFillState(OrderFills.today(), Market.KR, notice.orderNo, notice.symbol, notice.side!!)
+        state.addNotice(notice.filledQuantity!!.toInt(), notice.filledPrice!! * notice.filledQuantity!!, Instant.now())
+        fills.repository.save(state)
         service.onFillApplied(
             FillAppliedEvent(
                 Market.KR, notice.symbol, notice.side!!, notice.orderNo, notice.filledQuantity!!.toInt(), notice.filledPrice!!,
@@ -169,13 +174,13 @@ class TradeServiceFillTest {
     }
 
     @Test
-    fun `부분체결 도중 앱이 재시작돼도 누적은 원장에서 이어진다`() {
+    fun `부분체결 도중 앱이 재시작돼도 누적은 주문별 체결 합계에서 이어진다`() {
         val trade = Trade(Market.KR, "005930", Side.BUY, 44, BigDecimal("69595"), "A1", "ok")
         Mockito.`when`(repository.findAllByMarketAndOrderNo(Market.KR, "A1")).thenReturn(listOf(trade))
         receive(notice(quantity = 3, price = "69500", orderQuantity = 44))
 
-        // 재시작 = 메모리가 없는 새 서비스. 원장(DB)만 그대로다.
-        val restarted = TradeService(repository, ledger, notifier, ApplicationEventPublisher { })
+        // 재시작 = 메모리가 없는 새 서비스. 원장·주문별 체결 합계(DB)만 그대로다.
+        val restarted = TradeService(repository, ledger, fills.states, notifier, ApplicationEventPublisher { })
         receive(notice(quantity = 41, price = "69600", orderQuantity = 44), restarted)
 
         assertEquals(OrderState.FILLED, trade.state)
@@ -232,6 +237,7 @@ class TradeServiceFillTest {
     @Test
     fun `앱이 아직 반영하지 않은 원장 줄로는 저장할 때 체결로 채우지 않는다`() {
         val saved = savedTrades()
+        // 원장에는 있지만 아직 보유·주문별 체결 합계에 반영 전이다.
         ledger.record(notice())
         ledger.projectedUpTo = 0
 

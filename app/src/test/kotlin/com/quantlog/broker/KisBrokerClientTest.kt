@@ -207,13 +207,18 @@ class KisBrokerClientTest {
         replies +=
             reply(
                 """{"rt_cd":"0","msg1":"ok","output1":[
-                    {"odno":"2","tot_ccld_qty":"0","avg_prvs":"0"},{"odno":"3","tot_ccld_qty":"1","avg_prvs":"50"}]}""",
+                    {"odno":"2","tot_ccld_qty":"0","avg_prvs":"0","rmn_qty":"0"},
+                    {"odno":"3","tot_ccld_qty":"1","avg_prvs":"50","tot_ccld_amt":"50","rmn_qty":"4"}]}""",
                 trCont = "D",
             )
 
         val fills = client.todayOrderFills(Market.KR)
 
-        assertEquals(listOf("1", "3"), fills.map { it.orderNo })
+        // 체결이 0 인 주문도 넣는다 — 취소로 끝났는지(남은 수량 0) 알아야 한다.
+        assertEquals(listOf("1", "2", "3"), fills.map { it.orderNo })
+        assertEquals(0, fills[1].remainingQuantity)
+        assertEquals(0, BigDecimal("50").compareTo(fills[2].filledAmount))
+        assertEquals(4, fills[2].remainingQuantity)
         assertEquals(2, calls.size)
         assertEquals("", calls[0].trCont)
         assertEquals("N", calls[1].trCont)
