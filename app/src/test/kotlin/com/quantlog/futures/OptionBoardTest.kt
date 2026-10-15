@@ -17,11 +17,11 @@ class OptionBoardTest {
     ) = OptionStrike(BigDecimal(strike), quote(callOi), quote(putOi))
 
     @Test
-    fun `행사가 오름차순으로 정렬하고 지수에 가장 가까운 행사가가 ATM 이다`() {
+    fun `행사가 오름차순으로 정렬하고 주어진 가격에 가장 가까운 행사가가 ATM 이다`() {
         val board = OptionBoard(listOf(strike("960.00", 1, 1), strike("940.00", 1, 1), strike("950.00", 1, 1)), BigDecimal("939.44"))
 
         assertEquals(listOf("940.00", "950.00", "960.00"), board.strikes.map { it.strike.toPlainString() })
-        assertEquals(BigDecimal("940.00"), board.atmStrike)
+        assertEquals(BigDecimal("940.00"), board.atmStrike(BigDecimal("939.44")))
     }
 
     @Test
@@ -31,7 +31,7 @@ class OptionBoardTest {
         assertEquals(BigDecimal("360.00"), board.callWall?.strike)
         assertEquals(BigDecimal("340.00"), board.putWall?.strike)
         assertEquals(BigDecimal("1.00"), board.putCallRatio)
-        assertNull(board.atmStrike)
+        assertNull(board.atmStrike(null))
     }
 
     @Test
@@ -43,14 +43,26 @@ class OptionBoardTest {
     }
 
     @Test
-    fun `핵심 가격은 높은 가격부터 나열하고 지수 대비 거리를 붙인다`() {
+    fun `핵심 가격은 높은 가격부터 나열하고 선물 현재가 대비 거리를 붙인다`() {
         val board =
             OptionBoard(listOf(strike("340.00", 0, 800), strike("350.00", 100, 200), strike("360.00", 900, 0)), BigDecimal("350.00"))
 
-        assertEquals(listOf("콜 최대 (저항)", "현재 KOSPI200", "맥스페인", "풋 최대 (지지)").size, board.keyLevels.size)
-        assertEquals(BigDecimal("360.00"), board.keyLevels.first().price)
-        assertEquals(BigDecimal("2.86"), board.keyLevels.first().gapPercent)
-        assertEquals(BigDecimal("340.00"), board.keyLevels.last().price)
+        val levels = board.keyLevels(BigDecimal("357.00"))
+
+        assertEquals(listOf("콜 최대 (저항)", "선물 현재가", "맥스페인", "풋 최대 (지지)"), levels.map { it.label })
+        assertEquals(listOf("선물 현재가"), levels.filter { it.reference }.map { it.label })
+        assertEquals(BigDecimal("0.84"), levels.first { it.label.startsWith("콜") }.gapPercent)
+        assertEquals(BigDecimal("-4.76"), levels.first { it.label.startsWith("풋") }.gapPercent)
+    }
+
+    @Test
+    fun `선물 현재가가 없으면 거리를 붙이지 않고 KOSPI200 지수는 나열하지 않는다`() {
+        val board = OptionBoard(listOf(strike("340.00", 0, 800), strike("360.00", 900, 0)), BigDecimal("350.00"))
+
+        val levels = board.keyLevels()
+
+        assertEquals(listOf("콜 최대 (저항)", "맥스페인", "풋 최대 (지지)").size, levels.size)
+        assertEquals(listOf(null), levels.map { it.gapPercent }.distinct())
     }
 
     @Test

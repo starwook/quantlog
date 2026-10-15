@@ -96,6 +96,17 @@
         </div>
     </div>
 
+    <div class="card" th:if="${!#lists.isEmpty(gatewayStarts)}">
+        <div class="row">
+            <div class="top"><span>게이트웨이 시작 기록</span><span class="count" th:text="${#lists.size(gatewayStarts)} + '회'"></span></div>
+            <div class="meta">게이트웨이가 새로 뜬 시각입니다. 이 시각 앞뒤의 증권사 웹소켓 끊김은 재시작 때문입니다.</div>
+        </div>
+        <div class="row" th:each="g : ${gatewayStarts}">
+            <div th:text="${g.startedAt} + ' 시작'"></div>
+            <div class="meta" th:text="${g.previousHeartbeat != null} ? '직전 게이트웨이가 마지막으로 살아 있던 시각 ' + ${g.previousHeartbeat} : '직전 게이트웨이가 꺼진 시각은 모릅니다'"></div>
+        </div>
+    </div>
+
     <div class="card">
         <div class="empty" th:if="${#lists.isEmpty(rows)}">이 조건에 맞는 오류 기록이 없습니다.</div>
         <div class="row" th:each="r : ${rows}">

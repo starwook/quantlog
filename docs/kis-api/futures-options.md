@@ -62,3 +62,8 @@
 - 분봉(`FHKIF03020200`) `output2` 배열, **최신 시각부터 역순**: `stck_bsop_date` 날짜 · `stck_cntg_hour` 시각 · `futs_oprc/hgpr/lwpr/prpr` 시·고·저·종 · `cntg_vol` 거래량. **모의투자 미지원**(모의 서버에서는 차트가 "조회 실패"로 뜰 수 있다).
 - 일봉(`FHKIF03020100`) `output2` 배열: `stck_bsop_date` · `futs_oprc/hgpr/lwpr/prpr` · `acml_vol`.
 - 앱은 `/futures` 화면 차트에 쓴다(`FuturesOptionsClient.candles`). 종목코드는 전광판 첫 행의 `futs_shrn_iscd`.
+
+## 야간선물 실시간 (2026-10-14)
+- REST 분봉(`FHKIF03020200`)은 **정규장(15:45)까지만** 준다(실측). 야간은 웹소켓 `H0MFCNT0` 만 된다.
+- 앱 `NightFuturesWatch` 가 가장 가까운 월물 코드를 `watch_symbol`(market=`NIGHT_FUTURES`)에 쓰면 게이트웨이가 구독하고, 앱 `NightFuturesRecorder` 가 체결(코드 0·시각 1·현재가 5·체결량 9번째 칸)을 1분봉으로 `night_futures_candle` 에 쌓는다. `/futures` 의 "야간 1분봉" 탭이 이걸 그린다.
+- **모의 웹소켓이 H0MFCNT0 을 지원하는지는 미확인** — 게이트웨이 로그의 `[야간선물] 구독 응답` 으로 확인한다.

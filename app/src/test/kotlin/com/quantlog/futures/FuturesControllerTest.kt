@@ -2,6 +2,7 @@ package com.quantlog.futures
 
 import com.quantlog.ClockConfig
 import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
@@ -35,6 +36,9 @@ class FuturesControllerTest {
     @MockBean
     lateinit var collector: OptionChainCollector
 
+    @MockBean
+    lateinit var night: NightFuturesRecorder
+
     private val nov = YearMonth.of(2026, 11)
 
     @Test
@@ -47,23 +51,54 @@ class FuturesControllerTest {
         mvc.perform(get("/futures").param("maturity", "2026-11"))
             .andExpect(status().isOk)
             .andExpect(content().string(containsString("콜 최대 (저항)")))
-            .andExpect(content().string(containsString("939.44")))
+            .andExpect(content().string(not(containsString("939.44"))))
             .andExpect(content().string(containsString("2026-10-13")))
-            .andExpect(content().string(containsString("class=\"rung atm\"")))
             .andExpect(content().string(containsString("F 202612")))
     }
 
+    private val board = listOf(mapOf("futs_shrn_iscd" to "A01612", "hts_kor_isnm" to "F 202612"))
+
+    private fun candle(
+        date: String,
+        time: String?,
+    ) = Candle(date, time, BigDecimal("100"), BigDecimal("110"), BigDecimal("90"), BigDecimal("105"), 1)
+
     @Test
-    fun `가장 가까운 월물 선물의 캔들 차트를 그린다`() {
+    fun `기본은 1분봉이고 정규장 분봉과 야간 분봉을 시간순으로 이어 붙인다`() {
         val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
-        Mockito.`when`(client.futuresBoard()).thenReturn(listOf(mapOf("futs_shrn_iscd" to "A01612", "hts_kor_isnm" to "F 202612")))
-        val candle = Candle("20261013", null, BigDecimal("100"), BigDecimal("110"), BigDecimal("90"), BigDecimal("105"), 1)
-        Mockito.`when`(client.candles("A01612", false, today)).thenReturn(listOf(candle))
+        Mockito.`when`(client.futuresBoard()).thenReturn(board)
+        Mockito.`when`(client.candles("A01612", true, today)).thenReturn(listOf(candle("20261013", "154500")))
+        Mockito.`when`(night.recent("A01612")).thenReturn(listOf(candle("20261013", "180100"), candle("20261014", "020100")))
 
         mvc.perform(get("/futures"))
             .andExpect(status().isOk)
-            .andExpect(content().string(containsString("<svg")))
-            .andExpect(content().string(containsString("20261013")))
+            .andExpect(content().string(containsString("id=\"fchart\"")))
+            .andExpect(content().string(containsString(">20261013 15:45</span>")))
+            .andExpect(content().string(containsString(">20261014 02:01</span>")))
+            .andExpect(content().string(containsString(">3</span>봉")))
+            .andExpect(content().string(containsString("\"close\":105.0")))
+    }
+
+    @Test
+    fun `정규장 분봉 조회가 실패해도 야간 분봉이 있으면 그린다`() {
+        Mockito.`when`(client.futuresBoard()).thenReturn(board)
+        Mockito.`when`(client.candles("A01612", true, LocalDate.now(ZoneId.of("Asia/Seoul")))).thenThrow(IllegalStateException("모의 미지원"))
+        Mockito.`when`(night.recent("A01612")).thenReturn(listOf(candle("20261014", "020100")))
+
+        mvc.perform(get("/futures"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(containsString("id=\"fchart\"")))
+    }
+
+    @Test
+    fun `일봉 탭은 한투 일봉을 그린다`() {
+        val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
+        Mockito.`when`(client.futuresBoard()).thenReturn(board)
+        Mockito.`when`(client.candles("A01612", false, today)).thenReturn(listOf(candle("20261013", null)))
+
+        mvc.perform(get("/futures").param("chart", "D"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(containsString(">1</span>봉")))
     }
 
     @Test

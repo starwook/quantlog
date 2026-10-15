@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>선물옵션 · quantlog</title>
+    <title>KOSPI200 · quantlog</title>
     <style>
         :root {
             --bg: #f2f3f5;
@@ -52,13 +52,11 @@
         tr.atm td { background: #fff8e1; }
         .tab { padding: 7px 12px; border-radius: 10px; background: var(--card); color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none; }
         .tab.on { background: var(--text); color: #fff; }
-        .cup { stroke: var(--call); fill: var(--call); }
-        .cdn { stroke: var(--put); fill: var(--put); }
-        .lv { stroke: var(--muted); fill: var(--muted); font-size: 10px; }
-        .lv text { stroke: none; }
-        .lv.res { stroke: var(--call); fill: var(--call); }
-        .lv.sup { stroke: var(--put); fill: var(--put); }
-        .lv .now { stroke: var(--text); stroke-dasharray: none; }
+        #fchart { height: 420px; }
+        .quote { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+        .quote b { font-size: 22px; color: var(--text); }
+        .quote .up { color: var(--call); }
+        .quote .down { color: var(--put); }
         .levels { display: flex; flex-direction: column; gap: 6px; }
         .level { display: flex; justify-content: space-between; font-size: 14px; }
         .level.now { font-weight: 700; background: #fff8e1; border-radius: 8px; padding: 4px 8px; }
@@ -84,7 +82,7 @@
 <main>
     <nav th:replace="~{fragments/nav :: menu('futures')}"></nav>
 
-    <h1>선물옵션</h1>
+    <h1>KOSPI200</h1>
     <p class="note">
         코스피200 옵션의 행사가별 미결제약정으로 매물대를 봅니다. 콜이 몰린 행사가는 위쪽 저항, 풋이 몰린 행사가는 아래쪽 지지로 읽는 참고 지표이고,
         맥스페인은 만기 때 매수자 손실이 가장 큰 행사가입니다. 평일 16:00 에 지수 위아래 8% 범위를 자동으로 모아 저장하고, 아래 표는 가장 최근 저장본입니다.
@@ -107,44 +105,40 @@
 
     <h2>코스피200 선물 차트</h2>
     <div class="tools">
-        <a th:href="@{/futures(maturity=${maturity}, chart='D')}" th:class="${chartUnit != 'M'} ? 'tab on' : 'tab'">일봉</a>
-        <a th:href="@{/futures(maturity=${maturity}, chart='M')}" th:class="${chartUnit == 'M'} ? 'tab on' : 'tab'">1분봉</a>
-        <span class="note" style="margin: 0;">가로선은 아래 옵션 매물대(점선: 저항·지지·맥스페인)입니다. 옵션 기준 지수와 선물 가격은 조금 다를 수 있습니다.</span>
+        <a th:href="@{/futures(maturity=${maturity}, chart='M')}" th:class="${chartUnit != 'D'} ? 'tab on' : 'tab'">1분봉</a>
+        <a th:href="@{/futures(maturity=${maturity}, chart='D')}" th:class="${chartUnit == 'D'} ? 'tab on' : 'tab'">일봉</a>
+        <span class="note" style="margin: 0;">1분봉은 정규장(~15:45)과 야간장(18:00~)을 이어 붙여 보여줍니다(사이는 장이 없습니다). 가로선은 아래 옵션 매물대(점선: 저항·지지·맥스페인)입니다. 아래 목록의 거리(%)는 선물 현재가 기준입니다.</span>
     </div>
     <div class="msg error" th:if="${chartError}" th:text="'차트 조회 실패: ' + ${chartError}"></div>
     <div class="card" th:if="${candleChart != null}">
-        <svg viewBox="0 0 600 300" style="width:100%; height:auto; display:block;">
-            <g th:each="b : ${candleChart.bars}" th:class="${b.up} ? 'cup' : 'cdn'">
-                <line th:attr="x1=${b.x},x2=${b.x},y1=${b.wickTop},y2=${b.wickBottom}" stroke-width="1"/>
-                <rect th:attr="x=${b.x - b.bodyWidth / 2},y=${b.bodyTop},width=${b.bodyWidth},height=${b.bodyHeight}"/>
-            </g>
-            <g th:each="l : ${candleChart.lines}" th:class="${l.label.startsWith('콜')} ? 'lv res' : (${l.label.startsWith('풋')} ? 'lv sup' : 'lv')">
-                <line th:attr="x1=0,x2=600,y1=${l.y},y2=${l.y}" stroke-dasharray="4 3" th:classappend="${l.label.startsWith('현재')} ? 'now'"/>
-                <text x="598" text-anchor="end" th:attr="y=${l.y - 3}" th:text="${l.label} + ' ' + ${l.price}"></text>
-            </g>
-        </svg>
-        <p class="note" style="margin: 8px 0 0;"><span th:text="${candleChart.from}"></span> ~ <span th:text="${candleChart.to}"></span> (<span th:text="${#lists.size(candleChart.candles)}"></span>봉)</p>
+        <div class="quote">
+            <b id="last">-</b>
+            <b id="pct"></b>
+            <span th:if="${candleChart.dayChange != null}" th:text="'주간 전일 대비 ' + (${candleChart.dayChange.signum() > 0} ? '+' : '') + ${candleChart.dayChange} + '%'"></span>
+            <span id="ohlc"></span>
+        </div>
+        <div id="fchart"></div>
+        <p class="note" style="margin: 8px 0 0;">휠·핀치로 확대/축소, 드래그로 이동, 마우스를 올리면 그 봉의 값이 보입니다. <span th:text="${candleChart.from}"></span> ~ <span th:text="${candleChart.to}"></span> (<span th:text="${#lists.size(candleChart.candles)}"></span>봉)</p>
     </div>
 
-    <div class="empty card" th:if="${board == null}">이 월물의 저장본이 아직 없습니다. "지금 모으기"를 누르거나 평일 16:00 자동 수집을 기다리세요.</div>
+    <div class="empty card" th:if="${board == null}">이 월물의 저장본이 아직 없습니다. "지금 모으기"를 누르거나 평일 08:30·16:00 자동 수집을 기다리세요.</div>
 
     <th:block th:if="${board != null}">
         <div class="card summary">
             <div>풋/콜 비율<b th:text="${board.putCallRatio != null} ? ${board.putCallRatio} : '-'"></b></div>
-            <div>KOSPI200<b th:text="${board.underlying != null} ? ${board.underlying} : '-'"></b></div>
         </div>
         <div class="card levels">
-            <div class="level" th:each="l : ${board.keyLevels}" th:classappend="${l.label.startsWith('현재')} ? 'now'">
+            <div class="level" th:each="l : ${levels}" th:classappend="${l.reference} ? 'now'">
                 <span th:text="${l.label}"></span>
-                <span><b th:text="${l.price}"></b><span class="gap" th:if="${l.gapPercent != null and !l.label.startsWith('현재')}" th:text="(${l.gapPercent.signum() > 0} ? '+' : '') + ${l.gapPercent} + '%'"></span></span>
+                <span><b th:text="${l.price}"></b><span class="gap" th:if="${l.gapPercent != null}" th:text="(${l.gapPercent.signum() > 0} ? '+' : '') + ${l.gapPercent} + '%'"></span></span>
             </div>
         </div>
-        <p class="note">저장한 날 <span th:text="${snapshotDate}"></span> · 위가 높은 가격입니다. 노란 줄이 지수에 가장 가까운 행사가이고, 막대가 긴 가격대일수록 매물이 많이 걸려 있습니다.</p>
+        <p class="note">저장한 시각 <span th:text="${snapshotAt}"></span> · 위가 높은 가격입니다. 노란 줄이 선물 현재가에 가장 가까운 행사가이고, 막대가 긴 가격대일수록 매물이 많이 걸려 있습니다.</p>
 
         <div class="card">
             <div class="legend"><span class="p">◀ 풋 (아래 지지)</span><span class="c">콜 (위 저항) ▶</span></div>
             <div class="ladder">
-                <div class="rung" th:each="s : ${board.strikesTopDown}" th:classappend="${s.strike == board.atmStrike} ? 'atm'">
+                <div class="rung" th:each="s : ${board.strikesTopDown}" th:classappend="${s.strike == atmStrike} ? 'atm'">
                     <div class="put">
                         <span th:if="${s.putOi > 0}" th:text="${#numbers.formatInteger(s.putOi, 1, 'COMMA')}"></span>
                         <span class="bar put" th:style="'width:' + ${board.maxOi > 0 ? s.putOi * 70 / board.maxOi : 0} + '%'"></span>
@@ -182,5 +176,62 @@
         </table>
     </div>
 </main>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js" th:if="${candleChart != null}"></script>
+<script th:if="${candleChart != null}" th:inline="javascript">
+    const points = /*[[${candleChart.points}]]*/ [];
+    const levels = /*[[${candleChart.lines}]]*/ [];
+    const baseline = /*[[${candleChart.baseline}]]*/ null;
+    const baselineLabel = /*[[${candleChart.baselineLabel}]]*/ '';
+    const chart = LightweightCharts.createChart(document.getElementById('fchart'), {
+        layout: { background: { color: '#ffffff' }, textColor: '#191f28' },
+        grid: { vertLines: { color: '#eceef1' }, horzLines: { color: '#eceef1' } },
+        timeScale: { timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderVisible: false },
+    });
+    const candles = chart.addCandlestickSeries({
+        upColor: '#f04452', downColor: '#3182f6', borderVisible: false,
+        wickUpColor: '#f04452', wickDownColor: '#3182f6',
+    });
+    candles.setData(points);
+    const volume = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
+    volume.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+    volume.setData(points.map(p => ({ time: p.time, value: p.volume, color: p.close >= p.open ? '#f0445266' : '#3182f666' })));
+
+    // 옵션 매물대: 저항(빨강)·지지(파랑)·맥스페인(회색).
+    levels.forEach(l => candles.createPriceLine({
+        price: l.price,
+        title: l.label,
+        color: l.label.startsWith('콜') ? '#f04452' : l.label.startsWith('풋') ? '#3182f6' : '#8b95a1',
+        lineStyle: 2,
+        lineWidth: 1,
+    }));
+
+    // 기준 종가(전일·주간 종가)를 가로선으로도 그려 둔다.
+    if (baseline !== null) candles.createPriceLine({ price: baseline, title: baselineLabel, color: '#191f28', lineStyle: 1, lineWidth: 1 });
+
+    const lastEl = document.getElementById('last');
+    const pctEl = document.getElementById('pct');
+    const ohlcEl = document.getElementById('ohlc');
+    const fmt = (v) => Number(v).toFixed(2);
+    function show(p) {
+        lastEl.textContent = fmt(p.close);
+        if (baseline !== null) {
+            const diff = p.close - baseline;
+            pctEl.className = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
+            pctEl.textContent = (diff > 0 ? '+' : '') + fmt(diff) + ' (' + (diff > 0 ? '+' : '') + (diff / baseline * 100).toFixed(2) + '%)';
+        }
+        ohlcEl.textContent = (baseline !== null ? baselineLabel + ' ' + fmt(baseline) + ' · ' : '')
+            + '시 ' + fmt(p.open) + ' · 고 ' + fmt(p.high) + ' · 저 ' + fmt(p.low) + ' · 종 ' + fmt(p.close) + ' · 거래량 ' + p.volume;
+    }
+    const latest = () => show(points[points.length - 1]);
+    latest();
+    chart.subscribeCrosshairMove(param => {
+        const p = param.time === undefined ? null : points.find(x => x.time === param.time);
+        if (p) show(p); else latest();
+    });
+    chart.timeScale().fitContent();
+    new ResizeObserver(() => chart.applyOptions({ width: document.getElementById('fchart').clientWidth }))
+        .observe(document.getElementById('fchart'));
+</script>
 </body>
 </html>

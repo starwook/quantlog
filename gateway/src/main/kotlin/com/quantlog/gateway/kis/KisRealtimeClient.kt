@@ -58,6 +58,9 @@ class KisRealtimeClient(
     /** 지금 KIS 에 구독 걸려 있는 종목. 연결이 끊기면 비운다(재연결 뒤 [refreshSubscriptions] 가 다시 건다). */
     private val subscribed = ConcurrentHashMap.newKeySet<String>()
 
+    /** 지금 KIS 에 구독 걸려 있는 야간선물 종목코드. [subscribed] 와 같은 방식으로 맞춘다. */
+    private val subscribedFutures = ConcurrentHashMap.newKeySet<String>()
+
     /** java.net.http.WebSocket 은 이전 sendText 가 끝나기 전에 또 보내면 예외라서, 전송을 한 줄로 이어 보낸다. */
     private var sendChain: CompletableFuture<*> = CompletableFuture.completedFuture(null)
 
@@ -120,6 +123,12 @@ class KisRealtimeClient(
         (subscribed - wanted).forEach { send(ws, UNSUBSCRIBE, TR_ID, it) }
         subscribed.retainAll(wanted)
         subscribed.addAll(wanted)
+
+        val wantedFutures = symbolSource.nightFutures().toSet()
+        (wantedFutures - subscribedFutures).forEach { send(ws, SUBSCRIBE, NIGHT_FUTURES_TR_ID, it) }
+        (subscribedFutures - wantedFutures).forEach { send(ws, UNSUBSCRIBE, NIGHT_FUTURES_TR_ID, it) }
+        subscribedFutures.retainAll(wantedFutures)
+        subscribedFutures.addAll(wantedFutures)
     }
 
     /** 연결마다 한 번: 계좌 체결통보를 구독한다. tr_key 는 HTS ID — 비어 있으면 건너뛴다(시세만 동작). */
@@ -171,6 +180,7 @@ class KisRealtimeClient(
         when {
             trId == "PINGPONG" -> webSocket?.sendPong(ByteBuffer.wrap(raw.toByteArray()))
             trId in KisFillNoticeHandler.TR_IDS -> fillNotices.onSubscribeResponse(trId, node)
+            trId == NIGHT_FUTURES_TR_ID -> log.info { "[야간선물] 구독 응답: ${node.path("body").path("msg1").asText()}" }
         }
         if (trId != "PINGPONG") {
             val message = node.path("body").path("msg1").asText()
@@ -229,6 +239,7 @@ class KisRealtimeClient(
         ): CompletionStage<*>? {
             connected = false
             subscribed.clear()
+            subscribedFutures.clear()
             log.warn { "[실시간 시세] 연결 종료(code=$statusCode, $reason) — ${RECONNECT_DELAY.seconds}초 후 재연결" }
             scheduleReconnect()
             return null
@@ -241,6 +252,7 @@ class KisRealtimeClient(
             // onError 뒤에는 연결이 끝난 것이라 onClose 가 안 올 수 있다 — 여기서도 다시 붙인다(예전엔 이 경우 영영 끊겨 있었다).
             connected = false
             subscribed.clear()
+            subscribedFutures.clear()
             log.warn(error) { "[실시간 시세] 에러 — ${RECONNECT_DELAY.seconds}초 후 재연결" }
             runCatching { webSocket.abort() }
             scheduleReconnect()
@@ -249,6 +261,7 @@ class KisRealtimeClient(
 
     private companion object {
         const val TR_ID = "H0STCNT0"
+        const val NIGHT_FUTURES_TR_ID = "H0MFCNT0"
         const val SUBSCRIBE = "1"
         const val UNSUBSCRIBE = "2"
         const val REFRESH_INTERVAL_MILLIS = 10_000L

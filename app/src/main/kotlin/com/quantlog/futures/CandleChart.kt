@@ -1,7 +1,10 @@
 package com.quantlog.futures
 
 import java.math.BigDecimal
-import kotlin.math.abs
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 /** 봉 하나. [time] 은 분봉일 때만 있다(HHmmss). */
 data class Candle(
@@ -14,69 +17,77 @@ data class Candle(
     val volume: Long,
 )
 
-/** 화면에 그릴 캔들 하나의 좌표(SVG 단위). */
-data class CandleBar(
-    val x: Double,
-    val bodyWidth: Double,
-    val wickTop: Double,
-    val wickBottom: Double,
-    val bodyTop: Double,
-    val bodyHeight: Double,
-    val up: Boolean,
+/** 브라우저 차트(lightweight-charts)에 그대로 넘기는 봉. [time] 은 일봉이면 `yyyy-MM-dd`, 분봉이면 한국 시각을 UTC 로 본 초 단위 값이다. */
+data class ChartPoint(
+    val time: Any,
+    val open: Double,
+    val high: Double,
+    val low: Double,
+    val close: Double,
+    val volume: Long,
 )
 
-/** 차트 위에 겹쳐 그릴 가격선(저항·지지·맥스페인 등). */
+/** 야간장(18:00~06:00, 06:00 마감 봉 포함) 분봉인지. */
+fun isNightBar(c: Candle) = c.time != null && (c.time >= "180000" || c.time <= "060000")
+
+/** 차트에 겹쳐 그릴 가격선(저항·지지·맥스페인 등). */
 data class ChartLine(
     val label: String,
-    val price: BigDecimal,
-    val y: Double,
+    val price: Double,
 )
 
 /**
- * 캔들 차트의 좌표 계산. [candles] 는 과거 → 최근 순서이고 비어 있으면 안 된다.
- * [levels] 중 캔들 가격대에서 너무 먼 것은 그리지 않는다. 가로 [WIDTH] x 세로 [HEIGHT] 의 SVG 좌표계를 쓴다.
+ * 차트 한 장에 필요한 값. [candles] 는 과거 → 최근 순서이고 비어 있으면 안 된다. 그리기와 확대·축소는 브라우저가 한다.
+ * [apiBase] 는 한투 API 가 준 기준 종가(정규장이면 전일 종가, 야간이면 그날 주간 종가)로, 있으면 이것을 쓰고
+ * 없을 때만 봉 목록에서 직접 찾는다. [dayChange] 는 야간일 때 보여주기만 하는 주간 종가의 전일 대비 등락률(%).
  */
 class CandleChart(
     val candles: List<Candle>,
     levels: List<KeyLevel>,
+    apiBase: BigDecimal? = null,
+    val dayChange: BigDecimal? = null,
 ) {
-    private val candleLow = candles.minOf { it.low }.toDouble()
-    private val candleHigh = candles.maxOf { it.high }.toDouble()
-    private val reach = (candleHigh - candleLow).coerceAtLeast(1.0)
-    private val shown = levels.filter { it.price.toDouble() in (candleLow - reach)..(candleHigh + reach) }
-    private val min = minOf(candleLow, shown.minOfOrNull { it.price.toDouble() } ?: candleLow)
-    private val max = maxOf(candleHigh, shown.maxOfOrNull { it.price.toDouble() } ?: candleHigh)
-    private val span = (max - min).coerceAtLeast(0.01)
+    private val daily = candles.first().time == null
 
-    private fun y(price: Double) = PAD + (max - price) / span * (HEIGHT - 2 * PAD)
-
-    val bars: List<CandleBar> =
-        candles.mapIndexed { i, c ->
-            val step = WIDTH / candles.size
-            val open = y(c.open.toDouble())
-            val close = y(c.close.toDouble())
-            CandleBar(
-                x = step * (i + 0.5),
-                bodyWidth = step * 0.6,
-                wickTop = y(c.high.toDouble()),
-                wickBottom = y(c.low.toDouble()),
-                bodyTop = minOf(open, close),
-                bodyHeight = maxOf(abs(open - close), 1.0),
-                up = c.close >= c.open,
-            )
+    /**
+     * [apiBase] 가 없을 때 봉에서 찾는 기준 종가. 일봉은 직전 봉 종가, 1분봉은 야간장이면 그날 주간 종가(15:45 마지막 정규장 봉),
+     * 정규장이면 전일 정규장 마지막 봉 종가.
+     */
+    private val baseCandle: Candle? =
+        if (daily) {
+            candles.getOrNull(candles.size - 2)
+        } else if (isNight(candles.last())) {
+            candles.lastOrNull { !isNight(it) }
+        } else {
+            candles.lastOrNull { !isNight(it) && it.date < candles.last().date }
         }
 
-    val lines: List<ChartLine> = shown.map { ChartLine(it.label, it.price, y(it.price.toDouble())) }
+    val baseline: Double? = (if (daily) baseCandle?.close else apiBase ?: baseCandle?.close)?.toDouble()
+
+    val baselineLabel: String = if (!daily && isNight(candles.last())) "주간 종가" else "전일 종가"
+
+    val points: List<ChartPoint> =
+        candles.map { ChartPoint(timeOf(it), it.open.toDouble(), it.high.toDouble(), it.low.toDouble(), it.close.toDouble(), it.volume) }
+
+    val lines: List<ChartLine> = levels.map { ChartLine(it.label, it.price.toDouble()) }
 
     /** 첫·마지막 봉의 날짜(분봉은 시각까지) 표기. */
     val from: String = label(candles.first())
     val to: String = label(candles.last())
 
+    private fun timeOf(c: Candle): Any =
+        if (daily) {
+            LocalDate.parse(c.date, DATE).toString()
+        } else {
+            LocalDateTime.of(LocalDate.parse(c.date, DATE), java.time.LocalTime.parse(c.time, TIME)).toEpochSecond(ZoneOffset.UTC)
+        }
+
+    private fun isNight(c: Candle) = isNightBar(c)
+
     private fun label(c: Candle) = c.date + (c.time?.let { " " + it.take(4).chunked(2).joinToString(":") } ?: "")
 
-    companion object {
-        const val WIDTH = 600.0
-        const val HEIGHT = 300.0
-        private const val PAD = 10.0
+    private companion object {
+        val DATE: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
+        val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
     }
 }

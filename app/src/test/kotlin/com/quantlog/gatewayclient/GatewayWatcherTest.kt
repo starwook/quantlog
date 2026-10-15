@@ -16,7 +16,14 @@ class GatewayWatcherTest {
     private val now = Instant.parse("2026-10-08T01:00:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val rows = Mockito.mock(GatewayInstanceRowRepository::class.java)
-    private val watcher = GatewayWatcher(rows, Mockito.mock(FillBackfillService::class.java), GatewayClientProperties(), clock)
+    private val watcher =
+        GatewayWatcher(
+            rows,
+            Mockito.mock(FillBackfillService::class.java),
+            GatewayClientProperties(),
+            Mockito.mock(GatewayStartRecorder::class.java),
+            clock,
+        )
 
     private fun row(
         heartbeatAgo: Duration,

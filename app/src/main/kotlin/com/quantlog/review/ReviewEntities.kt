@@ -7,7 +7,6 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Index
 import jakarta.persistence.Table
-import jakarta.persistence.UniqueConstraint
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
@@ -20,7 +19,6 @@ import java.time.LocalDate
 @Table(
     name = "review_journal",
     indexes = [Index(name = "idx_review_journal_day", columnList = "day")],
-    uniqueConstraints = [UniqueConstraint(columnNames = ["source"])],
 )
 class ReviewJournal(
     @Column(nullable = false)
@@ -31,9 +29,6 @@ class ReviewJournal(
     val body: String,
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant,
-    /** 옛 파일(`playbook/journal/`)에서 옮겨 온 행이면 원본 위치. 같은 파일을 두 번 옮기지 않는 열쇠다. 새로 만든 행은 null. */
-    @Column(length = 200)
-    val source: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -49,7 +44,6 @@ class ReviewJournal(
         Index(name = "idx_review_proposal_day", columnList = "review_day"),
         Index(name = "idx_review_proposal_favorite", columnList = "favorite, created_at"),
     ],
-    uniqueConstraints = [UniqueConstraint(columnNames = ["source"])],
 )
 class ReviewProposal(
     @Column(name = "review_day", nullable = false)
@@ -62,8 +56,6 @@ class ReviewProposal(
     var status: String = STATUS_PENDING,
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant,
-    @Column(length = 200)
-    val source: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -105,10 +97,6 @@ interface ReviewJournalRepository : JpaRepository<ReviewJournal, Long> {
     fun dayAfter(
         @Param("day") day: LocalDate,
     ): LocalDate?
-
-    fun findFirstByDayLessThanEqualOrderByDayDesc(day: LocalDate): ReviewJournal?
-
-    fun existsBySource(source: String): Boolean
 }
 
 interface ReviewProposalRepository : JpaRepository<ReviewProposal, Long> {
@@ -140,6 +128,4 @@ interface ReviewProposalRepository : JpaRepository<ReviewProposal, Long> {
     fun favorites(pageable: Pageable): List<ReviewProposal>
 
     fun countByFavoriteTrue(): Long
-
-    fun existsBySource(source: String): Boolean
 }

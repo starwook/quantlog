@@ -9,10 +9,7 @@ import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
 import org.slf4j.LoggerFactory
-import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
-import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -95,20 +92,5 @@ class GatewayLogAppender(
                 "org.springframework.jdbc",
                 "org.springframework.transaction",
             )
-    }
-}
-
-/** 오래된 게이트웨이 로그를 매일 새벽에 지운다([ErrorLogProperties.retentionDays]). */
-@Component
-class GatewayLogCleaner(
-    private val repository: GatewayLogRepository,
-    private val properties: ErrorLogProperties,
-) {
-    @Scheduled(cron = "0 30 4 * * *", zone = "Asia/Seoul")
-    @Transactional
-    fun purgeOld() {
-        if (!properties.enabled) return
-        val deleted = repository.deleteByLoggedAtBefore(Instant.now().minus(Duration.ofDays(properties.retentionDays)))
-        if (deleted > 0) log.info { "[게이트웨이 로그] ${properties.retentionDays}일 지난 ${deleted}건 삭제" }
     }
 }

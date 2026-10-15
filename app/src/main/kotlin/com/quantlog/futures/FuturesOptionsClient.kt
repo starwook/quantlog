@@ -74,8 +74,9 @@ class FuturesOptionsClient(private val rest: KisRest) {
                         "FID_HOUR_CLS_CODE" to "60",
                         "FID_PW_DATA_INCU_YN" to "N",
                         "FID_FAKE_TICK_INCU_YN" to "N",
-                        "FID_INPUT_DATE_1" to "",
-                        "FID_INPUT_HOUR_1" to "",
+                        // 이 날짜·시각 이전 봉부터 최신순으로 온다. 빈 값은 한투가 거절한다(INVALID FID_INPUT_DATE_1).
+                        "FID_INPUT_DATE_1" to today.format(DateTimeFormatter.BASIC_ISO_DATE),
+                        "FID_INPUT_HOUR_1" to "235959",
                     ),
                 )
             } else {
@@ -103,6 +104,17 @@ class FuturesOptionsClient(private val rest: KisRest) {
             )
         }.sortedWith(compareBy({ it.date }, { it.time ?: "" }))
     }
+
+    /** 선물 한 종목의 전일 종가(`inquire-price` 의 `futs_prdy_clpr`). 값이 없으면 null. */
+    fun previousClose(code: String): BigDecimal? =
+        fetch(
+            "/uapi/domestic-futureoption/v1/quotations/inquire-price",
+            "FHMIF10000000",
+            mapOf("FID_COND_MRKT_DIV_CODE" to "F", "FID_INPUT_ISCD" to code),
+        ).path("output1").decimal("futs_prdy_clpr")?.takeIf { it.signum() > 0 }
+
+    /** 가장 가까운 월물 선물의 종목코드(전광판 첫 행의 `futs_shrn_iscd`). 없으면 null. */
+    fun nearestFuturesCode(): String? = futuresBoard().firstOrNull()?.get("futs_shrn_iscd")?.takeIf { it.isNotBlank() }
 
     private fun fetch(
         path: String,

@@ -48,7 +48,7 @@ class CandleProjector(
         }
     }
 
-    private companion object {
+    internal companion object {
         const val CURSOR = "kis_minute_chart"
     }
 }

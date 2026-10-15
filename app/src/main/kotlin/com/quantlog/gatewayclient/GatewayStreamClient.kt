@@ -17,6 +17,9 @@ import java.time.Instant
 
 private val log = KotlinLogging.logger {}
 
+/** 게이트웨이가 넘긴 시세 원문 한 건(주식 틱은 [KisRealtimeTickParser] 가 이미 처리한다). 야간선물 같은 다른 TR 을 읽는 쪽이 듣는다. */
+data class RealtimeRawReceived(val raw: String)
+
 /** 게이트웨이가 "원장에 새 행이 생겼다"고 알렸다. 정본은 DB 라 이 알림은 처리를 서두르게 할 뿐이다. */
 data class GatewayNotified(val kind: String)
 
@@ -107,7 +110,11 @@ class GatewayStreamClient(
     fun handle(json: String) {
         val node = objectMapper.readTree(json)
         when (node.path("type").asText()) {
-            "raw" -> KisRealtimeTickParser.parse(node.path("data").asText()).forEach(candles::onTrade)
+            "raw" -> {
+                val data = node.path("data").asText()
+                KisRealtimeTickParser.parse(data).forEach(candles::onTrade)
+                events.publishEvent(RealtimeRawReceived(data))
+            }
             "fill", "balance" -> events.publishEvent(GatewayNotified(node.path("type").asText()))
             "hello" -> log.info { "[게이트웨이 스트림] hello 인스턴스=${node.path("instanceId").asText()} 계약=${node.path("contractVersion").asText()}" }
             else -> Unit // ping 등

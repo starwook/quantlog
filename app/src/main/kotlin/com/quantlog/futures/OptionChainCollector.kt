@@ -11,6 +11,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.YearMonth
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -25,10 +26,11 @@ class OptionSnapshotStore(private val repository: OptionOpenInterestRepository) 
         maturity: YearMonth,
         underlying: BigDecimal,
         strikes: List<OptionStrike>,
+        collectedAt: LocalDateTime,
     ) {
         repository.deleteSnapshot(tradeDate, maturity.toString())
         repository.flush()
-        repository.saveAll(strikes.map { OptionOpenInterest.of(tradeDate, maturity.toString(), underlying, it) })
+        repository.saveAll(strikes.map { OptionOpenInterest.of(tradeDate, maturity.toString(), underlying, it, collectedAt) })
     }
 
     /** 그 월물의 가장 최근 저장본. 없으면 null. */
@@ -36,7 +38,13 @@ class OptionSnapshotStore(private val repository: OptionOpenInterestRepository) 
     fun latest(maturity: YearMonth): Pair<LocalDate, OptionBoard>? {
         val date = repository.latestTradeDate(maturity.toString()) ?: return null
         val rows = repository.findAllByTradeDateAndMaturity(date, maturity.toString())
-        return date to OptionBoard(rows.map { it.toStrike() }, rows.firstNotNullOfOrNull { it.underlying })
+        return date to
+            OptionBoard(
+                rows.map {
+                    it.toStrike()
+                },
+                rows.firstNotNullOfOrNull { it.underlying }, rows.firstNotNullOfOrNull { it.collectedAt },
+            )
     }
 }
 
@@ -77,7 +85,7 @@ class OptionChainCollector(
             val low = underlying * (BigDecimal.ONE - RANGE)
             val high = underlying * (BigDecimal.ONE + RANGE)
             val strikes = below1000(maturity, low, high) + from1000(maturity, low, high)
-            store.replace(LocalDate.now(clock), maturity, underlying, strikes)
+            store.replace(LocalDate.now(clock), maturity, underlying, strikes, LocalDateTime.now(clock))
             return strikes.size
         } finally {
             running.set(false)
@@ -147,15 +155,26 @@ class OptionChainCollector(
     }
 }
 
-/** 평일 16:00(옵션 정규장 15:45 마감 뒤)에 가장 가까운 월물의 매물대를 모은다. `quantlog.futures.collect-enabled=false` 면 끈다. */
+/**
+ * 평일 16:00(옵션 정규장 15:45 마감 뒤)에 가장 가까운 월물의 매물대를 모은다. 만기일 다음 영업일에는 가장 가까운 월물이 다음 달로 바뀌는데
+ * 그 월물은 저장본이 아직 없어 화면이 비므로, 평일 08:30 에 저장본이 하나도 없으면 한 번 모아 둔다(월물 바꾸기를 사람이 누르지 않게).
+ * `quantlog.futures.collect-enabled=false` 면 끈다.
+ */
 @Component
 @ConditionalOnProperty(prefix = "quantlog.futures", name = ["collect-enabled"], havingValue = "true", matchIfMissing = true)
 class OptionChainScheduler(
     private val collector: OptionChainCollector,
+    private val store: OptionSnapshotStore,
     private val clock: Clock,
 ) {
     @Scheduled(cron = "0 0 16 * * MON-FRI", zone = "Asia/Seoul")
     fun collect() {
         collector.collectInBackground(OptionMaturity.nearest(LocalDate.now(clock)))
+    }
+
+    @Scheduled(cron = "0 30 8 * * MON-FRI", zone = "Asia/Seoul")
+    fun collectIfMissing() {
+        val month = OptionMaturity.nearest(LocalDate.now(clock))
+        if (store.latest(month) == null) collector.collectInBackground(month)
     }
 }

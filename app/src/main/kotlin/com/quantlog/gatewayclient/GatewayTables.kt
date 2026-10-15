@@ -9,7 +9,10 @@ import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import org.hibernate.annotations.Immutable
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 // 게이트웨이가 쓰는 테이블을 앱이 **읽기 전용으로** 읽는 선언이다(원문 그대로 쌓인 한투 응답이라 해석은 앱의 `broker/Kis*Parser` 가 한다). 게이트웨이와 코드를 공유하지 않으므로 같은 컬럼을 앱 쪽에 따로 적고,
@@ -69,6 +72,15 @@ interface GatewayLogRowRepository : JpaRepository<GatewayLogRow, Long> {
 
     @Query("select max(r.id) from GatewayLogRow r")
     fun maxId(): Long?
+
+    /** [cutoff] 보다 오래됐고 앱이 이미 읽은(id <= [readUpTo]) 줄을 지운다. 지운 줄 수. */
+    @Transactional
+    @Modifying
+    @Query("delete from GatewayLogRow r where r.loggedAt < :cutoff and r.id <= :readUpTo")
+    fun deleteReadBefore(
+        @Param("cutoff") cutoff: Instant,
+        @Param("readUpTo") readUpTo: Long,
+    ): Int
 }
 
 /** 잔고 원문(`kis_balance`) 한 줄 — 한투 주식잔고조회 응답 JSON 원문. [fetchedAt] 은 게이트웨이가 한투를 부르기 **전** 시각이다. docs/contracts/README.md. */
@@ -89,6 +101,15 @@ class KisBalanceRow(
 
 interface KisBalanceRowRepository : JpaRepository<KisBalanceRow, Long> {
     fun findTopByOrderByIdDesc(): KisBalanceRow?
+
+    /** [cutoff] 보다 오래됐고 id 가 [keepFromId] 보다 작은 줄을 지운다(앱은 가장 큰 id 한 줄만 쓰므로 그 줄은 남긴다). 지운 줄 수. */
+    @Transactional
+    @Modifying
+    @Query("delete from KisBalanceRow r where r.receivedAt < :cutoff and r.id < :keepFromId")
+    fun deleteOlderBefore(
+        @Param("cutoff") cutoff: Instant,
+        @Param("keepFromId") keepFromId: Long,
+    ): Int
 }
 
 /** 분봉 원문(`kis_minute_chart`) 한 줄 — 한투 주식당일분봉조회 응답 JSON 원문(종목마다 한 번 받을 때 한 줄). docs/contracts/README.md. */
@@ -111,24 +132,16 @@ class KisMinuteChartRow(
 
 interface KisMinuteChartRowRepository : JpaRepository<KisMinuteChartRow, Long> {
     fun findTop200ByIdGreaterThanOrderByIdAsc(id: Long): List<KisMinuteChartRow>
-}
 
-/** 앱이 쓰는 계약 테이블(`held_symbol`) — 지금 보유 중인 종목. 게이트웨이는 잔고 원문을 해석하지 않으므로 앱이 알려 준다. docs/contracts/README.md. */
-@Entity
-@Table(name = "held_symbol", uniqueConstraints = [UniqueConstraint(columnNames = ["market", "symbol"])])
-class HeldSymbolRow(
-    @Column(nullable = false, length = 20)
-    val market: String,
-    @Column(nullable = false, length = 20)
-    val symbol: String,
-) {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = null
-        protected set
+    /** [cutoff] 보다 오래됐고 앱이 이미 읽은(id <= [readUpTo]) 줄을 지운다. 지운 줄 수. */
+    @Transactional
+    @Modifying
+    @Query("delete from KisMinuteChartRow r where r.receivedAt < :cutoff and r.id <= :readUpTo")
+    fun deleteReadBefore(
+        @Param("cutoff") cutoff: Instant,
+        @Param("readUpTo") readUpTo: Long,
+    ): Int
 }
-
-interface HeldSymbolRowRepository : JpaRepository<HeldSymbolRow, Long>
 
 /** 게이트웨이 인스턴스 하트비트(`gateway_instance`, 1행) — docs/contracts/README.md. */
 @Entity
@@ -177,6 +190,8 @@ interface WatchSymbolRowRepository : JpaRepository<WatchSymbolRow, Long> {
         market: String,
         symbol: String,
     ): WatchSymbolRow?
+
+    fun findAllByMarket(market: String): List<WatchSymbolRow>
 }
 
 /** 앱이 체결 원장을 어디까지 처리했는지(`broker_projection_cursor`). 앱이 재시작돼도 이 ID 다음부터 이어서 처리한다. */
