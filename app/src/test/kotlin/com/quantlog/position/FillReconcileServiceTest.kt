@@ -67,11 +67,16 @@ class FillReconcileServiceTest {
         val trades = (1..4).map { trade("B$it") }
         Mockito.`when`(tradeRepository.findAll()).thenReturn(trades)
         Mockito.`when`(broker.todayOrderFills(Market.KR)).thenReturn(listOf(total("B1"), total("B3")))
+        Mockito.`when`(broker.orderFillTotal(Market.KR, "B2")).thenReturn(null)
 
         val result = service.reconcile(now)
 
         assertEquals(4, result.checked)
-        verify(broker, never()).orderFillTotal(Mockito.any(Market::class.java) ?: Market.KR, anyString())
+        // 전체 조회에 안 잡힌 주문(B2·B4)만 주문번호로 따로 묻는다.
+        verify(broker, never()).orderFillTotal(Market.KR, "B1")
+        verify(broker, never()).orderFillTotal(Market.KR, "B3")
+        verify(broker).orderFillTotal(Market.KR, "B2")
+        verify(broker).orderFillTotal(Market.KR, "B4")
         verify(applier).applyInquiry(trades[0], total("B1"), now)
         verify(applier).applyInquiry(trades[2], total("B3"), now)
         verify(applier).rebuildToday(now)
@@ -118,5 +123,31 @@ class FillReconcileServiceTest {
 
         service.reconcile(now, confirmBalance = true)
         verify(balanceSync).sync(Mockito.eq(kis) ?: kis, Mockito.any(Instant::class.java) ?: now)
+    }
+
+    @Test
+    fun `거래를 멈추고 맞출 때는 취소된 주문을 빼고 열려 있는 주문만 본다`() {
+        val canceled = (1..40).map { trade("X$it").also { t -> t.cancel() } }
+        val open = trade("Y1")
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(canceled + open)
+        Mockito.`when`(broker.orderFillTotal(Market.KR, "Y1")).thenReturn(total("Y1"))
+        Mockito.`when`(broker.holdingsForReconcile(Market.KR)).thenReturn(emptyList())
+
+        val result = service.reconcile(now, confirmBalance = true)
+
+        assertEquals(1, result.checked)
+        verify(broker, never()).todayOrderFills(Market.KR)
+        verify(broker).orderFillTotal(Market.KR, "Y1")
+    }
+
+    @Test
+    fun `전체 조회에 안 잡힌 오래된 주문은 한 번에 5건까지만 따로 묻는다`() {
+        val trades = (1..20).map { trade("Z$it") }
+        Mockito.`when`(tradeRepository.findAll()).thenReturn(trades)
+        Mockito.`when`(broker.todayOrderFills(Market.KR)).thenReturn(emptyList())
+
+        service.reconcile(now)
+
+        verify(broker, Mockito.times(5)).orderFillTotal(Mockito.any(Market::class.java) ?: Market.KR, anyString() ?: "")
     }
 }
