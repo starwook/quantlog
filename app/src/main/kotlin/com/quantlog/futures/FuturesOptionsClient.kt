@@ -15,6 +15,9 @@ data class OptionPrice(
     val underlying: BigDecimal?,
 )
 
+/** 현재가 조회의 마지막 정규장 종가와 그 전일 대비 등락률(%, 없을 수 있다). */
+data class RegularQuote(val close: BigDecimal, val changePercent: BigDecimal?)
+
 /**
  * 한투 국내선물옵션 시세 조회(주문 없음). 사양·실측: docs/kis-api/futures-options.md.
  * 호출 우선순위는 기본(최후순위)이다 — 수십 번 이어 부르는 수집이 주문 흐름을 막지 않게 한다.
@@ -112,6 +115,21 @@ class FuturesOptionsClient(private val rest: KisRest) {
             "FHMIF10000000",
             mapOf("FID_COND_MRKT_DIV_CODE" to "F", "FID_INPUT_ISCD" to code),
         ).path("output1").decimal("futs_prdy_clpr")?.takeIf { it.signum() > 0 }
+
+    /**
+     * 선물 한 종목의 `inquire-price` 현재가(`futs_prpr`)와 전일 대비 등락률(`futs_prdy_ctrt`, %).
+     * REST 는 야간 체결을 담지 않아(2026-10-16 실측) 야간에는 이 값이 마지막 정규장 종가와 그 등락률이다. 값이 없으면 null.
+     */
+    fun lastRegularQuote(code: String): RegularQuote? {
+        val output =
+            fetch(
+                "/uapi/domestic-futureoption/v1/quotations/inquire-price",
+                "FHMIF10000000",
+                mapOf("FID_COND_MRKT_DIV_CODE" to "F", "FID_INPUT_ISCD" to code),
+            ).path("output1")
+        val close = output.decimal("futs_prpr")?.takeIf { it.signum() > 0 } ?: return null
+        return RegularQuote(close, output.decimal("futs_prdy_ctrt"))
+    }
 
     /** 가장 가까운 월물 선물의 종목코드(전광판 첫 행의 `futs_shrn_iscd`). 없으면 null. */
     fun nearestFuturesCode(): String? = futuresBoard().firstOrNull()?.get("futs_shrn_iscd")?.takeIf { it.isNotBlank() }
