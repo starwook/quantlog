@@ -6,6 +6,7 @@ import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseBody
 import org.springframework.web.servlet.mvc.support.RedirectAttributes
 import java.math.BigDecimal
 import java.time.Clock
@@ -19,6 +20,8 @@ private val log = KotlinLogging.logger {}
 private val SNAPSHOT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
 private const val MAX_MINUTE_CANDLES = 300
+
+private val CODE_FORMAT = Regex("[A-Za-z0-9]{1,12}")
 
 /**
  * 선물옵션 화면: 지수옵션 매물대(행사가별 미결제약정, 하루 한 번 모은 저장본)와 지수선물 전광판(열 때마다 조회).
@@ -64,6 +67,20 @@ class FuturesController(
         return "futures"
     }
 
+    /** 차트가 몇 초마다 불러 마지막 봉을 갱신하는 최근 봉. 조회가 실패하면 빈 목록이라 화면은 다음 주기에 다시 시도한다. */
+    @GetMapping("/futures/candles")
+    @ResponseBody
+    fun candles(
+        @RequestParam code: String,
+        @RequestParam(defaultValue = "M") chart: String,
+    ): List<ChartPoint> {
+        if (!CODE_FORMAT.matches(code)) return emptyList()
+        return runCatching { candlesOf(code, chart).takeLast(MAX_MINUTE_CANDLES) }
+            .onFailure { log.warn { "[선물옵션] 캔들 갱신 실패: ${it.message}" } }
+            .getOrDefault(emptyList())
+            .let { if (it.isEmpty()) emptyList() else CandleChart(it, emptyList()).points }
+    }
+
     /** 가장 가까운 월물 선물의 캔들 차트. 조회가 실패해도 화면은 그대로 열린다. */
     private fun addChart(
         model: Model,
@@ -71,6 +88,7 @@ class FuturesController(
         unit: String,
     ) {
         val code = futures.firstOrNull()?.get("futs_shrn_iscd")?.takeIf { it.isNotBlank() } ?: return
+        model.addAttribute("futuresCode", code)
         runCatching { candlesOf(code, unit) }
             .onSuccess { candles ->
                 if (candles.isEmpty()) return@onSuccess
@@ -108,7 +126,10 @@ class FuturesController(
         }.getOrNull()
     }
 
-    /** 일봉은 한투 일봉, 1분봉은 한투 정규장 분봉에 앱이 쌓은 야간장 분봉을 이어 붙인다(한투 분봉은 야간을 주지 않는다). */
+    /**
+     * 일봉은 한투 일봉, 1분봉은 한투 정규장 분봉에 앱이 실시간 체결로 쌓은 분봉을 합친다(한투 분봉은 야간을 주지 않는다).
+     * 같은 분이 양쪽에 있으면 실시간으로 쌓은 쪽을 쓴다(더 최신이다).
+     */
     private fun candlesOf(
         code: String,
         unit: String,
@@ -119,9 +140,9 @@ class FuturesController(
         val nightCandles = night.recent(code)
         // 정규장 조회가 실패해도 야간 봉이 있으면 보여준다. 둘 다 없으면 정규장 오류를 그대로 알린다.
         regular.exceptionOrNull()?.takeIf { nightCandles.isEmpty() }?.let { throw it }
-        return (regular.getOrDefault(emptyList()) + nightCandles).sortedWith(
-            compareBy({ it.date }, { it.time }),
-        )
+        return (regular.getOrDefault(emptyList()).associateBy { it.date to it.time } + nightCandles.associateBy { it.date to it.time })
+            .values
+            .sortedWith(compareBy({ it.date }, { it.time }))
     }
 
     /** 매물대를 지금 한 번 모은다. 한투 호출 100번 안팎에 5분쯤 걸려 뒤에서 돌린다. */

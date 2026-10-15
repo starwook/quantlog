@@ -8,7 +8,7 @@ import java.time.Clock
 import java.time.LocalDateTime
 import java.time.LocalTime
 
-/** 게이트웨이가 넘긴 시세 원문 중 야간선물 체결(`H0MFCNT0`)을 1분봉으로 쌓는다. 틱은 따로 저장하지 않는다. */
+/** 게이트웨이가 넘긴 시세 원문 중 선물 체결(야간 `H0MFCNT0`·주간 `H0IFCNT0`)을 1분봉으로 쌓는다. 틱은 따로 저장하지 않는다. */
 @Component
 class NightFuturesRecorder(
     private val repository: NightFuturesCandleRepository,
@@ -17,7 +17,7 @@ class NightFuturesRecorder(
     @EventListener
     @Transactional
     fun onRaw(event: RealtimeRawReceived) {
-        if (!event.raw.contains("|${NightFuturesTickParser.TR_ID}|")) return
+        if (NightFuturesTickParser.TR_IDS.none { event.raw.contains("|$it|") }) return
         NightFuturesTickParser.parse(event.raw).forEach(::record)
     }
 
