@@ -76,8 +76,9 @@ class FuturesController(
             .onSuccess { candles ->
                 if (candles.isEmpty()) return@onSuccess
                 val levels = (model.getAttribute("board") as? OptionBoard)?.keyLevels().orEmpty()
+                // 기준 종가는 자르기 전 봉에서 구한다: 야간 봉이 300개를 채우면 정규장 봉이 잘려 나가 주간 종가를 못 찾는다.
                 val base = apiBase(code, unit, candles)
-                model.addAttribute("candleChart", CandleChart(candles, levels, base?.close, base?.dayChange))
+                model.addAttribute("candleChart", CandleChart(candles.takeLast(MAX_MINUTE_CANDLES), levels, base?.close, base?.dayChange))
             }
             .onFailure {
                 log.warn { "[선물옵션] 캔들 조회 실패: ${it.message}" }
@@ -125,7 +126,7 @@ class FuturesController(
         regular.exceptionOrNull()?.takeIf { nightCandles.isEmpty() }?.let { throw it }
         return (regular.getOrDefault(emptyList()) + nightCandles).sortedWith(
             compareBy({ it.date }, { it.time }),
-        ).takeLast(MAX_MINUTE_CANDLES)
+        )
     }
 
     /** 매물대를 지금 한 번 모은다. 한투 호출 100번 안팎에 5분쯤 걸려 뒤에서 돌린다. */
