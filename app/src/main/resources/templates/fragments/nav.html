@@ -3,10 +3,10 @@
 <body>
 <!-- 공통 메뉴. 1단은 쓰는 시점으로 묶은 그룹 3개(거래·분석·관리), 2단은 그룹 안의 화면. 화면 위에 고정된다.
      사용: <nav th:replace="~{fragments/nav :: menu('orders')}"></nav>
-     active: orders|chart (거래) · review|backtest|futures (분석) · settings|errors (관리)
+     active: orders|chart (거래) · review|backtest|futures|news (분석) · settings|errors (관리)
      새 화면은 상단에 늘리지 말고 어느 그룹의 2단에 넣을지 먼저 정한다. 실현손익 같은 하위 화면은 부모 화면의 active 를 쓴다. -->
 <nav th:fragment="menu(active)" class="menu"
-     th:with="group=${active == 'orders' or active == 'chart'} ? 'trade' : (${active == 'review' or active == 'backtest' or active == 'futures'} ? 'analysis' : 'config')">
+     th:with="group=${active == 'orders' or active == 'chart'} ? 'trade' : (${active == 'review' or active == 'backtest' or active == 'futures' or active == 'news'} ? 'analysis' : 'config')">
     <style>
         .menu { position: sticky; top: 0; z-index: 10; margin: -24px -16px 16px; background: var(--bg, #f2f4f6); border-bottom: 1px solid var(--border, #eceef1); }
         .menu .row { display: flex; overflow-x: auto; }
@@ -29,6 +29,7 @@
         <a href="/review" th:classappend="${active == 'review'} ? 'on'">리뷰</a>
         <a href="/backtest/KR/005930" th:classappend="${active == 'backtest'} ? 'on'">백테스트</a>
         <a href="/futures" th:classappend="${active == 'futures'} ? 'on'">KOSPI200</a>
+        <a href="/news" th:classappend="${active == 'news'} ? 'on'">뉴스</a>
     </div>
     <div class="row subs" th:if="${group == 'config'}">
         <a href="/settings" th:classappend="${active == 'settings'} ? 'on'">설정</a>

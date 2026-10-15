@@ -31,6 +31,4 @@ class KisMinuteChart(
         protected set
 }
 
-interface KisMinuteChartRepository : JpaRepository<KisMinuteChart, Long> {
-    fun deleteByReceivedAtBefore(cutoff: Instant): Long
-}
+interface KisMinuteChartRepository : JpaRepository<KisMinuteChart, Long>

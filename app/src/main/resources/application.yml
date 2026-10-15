@@ -48,6 +48,11 @@ quantlog:
     # Claude API 키. 시크릿 — application-local.yml 이나 환경변수에만 적는다.
     api-key: ${ANTHROPIC_API_KEY:}
     model: claude-haiku-5-5
+  news:
+    # 분석 > 뉴스 화면의 소스. 키는 시크릿 — application-local.yml 이나 환경변수에만 적는다. 비우면 그 소스는 꺼짐(화면에 안내가 뜬다).
+    naver-client-id: ${QUANTLOG_NEWS_NAVER_CLIENT_ID:}
+    naver-client-secret: ${QUANTLOG_NEWS_NAVER_CLIENT_SECRET:}
+    dart-api-key: ${QUANTLOG_NEWS_DART_API_KEY:}
   futures:
     # 평일 16:00 에 코스피200 옵션 매물대(행사가별 미결제약정)를 모아 option_open_interest 에 저장한다. 한투 조회 100번 안팎(주문 없음).
     collect-enabled: ${QUANTLOG_FUTURES_COLLECT_ENABLED:true}

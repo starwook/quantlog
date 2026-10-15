@@ -61,15 +61,15 @@
 | 테이블 | 쓰는 쪽 → 읽는 쪽 | 내용 |
 |---|---|---|
 | `kis_broker_fill` | 게이트웨이 → 앱 | 체결통보 원장(append-only). `id, received_at, tr_id, body` — `body` 는 한투 실시간 체결통보를 복호화한 `^` 구분 원문 한 건(헤더 건수로 나눈 것). 고객 ID·계좌번호·계좌명 칸(0·1·17번)만 비운다. 앱 `KisFillNoticeParser`(docs/kis-api/field-reference.md 3절) |
-| `kis_balance` | 게이트웨이 → 앱 | 잔고조회(VTTC8434R) 응답 원문, 회차마다 한 줄. `id, fetched_at(한투 호출 **전** 시각), received_at, body`. 앱은 가장 큰 id 한 줄만 쓴다. 하루 지난 줄은 지운다. 앱 `KisBalanceParser` |
-| `kis_minute_chart` | 게이트웨이 → 앱 | 당일분봉조회(FHKST03010200) 응답 원문. `id, market, symbol, received_at, body`(종목마다 한 번 받을 때 한 줄, 직전과 같은 본문은 건너뜀). 하루 지난 줄은 지운다. 앱 `KisMinuteChartParser` 가 자기 `minute_candle` 에 넣는다 |
+| `kis_balance` | 게이트웨이 → 앱 | 잔고조회(VTTC8434R) 응답 원문, 회차마다 한 줄. `id, fetched_at(한투 호출 **전** 시각), received_at, body`. 앱은 가장 큰 id 한 줄만 쓴다. 하루 지난 줄은 **앱이** 지운다(가장 큰 id 한 줄은 남김, 앱 `GatewayRawPruner`). 앱 `KisBalanceParser` |
+| `kis_minute_chart` | 게이트웨이 → 앱 | 당일분봉조회(FHKST03010200) 응답 원문. `id, market, symbol, received_at, body`(종목마다 한 번 받을 때 한 줄, 직전과 같은 본문은 건너뜀). 하루 지난 줄은 **앱이** 지운다(앱이 이미 읽은 줄만, 앱 `GatewayRawPruner`). 앱 `KisMinuteChartParser` 가 자기 `minute_candle` 에 넣는다 |
 | `kis_order` | 게이트웨이 → (게이트웨이) | 주문·취소 요청·응답 원문과 멱등. `request_id`(유일), `tr_id, path, request_body, status`(SENDING/DONE/FAILED), `http_status, response_body, error` |
 | `gateway_instance` | 게이트웨이 → 앱 | 1행. 단일 실행 임대(`instance_id, lease_until`)와 하트비트(`heartbeat_at, ws_connected_at, live_symbols, contract_version`) |
 | `watch_symbol` | **앱** → 게이트웨이 | 구독·분봉 수집 종목의 **원본**(관심종목 전체. 보유 종목은 모두 여기 있다 — 앱이 보유 중인 종목의 삭제를 막는다). `market, symbol, etf`. 앱 `symbol_strategy.watch_symbol_id` 가 이 행을 외래키로 가리키고, 종목 추가·삭제는 같은 트랜잭션에서 둘을 함께 바꾼 뒤 `POST /api/watch/refresh` 로 알린다. **`market=NIGHT_FUTURES` 행(2026-10-14 추가)은 주식이 아니라 야간선물 종목코드**(예 `A01612`)로, 게이트웨이가 `H0MFCNT0` 으로 구독해 체결 원문을 `raw` 로 흘린다(앱 `NightFuturesWatch` 가 가장 가까운 월물 한 개를 써 준다) |
 | `minute_candle` | **앱만** | 분봉. 앱이 실시간 시세로 만든 것과 `kis_minute_chart` 에서 푼 것이 함께 들어간다(게이트웨이는 쓰지 않는다) |
 | `paper_order` | 앱만 | 모킹 체결(`QUANTLOG_BROKER_TYPE=paper`) 기록 |
 | `option_open_interest` | 앱만 | 코스피200 옵션 매물대 저장본(하루 한 번, 날짜·월물·행사가별 콜/풋 미결제약정). 게이트웨이는 모른다 — `docs/kis-api/futures-options.md` |
-| `gateway_log` | 게이트웨이 → 앱 | 게이트웨이의 WARN 이상 로그 **원본**(append-only, 묶지 않음). `id, logged_at, level, logger, message, exception_class, exception_message, stack_trace`. 앱 `GatewayLogProjector` 가 읽어 자기 `error_log` 에 묶어 넣고 웹훅으로 알린다. 14일 지난 줄은 게이트웨이가 지운다 |
+| `gateway_log` | 게이트웨이 → 앱 | 게이트웨이의 WARN 이상 로그 **원본**(append-only, 묶지 않음). `id, logged_at, level, logger, message, exception_class, exception_message, stack_trace`. 앱 `GatewayLogProjector` 가 읽어 자기 `error_log` 에 묶어 넣고 웹훅으로 알린다. 14일 지난 줄은 **앱이** 지운다(앱이 이미 읽은 줄만, 앱 `GatewayRawPruner`) |
 | `gateway_start` | **앱만** | 게이트웨이가 새로 뜬 기록, 인스턴스마다 한 줄(2026-10-14). `instance_id`(유일), `started_at`(= `gateway_instance.started_at`), `previous_heartbeat_at`(앱이 직전 인스턴스에서 마지막으로 본 하트비트, 모르면 null), `detected_at`. 앱 `GatewayStartRecorder` 가 `gateway_instance.instance_id` 가 처음 보는 값일 때 쓴다(/errors 화면). 게이트웨이는 모른다 |
 | `error_log` | **앱만** | 앱의 WARN 이상 로그와 `gateway_log` 에서 옮겨 온 줄을 같은 종류끼리 묶은 것(/errors 화면) |
 | `order_fill` | **앱만** | 주문별 체결 합계(2026-10-14). `trade_date, market, order_no`(유일) · 체결통보 합계 `notice_quantity/amount` · 한투 체결조회 누적 `inquiry_quantity/amount` · `settled`(체결조회가 남은 수량 0 확인) — 앱이 보는 체결은 두 출처 중 수량이 큰 쪽. 게이트웨이는 모른다 |

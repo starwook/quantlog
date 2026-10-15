@@ -10,20 +10,17 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val log = KotlinLogging.logger {}
 
-/** 잔고 원문을 [KisBalance] 에 쌓고 오래된 줄을 지운다. 별도 빈이라 @Transactional 이 먹는다. */
+/** 잔고 원문을 [KisBalance] 에 쌓는다. 오래된 줄은 앱이 지운다. 별도 빈이라 @Transactional 이 먹는다. */
 @Service
 class KisBalanceStore(
     private val repository: KisBalanceRepository,
 ) {
-    private var lastPrunedAt: Instant = Instant.EPOCH
-
     /** 저장하고 새 줄의 id 를 돌려준다. */
     @Transactional
     fun record(
@@ -32,16 +29,7 @@ class KisBalanceStore(
         now: Instant = Instant.now(),
     ): Long {
         val saved = repository.save(KisBalance(fetchedAt, now, body))
-        if (Duration.between(lastPrunedAt, now) > PRUNE_EVERY) {
-            lastPrunedAt = now
-            repository.deleteByReceivedAtBefore(now.minus(RETENTION))
-        }
         return saved.id!!
-    }
-
-    private companion object {
-        val RETENTION: Duration = Duration.ofDays(1)
-        val PRUNE_EVERY: Duration = Duration.ofHours(1)
     }
 }
 

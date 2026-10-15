@@ -42,7 +42,9 @@ class OrderFillReconcileTest {
         }
     private val events = mutableListOf<Any>()
     private val service = HoldingSyncFixture(repository, tradeRepository, ledger, symbolStrategyServiceOf(), recordingPublisher(events))
-    private val now = Instant.parse("2026-10-14T02:00:10Z")
+
+    // 주문별 체결 합계는 "오늘" 날짜로 찾으므로(OrderFills.today) 테스트 시각도 실제 지금 기준으로 잡는다(고정 날짜면 날이 바뀌면 깨진다).
+    private val now = Instant.now()
     private val reports = mutableListOf<String>()
 
     init {
