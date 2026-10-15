@@ -4,7 +4,7 @@ import java.math.BigDecimal
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
-/** 야간선물 실시간 체결(H0MFCNT0) 한 건. */
+/** 선물 실시간 체결(야간 H0MFCNT0·주간 H0IFCNT0) 한 건. */
 data class NightFuturesTick(
     val code: String,
     val time: LocalTime,
@@ -14,10 +14,12 @@ data class NightFuturesTick(
 
 /**
  * 게이트웨이가 그대로 넘긴 한투 실시간 메시지(`0|H0MFCNT0|001|A01612^180001^...`)를 해석한다.
- * 칸 순서는 docs/kis-api/futures-options.md 의 `H0MFCNT0` 출력 50칸 — 어긋나면 여기만 고친다. 게이트웨이는 다시 띄우지 않는다.
+ * 칸 순서는 docs/kis-api/futures-options.md 의 `H0MFCNT0`·`H0IFCNT0` 출력 칸(앞 10칸이 같다) — 어긋나면 여기만 고친다. 게이트웨이는 다시 띄우지 않는다.
  */
 object NightFuturesTickParser {
     const val TR_ID = "H0MFCNT0"
+    const val DAY_TR_ID = "H0IFCNT0"
+    val TR_IDS = setOf(TR_ID, DAY_TR_ID)
     private const val FIELDS_PER_RECORD = 50
     private const val CODE_INDEX = 0
     private const val TIME_INDEX = 1
@@ -28,7 +30,7 @@ object NightFuturesTickParser {
     /** 야간선물 체결이 아니거나 못 읽는 건은 건너뛴다. */
     fun parse(raw: String): List<NightFuturesTick> {
         val parts = raw.split("|", limit = 4)
-        if (parts.size < 4 || parts[1] != TR_ID) return emptyList()
+        if (parts.size < 4 || parts[1] !in TR_IDS) return emptyList()
         val fields = parts[3].split("^")
         val count = parts[2].toIntOrNull()?.coerceAtLeast(1) ?: 1
         val width = if (count > 1 && fields.size % count == 0) fields.size / count else FIELDS_PER_RECORD

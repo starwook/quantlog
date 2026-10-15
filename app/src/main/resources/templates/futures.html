@@ -182,6 +182,8 @@
     const levels = /*[[${candleChart.lines}]]*/ [];
     const baseline = /*[[${candleChart.baseline}]]*/ null;
     const baselineLabel = /*[[${candleChart.baselineLabel}]]*/ '';
+    const futuresCode = /*[[${futuresCode}]]*/ '';
+    const chartUnit = /*[[${chartUnit}]]*/ 'M';
     const chart = LightweightCharts.createChart(document.getElementById('fchart'), {
         layout: { background: { color: '#ffffff' }, textColor: '#191f28' },
         grid: { vertLines: { color: '#eceef1' }, horzLines: { color: '#eceef1' } },
@@ -230,6 +232,24 @@
         if (p) show(p); else latest();
     });
     chart.timeScale().fitContent();
+
+    // 1분봉은 10초마다 최근 봉을 다시 받아 마지막 봉부터 갱신한다(새 봉이 생기면 추가된다). 일봉은 하루 한 번이라 갱신하지 않는다.
+    if (chartUnit === 'M' && futuresCode) {
+        setInterval(async () => {
+            try {
+                const res = await fetch('/futures/candles?code=' + encodeURIComponent(futuresCode) + '&chart=M');
+                const fresh = await res.json();
+                let lastTime = points[points.length - 1].time;
+                fresh.filter(p => p.time >= lastTime).forEach(p => {
+                    candles.update(p);
+                    volume.update({ time: p.time, value: p.volume, color: p.close >= p.open ? '#f0445266' : '#3182f666' });
+                    if (p.time === lastTime) points[points.length - 1] = p; else points.push(p);
+                    lastTime = p.time;
+                });
+                latest();
+            } catch (e) { /* 다음 주기에 다시 시도 */ }
+        }, 10000);
+    }
     new ResizeObserver(() => chart.applyOptions({ width: document.getElementById('fchart').clientWidth }))
         .observe(document.getElementById('fchart'));
 </script>

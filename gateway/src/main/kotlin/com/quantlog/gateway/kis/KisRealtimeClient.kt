@@ -77,8 +77,8 @@ class KisRealtimeClient(
     /** 지금 KIS 에 구독 걸려 있는 종목. 연결이 끊기면 비운다(재연결 뒤 [refreshSubscriptions] 가 다시 건다). */
     private val subscribed = ConcurrentHashMap.newKeySet<String>()
 
-    /** 지금 KIS 에 구독 걸려 있는 야간선물 종목코드. [subscribed] 와 같은 방식으로 맞춘다. */
-    private val subscribedFutures = ConcurrentHashMap.newKeySet<String>()
+    /** 지금 KIS 에 구독 걸려 있는 선물 (TR ID, 종목코드). 같은 종목을 주간·야간 TR 두 개로 건다. [subscribed] 와 같은 방식으로 맞춘다. */
+    private val subscribedFutures = ConcurrentHashMap.newKeySet<Pair<String, String>>()
 
     /** java.net.http.WebSocket 은 이전 sendText 가 끝나기 전에 또 보내면 예외라서, 전송을 한 줄로 이어 보낸다. */
     private var sendChain: CompletableFuture<*> = CompletableFuture.completedFuture(null)
@@ -186,9 +186,9 @@ class KisRealtimeClient(
         subscribed.retainAll(wanted)
         subscribed.addAll(wanted)
 
-        val wantedFutures = symbolSource.nightFutures().toSet()
-        (wantedFutures - subscribedFutures).forEach { send(ws, SUBSCRIBE, NIGHT_FUTURES_TR_ID, it) }
-        (subscribedFutures - wantedFutures).forEach { send(ws, UNSUBSCRIBE, NIGHT_FUTURES_TR_ID, it) }
+        val wantedFutures = symbolSource.nightFutures().flatMap { code -> FUTURES_TR_IDS.map { it to code } }.toSet()
+        (wantedFutures - subscribedFutures).forEach { (trId, code) -> send(ws, SUBSCRIBE, trId, code) }
+        (subscribedFutures - wantedFutures).forEach { (trId, code) -> send(ws, UNSUBSCRIBE, trId, code) }
         subscribedFutures.retainAll(wantedFutures)
         subscribedFutures.addAll(wantedFutures)
     }
@@ -247,7 +247,7 @@ class KisRealtimeClient(
                 } else {
                     log.warn { "[체결통보] $trId 구독 실패 — 연결은 붙어 있어도 체결통보를 받지 못한다: ${node.path("body").path("msg1").asText()}" }
                 }
-            trId == NIGHT_FUTURES_TR_ID -> log.info { "[야간선물] 구독 응답: ${node.path("body").path("msg1").asText()}" }
+            trId in FUTURES_TR_IDS -> log.info { "[선물] $trId 구독 응답: ${node.path("body").path("msg1").asText()}" }
         }
         if (trId != "PINGPONG") {
             val message = node.path("body").path("msg1").asText()
@@ -332,6 +332,10 @@ class KisRealtimeClient(
     private companion object {
         const val TR_ID = "H0STCNT0"
         const val NIGHT_FUTURES_TR_ID = "H0MFCNT0"
+
+        /** 정규장 지수선물 실시간 체결(한투 예제 index_futures_realtime_conclusion). 앞 10칸 순서는 야간 TR 과 같다. */
+        const val DAY_FUTURES_TR_ID = "H0IFCNT0"
+        val FUTURES_TR_IDS = listOf(DAY_FUTURES_TR_ID, NIGHT_FUTURES_TR_ID)
         const val SUBSCRIBE = "1"
         const val UNSUBSCRIBE = "2"
         const val REFRESH_INTERVAL_MILLIS = 10_000L
