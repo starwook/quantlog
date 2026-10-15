@@ -83,19 +83,15 @@ class FuturesControllerTest {
     fun `야간 봉이 300개를 채워도 주간 종가 기준 등락률이 남는다`() {
         val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
         val nightBars = (0 until 300).map { candle("20261014", "%02d%02d00".format(it / 60, it % 60)) }
-
-        fun daily(
-            date: String,
-            close: String,
-        ) = Candle(date, null, BigDecimal(close), BigDecimal(close), BigDecimal(close), BigDecimal(close), 1)
         Mockito.`when`(client.futuresBoard()).thenReturn(board)
         Mockito.`when`(client.candles("A01612", true, today)).thenReturn(listOf(candle("20261013", "154500")))
-        Mockito.`when`(client.candles("A01612", false, today)).thenReturn(listOf(daily("20261012", "100"), daily("20261013", "101")))
+        Mockito.`when`(client.lastRegularQuote("A01612")).thenReturn(RegularQuote(BigDecimal("861.30"), BigDecimal("-8.78")))
         Mockito.`when`(night.recent("A01612")).thenReturn(nightBars)
 
         mvc.perform(get("/futures"))
             .andExpect(status().isOk)
-            .andExpect(content().string(containsString("주간 전일 대비 +1.00%")))
+            .andExpect(content().string(containsString("주간 전일 대비 -8.78%")))
+            .andExpect(content().string(containsString("861.3")))
     }
 
     @Test
