@@ -83,6 +83,12 @@ class KisRealtimeClient(
     /** java.net.http.WebSocket 은 이전 sendText 가 끝나기 전에 또 보내면 예외라서, 전송을 한 줄로 이어 보낸다. */
     private var sendChain: CompletableFuture<*> = CompletableFuture.completedFuture(null)
 
+    private val keepAlive = KisKeepAlive()
+
+    /** [checkAlive] 가 pong 이 없어 버린 연결. 그 연결의 늦은 onClose·onError 는 무시한다(이미 재연결을 예약했다). */
+    @Volatile
+    private var abandoned: WebSocket? = null
+
     /** 연결이 붙어 있으면 붙은 시각, 아니면 null. */
     fun wsConnectedAt(): Instant? = connectedAt.takeIf { connected }
 
@@ -193,6 +199,33 @@ class KisRealtimeClient(
         subscribedFutures.addAll(wantedFutures)
     }
 
+    /**
+     * [PING_INTERVAL_MILLIS] 마다 ping 을 보내고, 다음 주기까지 pong 도 받은 메시지도 없으면 연결을 버리고 바로 다시 붙는다([KisKeepAlive]).
+     * 다시 붙으면 [connectedAt] 이 바뀌어 앱이 그 사이 놓친 체결을 REST 로 보충한다.
+     */
+    @Scheduled(fixedDelay = PING_INTERVAL_MILLIS, initialDelay = PING_INTERVAL_MILLIS)
+    @Synchronized
+    fun checkAlive() {
+        val ws = webSocket?.takeIf { connected } ?: return
+        if (!keepAlive.tick()) {
+            sendChain =
+                sendChain
+                    .handle { _, _ -> null }
+                    .thenCompose { ws.sendPing(ByteBuffer.wrap(PING_PAYLOAD)) }
+            return
+        }
+        connected = false
+        subscribed.clear()
+        subscribedFutures.clear()
+        markFillNoticesDown()
+        // 버린 연결의 늦은 onClose·onError 가 재연결을 한 번 더 예약하지 않게 표시해 둔다.
+        abandoned = ws
+        runCatching { ws.abort() }
+        val delay = scheduleReconnect(immediate = true)
+        val next = delay?.let { "${it.toMillis()}ms 후 재연결" } ?: "재연결 예약됨"
+        log.warn { "[실시간 시세] ping 뒤 ${PING_INTERVAL_MILLIS / 1000}초 동안 pong·메시지가 없어 연결을 버림 — $next" }
+    }
+
     /** 연결마다 한 번: 계좌 체결통보를 구독한다. tr_key 는 HTS ID — 비어 있으면 건너뛴다(시세만 동작). */
     private fun subscribeFillNotices(ws: WebSocket) {
         if (properties.htsId.isBlank()) {
@@ -281,9 +314,19 @@ class KisRealtimeClient(
 
         override fun onOpen(webSocket: WebSocket) {
             log.info { "[실시간 시세] 연결됨" }
+            keepAlive.reset()
             connected = true
             connectedAt = Instant.now()
             webSocket.request(1)
+        }
+
+        override fun onPong(
+            webSocket: WebSocket,
+            message: ByteBuffer,
+        ): CompletionStage<*>? {
+            keepAlive.onAlive()
+            webSocket.request(1)
+            return null
         }
 
         override fun onText(
@@ -291,6 +334,7 @@ class KisRealtimeClient(
             data: CharSequence,
             last: Boolean,
         ): CompletionStage<*>? {
+            keepAlive.onAlive()
             buffer.append(data)
             if (last) {
                 runCatching { handle(buffer.toString()) }.onFailure { log.warn(it) { "[실시간 시세] 메시지 처리 실패" } }
@@ -305,6 +349,7 @@ class KisRealtimeClient(
             statusCode: Int,
             reason: String,
         ): CompletionStage<*>? {
+            if (webSocket === abandoned) return null
             connected = false
             subscribed.clear()
             subscribedFutures.clear()
@@ -318,6 +363,7 @@ class KisRealtimeClient(
             webSocket: WebSocket,
             error: Throwable,
         ) {
+            if (webSocket === abandoned) return
             // onError 뒤에는 연결이 끝난 것이라 onClose 가 안 올 수 있다 — 여기서도 다시 붙인다(예전엔 이 경우 영영 끊겨 있었다).
             connected = false
             subscribed.clear()
@@ -339,6 +385,10 @@ class KisRealtimeClient(
         const val SUBSCRIBE = "1"
         const val UNSUBSCRIBE = "2"
         const val REFRESH_INTERVAL_MILLIS = 10_000L
+
+        /** ping 주기 = pong 을 기다리는 한도. 한투 공식 예제의 파이썬 websockets 기본값(ping_interval·ping_timeout 20초)과 같다. */
+        const val PING_INTERVAL_MILLIS = 20_000L
+        val PING_PAYLOAD = "quantlog".toByteArray()
         val RECONNECT_DELAY: Duration = Duration.ofSeconds(5)
 
         /** 접속키 무효로 거절된 뒤 새 키로 다시 붙기까지. 접속키 발급을 5초마다 두드리지 않게 길게 잡는다. */
