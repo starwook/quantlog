@@ -33,12 +33,14 @@ class RealtimeCandleBuilder(
         latestPrices.record(trade.symbol, trade.price, clock.instant())
         events.publishEvent(PriceTick(Market.KR, trade.symbol, trade.price))
         var finished: MutableCandle? = null
+        val date = LocalDate.now(clock.withZone(KST))
         val minute = trade.time.withSecond(0).withNano(0)
         val current =
             inProgress.compute(trade.symbol) { _, existing ->
-                if (existing == null || existing.minute != minute) {
+                // 날짜도 비교한다 — 전 거래일 마지막 분봉(예: 금요일 15:59)이 다음 거래일 첫 틱 때 끝나면서 그날 날짜로 저장되던 문제(2026-10-26).
+                if (existing == null || existing.date != date || existing.minute != minute) {
                     finished = existing
-                    MutableCandle(minute, trade.price, partial = existing == null).apply { volume += trade.volume }
+                    MutableCandle(date, minute, trade.price, partial = existing == null).apply { volume += trade.volume }
                 } else {
                     existing.apply {
                         high = high.max(trade.price)
@@ -52,9 +54,10 @@ class RealtimeCandleBuilder(
         events.publishEvent(CandleUpdated(Market.KR, trade.symbol, current.toCandle()))
     }
 
-    private fun MutableCandle.toCandle() = MinuteCandle(LocalDate.now(KST), minute, open, high, low, close, volume)
+    /** 분봉의 날짜는 저장하는 날이 아니라 그 분봉이 시작된 날이다. */
+    private fun MutableCandle.toCandle() = MinuteCandle(date, minute, open, high, low, close, volume)
 
-    private class MutableCandle(val minute: LocalTime, price: BigDecimal, val partial: Boolean) {
+    private class MutableCandle(val date: LocalDate, val minute: LocalTime, price: BigDecimal, val partial: Boolean) {
         val open: BigDecimal = price
         var high: BigDecimal = price
         var low: BigDecimal = price
