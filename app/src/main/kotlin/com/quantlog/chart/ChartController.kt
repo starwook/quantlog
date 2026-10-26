@@ -1,10 +1,12 @@
 package com.quantlog.chart
 
 import com.quantlog.broker.BrokerClient
+import com.quantlog.broker.LatestPrices
 import com.quantlog.broker.Market
 import com.quantlog.common.KST
 import com.quantlog.marketdata.MarketDataService
 import com.quantlog.position.AccountHoldingRepository
+import com.quantlog.position.HoldingValuation
 import com.quantlog.position.TradeRepository
 import com.quantlog.watchlist.SymbolStrategyService
 import mu.KotlinLogging
@@ -50,6 +52,8 @@ data class ChartData(
     val trades: List<TradeMarker>,
     val previousClose: BigDecimal?,
     val holding: HoldingPoint?,
+    /** 주문 화면과 같은 현재가(실시간 틱 → 잔고 현재가). 둘 다 없으면 null 이고 화면이 마지막 분봉 종가를 쓴다. */
+    val currentPrice: BigDecimal?,
 )
 
 /**
@@ -63,6 +67,8 @@ class ChartController(
     private val symbolStrategyService: SymbolStrategyService,
     private val broker: BrokerClient,
     private val accountHoldingRepository: AccountHoldingRepository,
+    private val latestPrices: LatestPrices,
+    private val valuation: HoldingValuation,
 ) {
     @GetMapping("/chart/{market}/{symbol}")
     fun page(
@@ -119,7 +125,9 @@ class ChartController(
             runCatching { broker.previousClose(market, symbol) }
                 .onFailure { log.warn(it) { "[전일 종가] $market $symbol 조회 실패" } }
                 .getOrNull()
-        val holding = accountHoldingRepository.findByMarketAndSymbol(market, symbol)?.let { HoldingPoint(it.quantity, it.avgCost) }
-        return ChartData(candles, trades, previousClose, holding)
+        val held = accountHoldingRepository.findByMarketAndSymbol(market, symbol)
+        val holding = held?.let { HoldingPoint(it.quantity, it.avgCost) }
+        val currentPrice = held?.let { valuation.priceOf(it) } ?: latestPrices.get(symbol)?.price
+        return ChartData(candles, trades, previousClose, holding, currentPrice)
     }
 }

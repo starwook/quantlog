@@ -1,11 +1,14 @@
 package com.quantlog.chart
 
 import com.quantlog.broker.BrokerClient
+import com.quantlog.broker.LatestPrices
 import com.quantlog.broker.Market
 import com.quantlog.broker.MinuteCandle
 import com.quantlog.broker.Side
 import com.quantlog.marketdata.MarketDataService
+import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
+import com.quantlog.position.HoldingValuation
 import com.quantlog.position.Trade
 import com.quantlog.position.TradeRepository
 import com.quantlog.watchlist.symbolStrategyServiceOf
@@ -38,6 +41,8 @@ class ChartControllerTest {
         candles: List<MinuteCandle>,
         trades: List<Trade>,
         previousClose: BigDecimal? = null,
+        latestPrices: LatestPrices = LatestPrices(),
+        holding: AccountHolding? = null,
     ): ChartController {
         val marketDataService = Mockito.mock(MarketDataService::class.java)
         Mockito.`when`(marketDataService.recentCandles(Market.KR, "005930", today)).thenReturn(candles)
@@ -45,12 +50,16 @@ class ChartControllerTest {
         Mockito.`when`(tradeRepository.findAllByMarketAndSymbolOrderByExecutedAtAsc(Market.KR, "005930")).thenReturn(trades)
         val broker = Mockito.mock(BrokerClient::class.java)
         Mockito.`when`(broker.previousClose(Market.KR, "005930")).thenReturn(previousClose)
+        val holdings = Mockito.mock(AccountHoldingRepository::class.java)
+        Mockito.`when`(holdings.findByMarketAndSymbol(Market.KR, "005930")).thenReturn(holding)
         return ChartController(
             marketDataService,
             tradeRepository,
             symbolStrategyServiceOf(),
             broker,
-            Mockito.mock(AccountHoldingRepository::class.java),
+            holdings,
+            latestPrices,
+            HoldingValuation(latestPrices),
         )
     }
 
@@ -88,5 +97,29 @@ class ChartControllerTest {
     fun `전일 종가를 함께 돌려준다`() {
         val result = controller(emptyList(), emptyList(), BigDecimal("9900")).data(Market.KR, "005930")
         assertEquals(0, BigDecimal("9900").compareTo(result.previousClose))
+    }
+
+    @Test
+    fun `현재가는 분봉이 아니라 실시간 틱을 쓴다`() {
+        val prices = LatestPrices().apply { record("005930", BigDecimal("9800"), Instant.now()) }
+        val staleCandle = listOf(candle(LocalTime.of(15, 30), "9900"))
+
+        val result = controller(staleCandle, emptyList(), latestPrices = prices).data(Market.KR, "005930")
+
+        assertEquals(0, BigDecimal("9800").compareTo(result.currentPrice))
+    }
+
+    @Test
+    fun `틱이 없으면 보유 종목의 잔고 현재가를 쓴다`() {
+        val held = AccountHolding(Market.KR, "005930", 1, BigDecimal("9000"), BigDecimal("9700"))
+
+        val result = controller(emptyList(), emptyList(), holding = held).data(Market.KR, "005930")
+
+        assertEquals(0, BigDecimal("9700").compareTo(result.currentPrice))
+    }
+
+    @Test
+    fun `틱도 보유도 없으면 현재가는 null 이다`() {
+        assertEquals(null, controller(emptyList(), emptyList()).data(Market.KR, "005930").currentPrice)
     }
 }
