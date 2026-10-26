@@ -1,11 +1,13 @@
 package com.quantlog.review
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.quantlog.broker.LatestPrices
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
 import com.quantlog.playbook.Playbook
 import com.quantlog.playbook.PlaybookProperties
 import com.quantlog.position.AccountHoldingRepository
+import com.quantlog.position.HoldingValuation
 import com.quantlog.position.InMemoryBrokerFills
 import com.quantlog.position.InMemoryOrderFillStates
 import com.quantlog.position.PortfolioService
@@ -109,7 +111,13 @@ class ReviewServiceTest {
         val trades = Mockito.mock(TradeRepository::class.java)
         Mockito.`when`(trades.findAll()).thenReturn(listOf(trade(Side.BUY, 10, "100000"), trade(Side.SELL, 11, "100500", avg = "100000")))
         val portfolio =
-            PortfolioService(trades, Mockito.mock(AccountHoldingRepository::class.java), ledger, InMemoryOrderFillStates().states)
+            PortfolioService(
+                trades,
+                Mockito.mock(AccountHoldingRepository::class.java),
+                ledger,
+                InMemoryOrderFillStates().states,
+                HoldingValuation(LatestPrices()),
+            )
         return ReviewService(
             portfolio,
             Playbook(PlaybookProperties(dir.toString())),

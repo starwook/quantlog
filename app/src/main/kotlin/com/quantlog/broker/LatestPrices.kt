@@ -10,7 +10,7 @@ data class LivePrice(val price: BigDecimal, val at: Instant)
 
 /**
  * 실시간 체결(게이트웨이가 넘긴 한투 시세)에서 읽은 종목별 최신가. [KisBrokerClient.quote] 가 REST 대신 쓰고,
- * 주문 화면의 보유 종목 현재가([com.quantlog.order.LiveValuation])도 이 값을 쓴다.
+ * 보유 종목 현재가([com.quantlog.position.HoldingValuation])도 이 값을 쓴다.
  */
 @Component
 class LatestPrices {

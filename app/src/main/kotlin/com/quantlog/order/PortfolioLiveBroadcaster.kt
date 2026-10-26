@@ -12,6 +12,7 @@ import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.CashChangedEvent
 import com.quantlog.position.FillAppliedEvent
+import com.quantlog.position.HoldingValuation
 import com.quantlog.position.HoldingsChangedEvent
 import com.quantlog.position.OrderFillState
 import com.quantlog.position.OrderFillStates
@@ -46,7 +47,7 @@ class PortfolioLiveBroadcaster(
     private val orderFills: OrderFills,
     private val symbolStrategyService: SymbolStrategyService,
     private val sessions: LiveSessions,
-    private val valuation: LiveValuation,
+    private val valuation: HoldingValuation,
     private val cash: AccountCashService,
     private val fillStates: OrderFillStates,
     private val tradeService: TradeService,

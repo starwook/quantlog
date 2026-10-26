@@ -1,20 +1,19 @@
-package com.quantlog.order
+package com.quantlog.position
 
 import com.quantlog.broker.LatestPrices
 import com.quantlog.broker.Market
-import com.quantlog.position.AccountHolding
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
 
 /**
- * 주문 화면 보유 종목의 현재가([LiveValuation]) — 실시간 틱이 있으면 틱, 없으면 잔고 현재가.
+ * 보유 종목의 현재가([HoldingValuation]) — 실시간 틱이 있으면 틱, 없으면 잔고 현재가.
  * 2026-10-26: 화면이 열려 있을 때만 틱을 따로 기록하던 캐시 탓에 며칠 전 가격(6,230)이 실제 5천원대 시세를 덮었다.
  */
-class LiveValuationTest {
+class HoldingValuationTest {
     private val latestPrices = LatestPrices()
-    private val valuation = LiveValuation(latestPrices)
+    private val valuation = HoldingValuation(latestPrices)
     private val holding = AccountHolding(Market.KR, "233740", 10, BigDecimal("4937"), BigDecimal("5100"))
 
     @Test

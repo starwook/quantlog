@@ -67,7 +67,7 @@ private class RealizedAcc {
 }
 
 /**
- * 보유 현황은 잔고 테이블([AccountHolding])을 그대로 쓴다. 매도 손익은 매매 기록에 적어 둔 체결 직전 평단([Trade.avgCostBefore])으로
+ * 보유 현황은 잔고 테이블([AccountHolding])의 수량·평단과 [HoldingValuation] 의 현재가(실시간 틱, 없으면 잔고 현재가)를 쓴다. 매도 손익은 매매 기록에 적어 둔 체결 직전 평단([Trade.avgCostBefore])으로
  * 확정한다. KIS 를 직접 부르지 않는다.
  */
 @Service
@@ -76,6 +76,7 @@ class PortfolioService(
     private val accountHoldingRepository: AccountHoldingRepository,
     private val orderFills: OrderFills,
     private val fillStates: OrderFillStates,
+    private val valuation: HoldingValuation,
 ) {
     fun snapshot(): PortfolioSnapshot = buildSnapshot()
 
@@ -189,7 +190,7 @@ class PortfolioService(
             .sortedWith(compareBy({ it.market }, { it.symbol }))
             .groupBy(
                 { it.market.currency },
-                { holdingView(it.market, it.symbol, it.quantity, it.avgCost, it.currentPrice) },
+                { holdingView(it.market, it.symbol, it.quantity, it.avgCost, valuation.priceOf(it)) },
             )
 
     private fun holdingView(

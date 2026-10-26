@@ -7,7 +7,7 @@ import com.quantlog.position.AccountHolding
 import java.math.BigDecimal
 import java.math.MathContext
 
-/** 실시간 화면의 보유 종목 한 줄. 수량·평단·현재가·평가손익. 현재가는 [LiveValuation.priceOf] 가 고른 값이다. */
+/** 실시간 화면의 보유 종목 한 줄. 수량·평단·현재가·평가손익. 현재가는 [com.quantlog.position.HoldingValuation.priceOf] 가 고른 값이다. */
 data class HoldingLiveView(
     val market: String,
     val symbol: String,
