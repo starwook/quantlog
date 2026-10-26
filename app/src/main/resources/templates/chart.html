@@ -323,7 +323,7 @@
             holding = body.holding;
             baseline = body.previousClose || body.candles[0].open;
             baselineLabel = body.previousClose ? '전일 대비' : '시가 대비';
-            showPrice(body.candles[body.candles.length - 1].close);
+            showPrice(body.currentPrice ?? body.candles[body.candles.length - 1].close);
             candleSeries.setData(body.candles);
             volumeSeries.setData(body.candles.map(c => ({
                 time: c.time,
