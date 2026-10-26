@@ -12,6 +12,7 @@ import com.quantlog.position.AccountHolding
 import com.quantlog.position.AccountHoldingRepository
 import com.quantlog.position.CashChangedEvent
 import com.quantlog.position.FillAppliedEvent
+import com.quantlog.position.HoldingValuation
 import com.quantlog.position.HoldingsChangedEvent
 import com.quantlog.position.OrderFillState
 import com.quantlog.position.OrderFillStates
@@ -46,7 +47,7 @@ class PortfolioLiveBroadcaster(
     private val orderFills: OrderFills,
     private val symbolStrategyService: SymbolStrategyService,
     private val sessions: LiveSessions,
-    private val valuation: LiveValuation,
+    private val valuation: HoldingValuation,
     private val cash: AccountCashService,
     private val fillStates: OrderFillStates,
     private val tradeService: TradeService,
@@ -139,12 +140,13 @@ class PortfolioLiveBroadcaster(
 
     /**
      * 보유 중인 국내 종목의 실시간 틱이 오면 그 틱마다 현재가·평가손익을 계산해 바로 보낸다. 수량·평단은 메모리([heldKr])에 있어 DB 를 읽지 않는다.
+     * 틱 가격 자체는 화면과 상관없이 [com.quantlog.broker.LatestPrices] 가 이미 기록했다 — 여기서 따로 들고 있지 않는다(화면이 닫혀 있던 동안의 틱을 놓쳐
+     * 며칠 전 가격이 남던 문제, 2026-10-26).
      * 틱은 KIS 수신 스레드에서 오므로, 브라우저 전송(느린 클라이언트에 막힐 수 있다)은 전용 스레드로 넘긴다.
      */
     @EventListener
     fun onPriceTick(tick: PriceTick) {
         if (tick.market != Market.KR || sessions.isEmpty() || tick.symbol !in heldKr) return
-        valuation.record(tick.symbol, tick.price)
         pushExecutor.execute { runCatching { pushPrice(tick.symbol) }.onFailure { log.warn(it) { "[주문 화면] 실시간 현재가 푸시 실패" } } }
     }
 
@@ -160,7 +162,7 @@ class PortfolioLiveBroadcaster(
             mapOf(
                 "type" to "price",
                 "holding" to
-                    HoldingLiveView.of(holding, symbolStrategyService.displayName(holding.market, symbol), valuation.priceOf(symbol)),
+                    HoldingLiveView.of(holding, symbolStrategyService.displayName(holding.market, symbol), valuation.priceOf(holding)),
                 "unrealizedText" to signedMoneyAndPercent(amount, percent, KRW),
                 "unrealizedCss" to pnlCss(amount),
                 "totalValueText" to valuation.totalValueOf(heldKr.values).money(KRW),
@@ -179,13 +181,7 @@ class PortfolioLiveBroadcaster(
     private fun holdingViews(): List<HoldingLiveView> {
         val held = accountHoldingRepository.findAll().filter { it.quantity > 0 }.sortedBy { it.symbol }
         heldKr = held.filter { it.market == Market.KR }.associateBy { it.symbol }
-        return held.map {
-            HoldingLiveView.of(
-                it,
-                symbolStrategyService.displayName(it.market, it.symbol),
-                if (it.market == Market.KR) valuation.priceOf(it.symbol) else null,
-            )
-        }
+        return held.map { HoldingLiveView.of(it, symbolStrategyService.displayName(it.market, it.symbol), valuation.priceOf(it)) }
     }
 
     /**

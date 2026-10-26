@@ -1,5 +1,6 @@
 package com.quantlog.position
 
+import com.quantlog.broker.LatestPrices
 import com.quantlog.broker.Market
 import com.quantlog.broker.Side
 import org.junit.jupiter.api.Test
@@ -14,7 +15,14 @@ class PortfolioServiceTest {
     private val tradeRepository = Mockito.mock(TradeRepository::class.java)
     private val accountHoldingRepository = Mockito.mock(AccountHoldingRepository::class.java)
     private val ledger = InMemoryBrokerFills()
-    private val service = PortfolioService(tradeRepository, accountHoldingRepository, ledger, InMemoryOrderFillStates().states)
+    private val service =
+        PortfolioService(
+            tradeRepository,
+            accountHoldingRepository,
+            ledger,
+            InMemoryOrderFillStates().states,
+            HoldingValuation(LatestPrices()),
+        )
 
     private fun holdingRow(
         quantity: Int,

@@ -8,7 +8,10 @@ import java.util.concurrent.ConcurrentHashMap
 /** 종목별 실시간으로 마지막에 본 체결가와 그 시각. */
 data class LivePrice(val price: BigDecimal, val at: Instant)
 
-/** 실시간 체결(게이트웨이가 넘긴 한투 시세)에서 읽은 종목별 최신가. [KisBrokerClient.quote] 가 REST 대신 쓴다. */
+/**
+ * 실시간 체결(게이트웨이가 넘긴 한투 시세)에서 읽은 종목별 최신가. [KisBrokerClient.quote] 가 REST 대신 쓰고,
+ * 보유 종목 현재가([com.quantlog.position.HoldingValuation])도 이 값을 쓴다.
+ */
 @Component
 class LatestPrices {
     private val prices = ConcurrentHashMap<String, LivePrice>()
