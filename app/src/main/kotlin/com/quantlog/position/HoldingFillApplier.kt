@@ -68,7 +68,7 @@ class HoldingFillApplier(
 
     /**
      * 한투 체결조회가 알려 준 이 주문의 누적([total])을 반영한다. 체결통보 합계보다 많으면 빠진 몫(통보 유실)을 보유·평단에 더하고 `[동기화 불일치]` 로 보고한다.
-     * 남은 수량이 0 이면 주문이 끝난 것으로 적는다([OrderFillState.settled]). 끝났는데 통보 합계가 조회보다 많으면 고치지 않고 보고만 한다.
+     * 남은 수량이 0 이하면 주문이 끝난 것으로 적는다([OrderFillState.settled], [OrderFillTotal.isClosed]). 끝났는데 통보 합계가 조회보다 많으면 고치지 않고 보고만 한다.
      * 바뀐 내용 설명을 돌려준다(늘어난 체결이 없으면 null).
      */
     @Transactional
@@ -82,7 +82,7 @@ class HoldingFillApplier(
         val before = fill.filled
         val noticed = fill.noticeQuantity
         val amount = total.filledAmount ?: total.averagePrice.multiply(BigDecimal(total.filledQuantity))
-        fill.recordInquiry(minOf(total.filledQuantity, trade.quantity), amount, total.remainingQuantity == 0, now)
+        fill.recordInquiry(minOf(total.filledQuantity, trade.quantity), amount, total.isClosed, now)
         fill.settleIfFull(trade.quantity)
         fillStates.save(fill)
         val subject = "주문 ${trade.orderNo} ${symbolNames.displayName(trade.market, trade.symbol)}(${trade.symbol})"

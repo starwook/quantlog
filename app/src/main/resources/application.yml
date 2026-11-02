@@ -89,7 +89,7 @@ quantlog:
     quantity: ${QUANTLOG_SMOKE_QUANTITY:1}
   exit:
     # 청산 감시: 정규장 동안 보유 현황(DB)을 보고 익절/손절 목표가에 닿으면 전량 매도한다.
-    # 실시간(WebSocket)이 커버하는 종목은 틱마다 바로 판정하고, interval-millis 폴링은 나머지(실시간 끊김 등)만 맡는다.
+    # 실시간(WebSocket) 종목은 틱마다 바로 판정하고, interval-millis 폴링은 그와 별개로 보유 종목 전부를 본다(틱이 끊겨도 손절이 멈추지 않게, 2026-11-02).
     # 2026-09-29: REST 잔고 조회 대신 DB 기반으로 바꿔서 초당 요청 한도 걱정 없이 1초로 좁힘.
     enabled: ${QUANTLOG_EXIT_ENABLED:true}
     interval-millis: 1000

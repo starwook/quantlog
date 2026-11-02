@@ -46,8 +46,9 @@ data class ExitPosition(val market: Market, val symbol: String, val quantity: In
  * PortfolioService 와 달리 한 행 조회라 틱마다 불러도 가볍다. 사본이 낡았어도 매도 주문 자체가 KIS 쪽 실제 잔고와
  * 안 맞으면 거절된다. 현재가(quote)만 KIS 를 본다 — 실시간 WebSocket 이 켜져 있으면 그것도 캐시라 REST 호출은 없다.
  * 같은 종목을 동시에 두 스레드가 판정하지 않도록 종목별 잠금을 둔다(틱이 연달아 와도 주문이 중복되지 않게).
- * 매도 주문을 낸 종목은 **그 체결이 확인될 때까지** 판정을 건너뛴다(시간 쿨다운 없음 — 마틴게일과 같은 방식). 주문 후
- * [ExitProperties.fillTimeout] 안에 체결 확인이 안 되면 주문을 취소하고, 다음 틱부터 바로 다시 판정한다.
+ * 매도 주문을 낸 종목은 **그 주문이 끝났거나 취소될 때까지** 판정을 건너뛴다(시간 쿨다운 없음). 주문 후
+ * [ExitProperties.fillTimeout] 안에 체결 확인이 안 되면 주문을 취소하고, 취소가 성공하면 다음 틱부터 바로 다시 판정한다 — 마틴게일과 달리
+ * 취소 뒤 체결조회 확인을 기다리지 않는다([PendingOrders] releaseOnCancel). 손절은 어떤 대기에도 막히면 안 된다(2026-11-02 233740 사고).
  */
 @Component
 class ExitService(
@@ -64,24 +65,19 @@ class ExitService(
 ) {
     /** 매도 주문은 냈는데 체결 확인이 아직 안 된 종목. */
     private val pending =
-        PendingOrders("청산", broker, tradeService, holdingSync, properties.fillTimeout) {
+        PendingOrders("청산", broker, tradeService, holdingSync, properties.fillTimeout, releaseOnCancel = true) {
             events.publishEvent(FillReconcileRequested(it, halting = false))
         }
     private val inFlight = KeyedLock()
 
-    /** 보유 종목 전체를 판정한다. [exclude] 가 true 인 종목은 다른 경로(실시간)가 맡고 있으니 건너뛴다. */
-    fun checkAll(
-        now: ZonedDateTime,
-        exclude: (Market, String) -> Boolean = { _, _ -> false },
-    ) {
+    /** 보유 종목 전체를 판정한다. 실시간 틱이 오는 종목도 건너뛰지 않는다([ExitScheduler]). */
+    fun checkAll(now: ZonedDateTime) {
         val positions =
             runCatching { accountHoldingRepository.findAll().map { ExitPosition(it.market, it.symbol, it.quantity, it.avgCost) } }
                 .onFailure { log.warn(it) { "[청산 감시] 보유 현황 조회 실패" } }
                 .getOrNull() ?: return
 
-        positions
-            .filterNot { exclude(it.market, it.symbol) }
-            .forEach { check(it, now) }
+        positions.forEach { check(it, now) }
     }
 
     /** 이 종목 하나만 판정한다. 보유 중이 아니면 아무것도 안 한다. */
@@ -102,7 +98,7 @@ class ExitService(
         val key = symbolKey(position.market, position.symbol)
         inFlight.runIfFree(key) {
             try {
-                checkHolding(position, key)
+                checkHolding(position, key, now)
             } catch (e: Exception) {
                 log.warnUnlessHalted(e) { "[청산 감시] 실패: ${position.market} ${position.symbol}" }
             }
@@ -112,8 +108,9 @@ class ExitService(
     private fun checkHolding(
         holding: ExitPosition,
         key: String,
+        now: ZonedDateTime,
     ) {
-        if (pending.isWaiting(key)) return
+        if (pending.isWaiting(key, now)) return
 
         val quote = broker.quote(holding.market, holding.symbol)
         // 익절·손절 %는 종목별 DB 설정(symbol_strategy). 설정 행이 아예 없는 종목만 application.yml 의 기본값을 대비책으로 쓴다.

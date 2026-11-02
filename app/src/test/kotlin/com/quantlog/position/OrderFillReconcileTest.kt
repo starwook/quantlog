@@ -122,6 +122,26 @@ class OrderFillReconcileTest {
     }
 
     @Test
+    fun `취소와 마지막 체결이 겹쳐 남은 수량이 음수로 조회돼도 끝난 주문이다`() {
+        // 2026-10-28 실측 0000035103: 주문 60, 체결 40, 취소확인 30 → rmn_qty -10. 0 만 끝으로 보다가 청산 대기가 안 풀려 손절이 막혔다.
+        service.applyRecorded(ledger, notice(40), now)
+
+        service.fillApplier.applyInquiry(trade, inquiry(40, remaining = -10), now)
+
+        assertTrue(service.isOrderClosed("0000026674"))
+        assertEquals(40, held())
+    }
+
+    @Test
+    fun `남은 수량을 모르면 끝났다고 보지 않는다`() {
+        service.applyRecorded(ledger, notice(40), now)
+
+        service.fillApplier.applyInquiry(trade, OrderFillTotal("0000026674", 40, BigDecimal("6745"), BigDecimal(6745 * 40), null), now)
+
+        assertFalse(service.isOrderClosed("0000026674"))
+    }
+
+    @Test
     fun `끝난 주문인데 통보가 조회보다 많으면 고치지 않고 보고만 한다`() {
         service.applyRecorded(ledger, notice(60), now)
 
