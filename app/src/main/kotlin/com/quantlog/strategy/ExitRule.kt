@@ -46,6 +46,13 @@ class FixedPercentExitRule(
         )
     }
 
+    /**
+     * 손절선(평단 × (1 − 손절 %), 호가 반올림 전). 손절이 보류면 null. 이 가격 이하에서 사면 사자마자 손절로 팔게 되므로
+     * 자동 매수를 막는 데 쓴다([com.quantlog.trading.RiskGuard.checkBuy]).
+     */
+    fun stopLossLine(averagePrice: BigDecimal): BigDecimal? =
+        stopLossPercent?.let { averagePrice.multiply(BigDecimal.ONE.subtract(it.movePointLeft(2))) }
+
     fun evaluate(
         averagePrice: BigDecimal,
         quote: Quote,

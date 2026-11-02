@@ -13,14 +13,19 @@ class TradingHaltedException(message: String) : RiskViolationException(message) 
     override fun fillInStackTrace(): Throwable = this
 }
 
+/** 손절선 이하라 막힌 매수. 떨어지는 동안 틱마다 다시 판정되므로 스택은 남기지 않는다. */
+class BelowStopLossException(message: String) : RiskViolationException(message) {
+    override fun fillInStackTrace(): Throwable = this
+}
+
 /**
- * 주문 경로의 실패를 경고로 남기되, 거래 정지로 막힌 것은 경고로 찍지 않는다 — WARN 은 웹훅 알림이 되는데(notification/ErrorLogNotifier.kt)
- * 정지는 매시 정각마다 있고 정지·재개는 `sync_event` 에 이미 남는다.
+ * 주문 경로의 실패를 경고로 남기되, 정해진 규칙대로 막힌 것(거래 정지·손절선 아래 매수)은 경고로 찍지 않는다 — WARN 은 웹훅 알림이 되는데
+ * (notification/ErrorLogNotifier.kt) 정지는 매시 정각마다 있고, 손절선 아래 매수 거부는 떨어지는 동안 틱마다 나온다.
  */
 internal fun KLogger.warnUnlessHalted(
     e: Throwable,
     message: () -> String,
-) = if (e is TradingHaltedException) debug { "${message()} — ${e.message}" } else warn(e) { message() }
+) = if (e is TradingHaltedException || e is BelowStopLossException) debug { "${message()} — ${e.message}" } else warn(e) { message() }
 
 /**
  * 주문 직전 검문소. 모든 주문 경로는 이 검사를 통과해야 한다 (AI/규칙 어느 쪽이 낸 주문이든 우회 불가).
@@ -31,6 +36,7 @@ internal fun KLogger.warnUnlessHalted(
 @Component
 class RiskGuard(
     private val halt: TradingHalt = TradingHalt(),
+    private val stopLossLines: StopLossLines = StopLossLines { _, _ -> null },
     private val cash: OrderableCash,
 ) {
     /**
@@ -49,6 +55,14 @@ class RiskGuard(
      */
     fun checkBuy(order: OrderRequest) {
         check(order)
+        // 손절선 이하에서 사면 사자마자 손절로 판다 — 매수(자동·수동)를 막는다(2026-11-02 사용자 결정. 10-29 233740 이 손절선 5360 아래 5235 에 샀다).
+        stopLossLines.of(order.market, order.symbol)?.let { line ->
+            if (order.limitPrice <= line) {
+                throw BelowStopLossException(
+                    "[손절선 아래 매수 금지] ${order.market} ${order.symbol} 지정가 ${order.limitPrice.toPlainString()} ≤ 손절선 ${line.toPlainString()}",
+                )
+            }
+        }
         val orderable = cash.orderable(order.market) ?: return
         if (order.notional > orderable) {
             throw RiskViolationException(

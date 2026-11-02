@@ -36,4 +36,26 @@ class RiskGuardTest {
     fun `주문가능금액을 아직 모르면 통과시킨다 - 증권사 거부에 맡긴다`() {
         RiskGuard { null }.checkBuy(order(100, "272000"))
     }
+
+    // 평단 5,400 · 손절 1% → 손절선 5,346
+    private val lines = StopLossLines { _, symbol -> if (symbol == "X") BigDecimal("5346") else null }
+
+    @Test
+    fun `손절선 이하 지정가 매수는 막는다 - 사자마자 손절로 팔게 된다`() {
+        val guard = RiskGuard(TradingHalt(), lines) { null }
+        assertFailsWith<BelowStopLossException> { guard.checkBuy(order(10, "5235")) }
+        assertFailsWith<BelowStopLossException> { guard.checkBuy(order(10, "5346")) }
+    }
+
+    @Test
+    fun `손절선 위 매수와 매도는 막지 않는다`() {
+        val guard = RiskGuard(TradingHalt(), lines) { null }
+        guard.checkBuy(order(10, "5350"))
+        guard.check(OrderRequest(Market.KR, "X", Side.SELL, 10, BigDecimal("5000")))
+    }
+
+    @Test
+    fun `보유가 없거나 손절이 보류면 손절선 검사는 없다`() {
+        RiskGuard(TradingHalt(), lines) { null }.checkBuy(OrderRequest(Market.KR, "Y", Side.BUY, 10, BigDecimal("1")))
+    }
 }
