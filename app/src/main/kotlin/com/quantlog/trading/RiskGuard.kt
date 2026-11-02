@@ -1,6 +1,7 @@
 package com.quantlog.trading
 
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.Side
 import com.quantlog.position.OrderableCash
 import mu.KLogger
 import org.springframework.stereotype.Component
@@ -23,8 +24,9 @@ internal fun KLogger.warnUnlessHalted(
 
 /**
  * 주문 직전 검문소. 모든 주문 경로는 이 검사를 통과해야 한다 (AI/규칙 어느 쪽이 낸 주문이든 우회 불가).
- * [checkBuy] 는 매수 전용 — 주문가능금액까지 함께 본다. 매도는 [check] 만 거친다
- * (손실 중이어도 빠져나가는 길은 막지 않는다). 다만 거래 정지([TradingHalt]) 중에는 매도까지 모든 주문을 막는다.
+ * [checkBuy] 는 매수 전용 — 주문가능금액까지 함께 본다. 매도는 [check] 만 거친다.
+ * **매도는 어떤 경우에도 막지 않는다**(손절·익절·수동 매도 모두, 거래 정지 중에도) — 2026-11-02 사용자 결정 "손절을 포함한 모든 매도 주문이 막히지 않아야지".
+ * 거래 정지([TradingHalt])는 매수만 막는다. 정지 중의 보유 수량이 낡아 실제보다 많이 팔려 하면 증권사가 거절할 뿐이다.
  */
 @Component
 class RiskGuard(
@@ -32,10 +34,12 @@ class RiskGuard(
     private val cash: OrderableCash,
 ) {
     /**
-     * 모든 주문(매수·매도)이 거치는 자리. 거래 정지 중이면 막는다 — 체결통보가 빠졌을 수 있어 보유·평단을 믿을 수 없는 동안이다(2026-10-14).
-     * 1회 주문 상한(금액·수량)은 2026-09-30 사용자 결정으로 폐지했고, 한도는 매수 쪽 주문가능금액이 맡는다(하루 손실 한도는 2026-10-08 사용자 결정으로 폐지).
+     * 모든 주문(매수·매도)이 거치는 자리. 거래 정지 중이면 **매수만** 막는다 — 체결통보가 빠졌을 수 있어 보유·평단을 믿을 수 없는 동안이다(2026-10-14).
+     * 매도는 막지 않는다(2026-11-02). 1회 주문 상한(금액·수량)은 2026-09-30 사용자 결정으로 폐지했고, 한도는 매수 쪽 주문가능금액이 맡는다
+     * (하루 손실 한도는 2026-10-08 사용자 결정으로 폐지).
      */
     fun check(order: OrderRequest) {
+        if (order.side == Side.SELL) return
         halt.reason?.let { throw TradingHaltedException("[거래 정지] ${order.market} ${order.symbol} ${order.side} 주문을 막았다: $it") }
     }
 

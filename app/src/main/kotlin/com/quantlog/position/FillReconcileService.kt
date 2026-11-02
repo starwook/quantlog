@@ -18,7 +18,7 @@ data class ReconcileResult(
     val settled: Int = 0,
 )
 
-/** 체결통보가 빠졌을 수 있어 한투 체결조회로 맞추라는 요청. [halting] 이면 맞출 때까지 모든 주문을 멈춘다. */
+/** 체결통보가 빠졌을 수 있어 한투 체결조회로 맞추라는 요청. [halting] 이면 맞출 때까지 매수를 멈춘다(매도는 막지 않는다). */
 data class FillReconcileRequested(val trigger: String, val halting: Boolean)
 
 /**

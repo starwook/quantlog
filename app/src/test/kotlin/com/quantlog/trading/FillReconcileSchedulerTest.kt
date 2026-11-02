@@ -25,6 +25,7 @@ class FillReconcileSchedulerTest {
     private val scheduler = FillReconcileScheduler(service, halt, SyncEventRecorder(Mockito.mock(SyncEventRepository::class.java)))
     private val guard = RiskGuard(halt) { null }
     private val sell = OrderRequest(Market.KR, "233740", Side.SELL, 100, BigDecimal("6800"))
+    private val buy = OrderRequest(Market.KR, "233740", Side.BUY, 100, BigDecimal("6800"))
 
     private fun <T> anyNonNull(): T = Mockito.any<T>()
 
@@ -34,18 +35,20 @@ class FillReconcileSchedulerTest {
     }
 
     @Test
-    fun `한투 연결이 끊기면 매도까지 막고 다시 붙어 체결조회가 끝나야 연다`() {
+    fun `한투 연결이 끊기면 매수를 막고 다시 붙어 체결조회가 끝나야 연다 - 매도는 정지 중에도 막지 않는다`() {
         Mockito.`when`(service.reconcile(anyNonNull(), Mockito.anyBoolean())).thenReturn(ReconcileResult(1, 1, 1))
         val t = Instant.parse("2026-10-14T02:00:02Z")
 
         scheduler.onKisLink(KisFillNoticeLinkChanged(false, t, t))
         assertTrue(halt.active)
-        assertFailsWith<TradingHaltedException> { guard.check(sell) }
+        assertFailsWith<TradingHaltedException> { guard.checkBuy(buy) }
+        // 2026-11-02 사용자 결정: 손절을 포함한 모든 매도는 막히지 않아야 한다.
+        guard.check(sell)
 
         scheduler.onKisLink(KisFillNoticeLinkChanged(true, t.plusMillis(300), t))
         waitUntil { !halt.active }
         assertFalse(halt.active)
-        guard.check(sell)
+        guard.checkBuy(buy)
     }
 
     @Test
