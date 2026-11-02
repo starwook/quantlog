@@ -107,7 +107,7 @@ data class BuyingPower(
 
 /**
  * 증권사가 알려 준 주문 한 건의 체결 누적(쪼개진 체결 한 건씩이 아니다 — 체결 시각도 없다). [averagePrice] 는 체결평균가(`avg_prvs`),
- * [filledAmount] 는 총 체결금액(`tot_ccld_amt`), [remainingQuantity] 는 아직 호가창에 남은 수량(`rmn_qty`, 0 이면 전량 체결 또는 취소로 끝난 주문). 모르면 null.
+ * [filledAmount] 는 총 체결금액(`tot_ccld_amt`), [remainingQuantity] 는 아직 호가창에 남은 수량(`rmn_qty`). 모르면 null.
  */
 data class OrderFillTotal(
     val orderNo: String,
@@ -115,4 +115,11 @@ data class OrderFillTotal(
     val averagePrice: BigDecimal,
     val filledAmount: BigDecimal? = null,
     val remainingQuantity: Int? = null,
-)
+) {
+    /**
+     * 호가창에 남은 수량이 없어 끝난 주문인가(전량 체결 또는 취소). **0 뿐 아니라 음수도 끝난 것이다** — 취소와 마지막 체결이 겹치면 한투가 둘 다 세어
+     * 남은 수량을 음수로 준다(2026-10-28 실측 0000035103: 주문 60, 체결 40, 취소확인 30 → `rmn_qty` -10). 0 만 보다가 이 주문이 끝내 끝남 처리되지 않아
+     * 청산 대기가 풀리지 않고 233740 손절이 며칠간 막혔다.
+     */
+    val isClosed: Boolean get() = remainingQuantity != null && remainingQuantity <= 0
+}

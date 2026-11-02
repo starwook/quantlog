@@ -72,7 +72,7 @@ class MartingaleService(
         tickPrice: BigDecimal,
         now: ZonedDateTime,
     ) {
-        if (pending.isWaiting(key)) return
+        if (pending.isWaiting(key, now)) return
 
         val config = symbolStrategyService.find(market, symbol)?.takeIf { it.martingale } ?: return
         val holding = accountHoldingRepository.findByMarketAndSymbol(market, symbol)?.takeIf { it.quantity > 0 } ?: return

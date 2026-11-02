@@ -20,8 +20,9 @@ enum class HaltReason(val label: String) {
 }
 
 /**
- * 거래 정지 스위치 — 체결통보가 빠졌을 수 있는 동안 **모든 주문**(자동·수동, 매수·매도)을 막는다(2026-10-14 사용자 결정: "끊을려면 다 끊어야지").
- * 막는 자리는 [RiskGuard] 하나라서 앞으로 생기는 주문 경로도 따로 손대지 않아도 막힌다. 취소는 막지 않는다(주문을 줄이는 쪽이라).
+ * 거래 정지 스위치 — 체결통보가 빠졌을 수 있는 동안 **매수**(자동·수동)를 막는다. 매도는 막지 않는다(2026-11-02 사용자 결정: "손절을 포함한 모든 매도 주문이
+ * 막히지 않아야지" — 2026-10-14 의 "끊을려면 다 끊어야지"에서 바뀜). 막는 자리는 [RiskGuard] 하나라서 앞으로 생기는 매수 경로도 따로 손대지 않아도 막힌다.
+ * 취소도 막지 않는다(주문을 줄이는 쪽이라).
  * 걸고 푸는 건 사건으로만 한다 — 시계로 풀지 않는다. 멈춘 때·다시 연 때는 [SyncEventRecorder] 에 남긴다(매시 있는 일이라 로그는 INFO — WARN 은 웹훅 알림이 된다).
  */
 @Component
@@ -54,7 +55,7 @@ class TradingHalt(
         val now = clock.instant()
         haltedSince = now
         // 매시 정각마다 있는 일이라 경고(=웹훅 알림)로 찍지 않는다. 기록은 sync_event 에 남는다.
-        log.info { "[거래 정지] ${reason.label}: $detail — 모든 주문을 막는다" }
+        log.info { "[거래 정지] ${reason.label}: $detail — 매수를 막는다(매도는 그대로)" }
         recorder?.record(SyncEventKind.HALT, reason.label, detail, now)
     }
 

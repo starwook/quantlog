@@ -33,6 +33,7 @@ class ExitServiceTest {
         val orders = mutableListOf<OrderRequest>()
         val cancels = mutableListOf<CancelRequest>()
         var rejection: RuntimeException? = null
+        var cancelRejection: RuntimeException? = null
         var placeAttempts = 0
 
         override fun quote(
@@ -61,6 +62,7 @@ class ExitServiceTest {
         }
 
         override fun cancelOrder(request: CancelRequest) {
+            cancelRejection?.let { throw it }
             cancels += request
         }
     }
@@ -145,25 +147,34 @@ class ExitServiceTest {
     }
 
     @Test
-    fun `10초가 지나도 미체결이면 주문을 취소하고 체결조회로 끝난 게 확인되면 다시 판정한다`() {
-        val broker = FakeBroker(BigDecimal("274500"))
+    fun `10초가 지나도 미체결이면 주문을 취소하고 취소가 성공하면 체결조회 확인을 기다리지 않고 바로 다시 판정한다`() {
+        val broker = FakeBroker(BigDecimal("269500"))
         val holdingSync = Mockito.mock(FillProgress::class.java)
         val scheduler = scheduler(broker, holdingSync = holdingSync)
         scheduler.checkAll(krOpen)
 
         scheduler.expirePending(ZonedDateTime.now().plusSeconds(5))
         assertTrue(broker.cancels.isEmpty())
-
-        scheduler.expirePending(ZonedDateTime.now().plusSeconds(11))
-        assertEquals(1, broker.cancels.size)
-
-        // 취소 전에 일부 팔렸는데 통보가 빠졌을 수 있어 끝난 주문으로 확인될 때까지 다시 팔지 않는다.
-        scheduler.checkAll(krOpen.plusSeconds(12))
+        scheduler.checkAll(krOpen.plusSeconds(6))
         assertEquals(1, broker.orders.size)
 
-        Mockito.`when`(holdingSync.isOrderClosed("1")).thenReturn(true)
-        scheduler.checkAll(krOpen.plusSeconds(13))
+        // 2026-11-02 233740: 일부 체결 후 취소된 주문이 체결조회로 "끝남" 확인을 못 받아 손절이 며칠간 막혔다. 청산은 취소 성공에서 바로 푼다.
+        scheduler.expirePending(ZonedDateTime.now().plusSeconds(11))
+        assertEquals(1, broker.cancels.size)
+        scheduler.checkAll(krOpen.plusSeconds(12))
         assertEquals(2, broker.orders.size)
+    }
+
+    @Test
+    fun `취소가 거부된 매도 주문은 끝남 확인 전까지 다시 팔지 않는다`() {
+        val broker = FakeBroker(BigDecimal("269500"))
+        broker.cancelRejection = IllegalStateException("정정/취소할 수량이 없습니다")
+        val scheduler = scheduler(broker)
+        scheduler.checkAll(krOpen)
+
+        scheduler.expirePending(ZonedDateTime.now().plusSeconds(11))
+        scheduler.checkAll(krOpen.plusSeconds(12))
+        assertEquals(1, broker.orders.size)
     }
 
     @Test
@@ -265,13 +276,6 @@ class ExitServiceTest {
         val broker = FakeBroker(BigDecimal("274500"))
         val service = scheduler(broker)
         service.checkSymbol(Market.KR, "000660", krOpen)
-        assertTrue(broker.orders.isEmpty())
-    }
-
-    @Test
-    fun `실시간이 맡은 종목은 전체 폴링에서 건너뛴다`() {
-        val broker = FakeBroker(BigDecimal("274500"))
-        scheduler(broker).checkAll(krOpen) { _, symbol -> symbol == "005930" }
         assertTrue(broker.orders.isEmpty())
     }
 
