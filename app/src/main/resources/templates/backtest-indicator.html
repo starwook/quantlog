@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${symbolName} + ' 지표 백테스트 · quantlog'"></title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --pos: #f04452;
+            --neg: #3182f6;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 24px 16px 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; }
+        select, input {
+            width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+            background: var(--card); color: var(--text); font-size: 15px;
+        }
+        .symbols { display: flex; gap: 8px; margin-bottom: 12px; }
+        .symbols select { flex: 1; font-weight: 600; }
+        h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+        .note { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+        .card { background: var(--card); border-radius: 16px; margin-bottom: 16px; }
+        form.card { padding: 16px 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+        form label.wide { grid-column: 1 / -1; }
+        form label.check { flex-direction: row; align-items: center; gap: 8px; grid-column: 1 / -1; font-size: 13px; color: var(--text); }
+        form label.check input { width: auto; }
+        form .desc { grid-column: 1 / -1; font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: -4px; }
+        form button {
+            grid-column: 1 / -1; padding: 10px 12px; border: none; border-radius: 10px; background: var(--text); color: #fff;
+            font-size: 15px; font-weight: 600; cursor: pointer;
+        }
+        .summary { padding: 20px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .summary .item { text-align: center; }
+        .summary .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+        .summary .value { font-size: 20px; font-weight: 700; }
+        .summary .small { font-size: 13px; color: var(--muted); grid-column: 1 / -1; text-align: center; }
+        .section-title { font-size: 15px; font-weight: 700; padding: 4px 4px 10px; }
+        .row { padding: 14px 20px; border-top: 1px solid var(--border); font-size: 14px; }
+        .row:first-child { border-top: none; }
+        .row.selected { background: #f7f8fa; border-radius: 16px; }
+        .row .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .row .sub { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+        .row .strong { font-weight: 700; white-space: nowrap; }
+        .row a { color: inherit; text-decoration: none; }
+        .empty { padding: 48px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+        .pos { color: var(--pos); }
+        .neg { color: var(--neg); }
+        .zero { color: var(--muted); }
+        footer { margin-top: 16px; padding: 0 4px; font-size: 12px; color: var(--muted); }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('backtest')}"></nav>
+
+    <div class="symbols">
+        <select aria-label="종목 선택" onchange="location.href = this.value">
+            <option th:each="s : ${watchedSymbols}"
+                    th:value="@{'/backtest/indicator/' + ${s.market} + '/' + ${s.symbol}}"
+                    th:text="${s.displayName} + ' (' + ${s.market} + ' ' + ${s.symbol} + ')'"
+                    th:selected="${s.symbol == symbol and s.market == market}"></option>
+        </select>
+    </div>
+    <div th:replace="~{fragments/nav :: symbolTabs('indicator', ${market}, ${symbol})}"></div>
+
+    <h1 th:text="${symbolName} + ' 지표 백테스트'"></h1>
+    <p class="note">
+        분봉으로 지표 전략을 돌려 봅니다(저장되지 않고, 익절·손절 기본값은 이 종목의 실제 설정).
+        보유가 없을 때 매수 조건이 새로 켜진 봉의 종가에 사고, 손절 → 익절 → 매도 신호 순으로 불리하게 봅니다.
+        장 시작 직후 판정에는 직전 거래일 분봉을 씁니다. 호가 단위·수수료·세금은 반영하지 않은 근사치이고, 과거에 맞춘 결과라 참고용입니다.
+    </p>
+
+    <form class="card" method="get">
+        <input type="hidden" name="submitted" value="1">
+        <label class="wide">전략
+            <!-- 전략을 바꾸면 그 전략의 기본 파라미터로 다시 연다(전략마다 파라미터가 다르다). -->
+            <select name="preset" onchange="location.search = '?preset=' + this.value">
+                <option th:each="p : ${presets}" th:value="${p.name}" th:text="${p.label}" th:selected="${p.selected}"></option>
+            </select>
+        </label>
+        <div class="desc" th:text="${presetDescription} + ' · 출처: ' + ${presetOrigin}"></div>
+        <label th:each="p : ${paramInputs}"><span th:text="${p.label}"></span>
+            <input type="number" th:name="${p.name}" th:value="${p.value}" th:min="${p.min}" th:max="${p.max}" th:step="${p.step}">
+        </label>
+        <label>익절 %<input name="tp" inputmode="decimal" th:value="${takeProfitPercent}"></label>
+        <label>손절 % (비우면 없음)<input name="stop" inputmode="decimal" th:value="${stopLossPercent}"></label>
+        <label class="check" th:if="${hasSell}"><input type="checkbox" name="sell" th:checked="${sellOnSignal}">매도 신호로도 팔기 (끄면 익절·손절로만)</label>
+        <input type="hidden" name="date" th:value="${date}">
+        <button type="submit">다시 계산</button>
+    </form>
+
+    <div class="section-title" th:text="'최근 ' + ${summaryDays} + '일 합계'"></div>
+    <div class="card summary">
+        <div class="item">
+            <div class="label">수익률 합계</div>
+            <div class="value" th:classappend="${totalReturnCss}" th:text="${totalReturnText}"></div>
+        </div>
+        <div class="item">
+            <div class="label">최대 낙폭</div>
+            <div class="value" th:text="${maxDrawdownText}"></div>
+        </div>
+        <div class="item">
+            <div class="label">승률</div>
+            <div class="value" th:text="${winRateText}"></div>
+        </div>
+        <div class="item">
+            <div class="label">그날 수익률</div>
+            <div class="value" th:classappend="${dayReturnCss}" th:text="${dayReturnText}"></div>
+        </div>
+        <div class="small" th:text="${tradeCountText}"></div>
+    </div>
+
+    <div class="section-title" th:text="${date} + ' 거래 (' + ${#lists.size(trades)} + '건)'"></div>
+    <div class="card">
+        <div class="empty" th:if="${candleCount == 0}">이 날짜엔 분봉 데이터가 없습니다.</div>
+        <div class="empty" th:if="${candleCount > 0 and #lists.isEmpty(trades)}">이날은 매수 신호가 없었습니다.</div>
+        <div class="row" th:each="t : ${trades}">
+            <div class="top">
+                <span th:text="${t.time}"></span>
+                <span class="strong" th:classappend="${t.returnCss}" th:text="${t.returnText}"></span>
+            </div>
+            <div class="sub" th:text="${t.prices} + ' · ' + ${t.exitReason}"></div>
+            <div class="sub" th:text="${t.entryReason}"></div>
+        </div>
+    </div>
+
+    <div class="section-title">날짜별</div>
+    <div class="card">
+        <div class="empty" th:if="${#lists.isEmpty(dayRows)}">쌓인 분봉이 없습니다.</div>
+        <div class="row" th:each="r : ${dayRows}" th:classappend="${r.selected} ? 'selected'">
+            <div class="top">
+                <a th:href="@{'/backtest/indicator/' + ${market} + '/' + ${symbol} + '?submitted=1&date=' + ${r.date} + '&' + ${dayQuery}}"
+                   th:text="${r.date}"></a>
+                <span class="strong" th:classappend="${r.returnCss}" th:text="${r.returnText}"></span>
+            </div>
+            <div class="sub" th:text="${r.tradesText}"></div>
+        </div>
+    </div>
+
+    <footer th:text="'분봉 ' + ${candleCount} + '건 기준 · 수익률은 거래별 % 의 단순 합'"></footer>
+</main>
+</body>
+</html>

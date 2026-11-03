@@ -13,6 +13,8 @@ dependencies {
     implementation("io.github.microutils:kotlin-logging:3.0.5")
     implementation("com.anthropic:anthropic-java:2.34.0")
     implementation("org.commonmark:commonmark:0.22.0")
+    // 지표 계산(이동평균·RSI·MACD 등). 0.18 부터는 Java 21 이 필요해 Java 17 에서 도는 마지막 버전을 쓴다(docs/지표-전략-설계.md).
+    implementation("org.ta4j:ta4j-core:0.17")
     runtimeOnly("com.mysql:mysql-connector-j")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
