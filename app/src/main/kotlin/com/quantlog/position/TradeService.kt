@@ -6,6 +6,7 @@ import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.OrderStatus
 import com.quantlog.broker.Side
+import com.quantlog.common.KST
 import com.quantlog.notification.Notifier
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.event.EventListener
@@ -33,6 +34,13 @@ class TradeService(
             market,
             symbol,
         ).filter { !it.canceled && it.filledPrice != null }
+
+    /** 오늘(KST) 낸, 취소되지 않은 주문(종목 무관, 오래된 것부터). 앱이 다시 뜬 뒤 미체결 취소 대기열을 다시 채울 때 쓴다. */
+    fun todayOpenTrades(market: Market): List<Trade> =
+        repository.findAllByMarketAndCanceledFalseAndExecutedAtGreaterThanEqualOrderByExecutedAtAsc(
+            market,
+            OrderFills.today().atStartOfDay(KST).toInstant(),
+        )
 
     /** 주문번호로 찾은 매매 기록. 주문 취소처럼 주문 응답 직후의 흐름이 쓴다. */
     fun findByOrderNo(

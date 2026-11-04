@@ -264,7 +264,7 @@ class EntrySchedulerTest {
     fun `체결통보가 없는 폴링 마틴게일은 잔고 동기화 전엔 미루고 동기화되면 산다`() {
         val trades = arrayOf(buy(2, "10100"))
         val sync = Mockito.mock(FillProgress::class.java)
-        Mockito.`when`(sync.hasUnsyncedTrade(Market.KR, "005930")).thenReturn(true)
+        Mockito.`when`(sync.hasUnfinishedOrder(Market.KR, "005930")).thenReturn(true)
         val broker = FakeBroker()
         val scheduler =
             scheduler(
@@ -278,20 +278,27 @@ class EntrySchedulerTest {
         scheduler.checkEntries(krOpen)
         assertTrue(broker.orders.isEmpty())
 
-        Mockito.`when`(sync.hasUnsyncedTrade(Market.KR, "005930")).thenReturn(false)
+        Mockito.`when`(sync.hasUnfinishedOrder(Market.KR, "005930")).thenReturn(false)
         scheduler.checkEntries(krOpen)
         assertEquals(2, broker.orders.single().quantity)
     }
 
     @Test
-    fun `5분 재매수는 잔고 동기화를 기다리지 않는다`() {
+    fun `5분 재매수는 직전 주문이 끝났다고 확인될 때까지 사지 않고, 끝나면 그 주기를 기다리지 않고 바로 산다`() {
+        // 2026-11-04 사용자 결정: 체결통보가 빠져 보유 0주로 보이는 동안 같은 수량을 또 사지 않는다.
         val sync = Mockito.mock(FillProgress::class.java)
-        Mockito.`when`(sync.hasUnsyncedTrade(Market.KR, "005930")).thenReturn(true)
+        Mockito.`when`(sync.hasUnfinishedOrder(Market.KR, "005930")).thenReturn(true)
         val broker = FakeBroker()
+        val s = rebuyScheduler(broker, held = false, holdingSync = sync)
 
-        rebuyScheduler(broker, held = false, holdingSync = sync).checkEntries(krOpen)
+        s.checkEntries(krOpen)
+        s.checkEntries(krOpen.plusMinutes(5))
+        assertTrue(broker.orders.isEmpty())
 
-        assertEquals(1, broker.orders.single().quantity)
+        // 주문이 끝났다고 확인되면 다음 판정(1초 뒤)에서 바로 산다 — 기다리는 동안은 주기를 쓰지 않은 것으로 되돌렸다.
+        Mockito.`when`(sync.hasUnfinishedOrder(Market.KR, "005930")).thenReturn(false)
+        s.checkEntries(krOpen.plusMinutes(5).plusSeconds(1))
+        assertEquals(1, broker.orders.size)
     }
 
     @Test

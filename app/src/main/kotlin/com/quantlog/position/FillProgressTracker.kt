@@ -2,7 +2,6 @@ package com.quantlog.position
 
 import com.quantlog.broker.Market
 import org.springframework.stereotype.Component
-import java.time.Instant
 
 /** 주문의 체결이 보유 현황에 얼마나 반영됐는지 답한다. 스케줄러·서비스는 반영하는 쪽이 아니라 이 계약만 안다. */
 @Component
@@ -12,20 +11,21 @@ class FillProgressTracker(
     private val state: HoldingUpdateTimes,
 ) : FillProgress {
     /**
-     * 이 종목의 마지막 주문의 체결통보가 아직 다 반영되지 않았으면 true — 보유 현황이 그 주문을 아직 반영하지 못한 상태라
-     * 스케줄러는 이 종목 판단(추가 매수·청산)을 미룬다. 보유 현황은 체결통보로만 바뀌므로(잔고는 같은 시점일 때만 대조한다), 동기화가 지나갔는지가 아니라
-     * 통보가 왔는지로 본다. 끝난 주문과 [ORDER_IN_FLIGHT_LIMIT] 이전 주문은 기다리지 않는다. 첫 동기화 전에도 true.
+     * 이 종목의 마지막 주문이 아직 끝났다고 확인되지 않았으면 true — 보유 현황이 그 주문을 아직 다 반영하지 못했을 수 있어
+     * 매수 판단(주기 재매수·마틴게일)을 미룬다. 끝남 = 주문수량만큼 체결을 반영했거나 체결조회가 남은 수량 0(취소 포함)으로 확인했다.
+     * 취소만 된 주문은 취소 전 일부 체결의 통보가 빠졌을 수 있어 끝난 게 아니다(2026-10-14).
+     * **시간이 지났다고 풀지 않는다**(2026-11-04: 예전엔 3분 지난 주문은 기다리지 않아, 통보가 빠진 채 낡은 보유로 다음 주문이 나갈 수 있었다).
+     * 전날 이전 주문은 끝난 것으로 본다 — 국내 지정가 주문은 장 마감으로 소멸하고, 끝남 확인은 오늘 주문만 찾는다(원칙집 "주문 후 처리" ②).
+     * 첫 잔고 동기화 전에도 true.
      */
-    override fun hasUnsyncedTrade(
+    override fun hasUnfinishedOrder(
         market: Market,
         symbol: String,
     ): Boolean {
-        val synced = state.lastSyncedAt ?: return true
+        if (state.lastSyncedAt == null) return true
         val last = tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(market, symbol) ?: return false
-        // 끝난 주문(체결을 다 반영했거나 체결조회가 남은 수량 0 으로 확인)이면 기다릴 필요가 없다. 취소만 된 주문은 취소 전 일부 체결의 통보가
-        // 빠졌을 수 있어 체결조회로 끝난 게 확인될 때까지 기다린다(2026-10-14).
-        if (isOrderClosed(last.orderNo)) return false
-        return last.executedAt.isAfter(synced) || last.executedAt.isAfter(Instant.now().minus(ORDER_IN_FLIGHT_LIMIT))
+        if (OrderFills.dayOf(last.executedAt) < OrderFills.today()) return false
+        return !isOrderClosed(last.orderNo)
     }
 
     /**

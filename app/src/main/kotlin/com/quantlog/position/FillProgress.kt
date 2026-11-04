@@ -8,8 +8,11 @@ import com.quantlog.broker.Market
  * 서버가 둘로 갈라지면 이 계약을 DB(체결 원장)로 답하는 구현으로 바꾼다 — docs/서버-분리.md.
  */
 interface FillProgress {
-    /** 이 종목에 잔고 동기화보다 늦게 낸 주문이 있어 보유 현황이 아직 낡았으면 true. */
-    fun hasUnsyncedTrade(
+    /**
+     * 이 종목의 마지막 주문이 아직 끝났다고 확인되지 않았으면 true — 매수 판단(주기 재매수·마틴게일)을 미룬다.
+     * 시간이 지났다고 false 가 되지 않는다(2026-11-04). 첫 잔고 동기화 전에도 true, 전날 이전 주문은 끝난 것으로 본다.
+     */
+    fun hasUnfinishedOrder(
         market: Market,
         symbol: String,
     ): Boolean

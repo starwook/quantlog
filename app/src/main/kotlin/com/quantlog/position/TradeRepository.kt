@@ -13,7 +13,13 @@ interface TradeRepository : JpaRepository<Trade, Long> {
         symbol: String,
     ): List<Trade>
 
-    /** 이 종목의 가장 최근 주문. 잔고 동기화가 그 주문을 반영했는지 판단할 때 쓴다. */
+    /** [since] 이후에 낸, 취소되지 않은 주문(종목 무관, 오래된 것부터). 앱이 다시 뜬 뒤 미체결 취소 대기열을 다시 채울 때 쓴다([com.quantlog.trading.PendingOrders.restore]). */
+    fun findAllByMarketAndCanceledFalseAndExecutedAtGreaterThanEqualOrderByExecutedAtAsc(
+        market: Market,
+        since: Instant,
+    ): List<Trade>
+
+    /** 이 종목의 가장 최근 주문. 매수 판단이 그 주문이 끝났는지 볼 때 쓴다([FillProgressTracker.hasUnfinishedOrder]). */
     fun findFirstByMarketAndSymbolOrderByExecutedAtDesc(
         market: Market,
         symbol: String,

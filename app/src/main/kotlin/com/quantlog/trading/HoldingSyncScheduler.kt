@@ -38,7 +38,7 @@ class HoldingSyncScheduler(
 
     @Scheduled(
         fixedDelayString = "\${quantlog.holding-sync.interval-millis:1000}",
-        // 다른 스케줄러들은 첫 동기화가 끝나야 움직이므로(hasUnsyncedTrade) 가장 먼저 시작한다.
+        // 다른 스케줄러들은 첫 동기화가 끝나야 움직이므로(hasUnfinishedOrder) 가장 먼저 시작한다.
         initialDelayString = "\${quantlog.holding-sync.initial-delay-millis:3000}",
     )
     fun run() {

@@ -148,7 +148,7 @@ class ExitService(
             pending.track(key, request, receipt, Instant.now())
             log.info { "[청산 지연] ${request.market} ${request.symbol} 신호→주문 접수 ${System.currentTimeMillis() - signaledAt}ms" }
             val reason =
-                "청산 스케줄러: $percentRule — $signal (평단 ${holding.avgCost} → 현재 ${quote.price}, " +
+                "$REASON_PREFIX $percentRule — $signal (평단 ${holding.avgCost} → 현재 ${quote.price}, " +
                     "익절 ${targets.takeProfitPrice} / 손절 ${targets.stopLossPrice ?: "없음"})"
             // 체결가 조회를 기다리지 않는다 — 체결통보가 이미 왔으면 TradeService 가 보관한 체결가를 채우고, 아니면 통보가 올 때 채운다.
             tradeService.record(request, receipt, reason)
@@ -172,6 +172,14 @@ class ExitService(
 
     /** 주문한 지 [ExitProperties.fillTimeout] 이 지났는데도 체결이 확인되지 않은 매도 주문을 취소한다(주기 호출). */
     fun expirePending(now: ZonedDateTime) {
+        // 앱이 다시 뜬 뒤 처음 한 번, 재시작 전에 낸 청산 매도 중 끝나지 않은 것을 다시 싣는다(2026-11-04). 남은 매도가 보유를 잡고 있으면
+        // 새 손절 매도가 증권사에서 거절되므로, 10초 미체결 취소로 치운다.
+        pending.restoreOnce({ tradeService.todayOpenTrades(Market.KR) }) { it.reason?.startsWith(REASON_PREFIX) == true }
         pending.expire(now, inFlight)
+    }
+
+    companion object {
+        /** 청산 매도 주문의 사유 첫머리. 다시 뜬 뒤 자기 주문을 가려낼 때도 쓴다. */
+        internal const val REASON_PREFIX = "청산 스케줄러:"
     }
 }

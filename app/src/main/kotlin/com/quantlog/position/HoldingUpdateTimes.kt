@@ -6,7 +6,10 @@ import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
-/** 앱이 주문 체결을 기다리는 최대 시간(10초 뒤 취소 시도 + 2분 뒤 포기, `trading/PendingOrders.kt`)보다 넉넉히. 체결통보가 이보다 오래 안 온 주문은 기다리지 않는다. */
+/**
+ * 잔고 덮어쓰기([HoldingBalanceSync])가 "체결통보를 기다리는 주문"으로 보는 범위. 이보다 오래된 주문 때문에 보유 대조가 막히지 않게 한다(원칙집 46행).
+ * 매수 판단의 주문 대기([FillProgressTracker.hasUnfinishedOrder])는 이 시간을 쓰지 않는다 — 끝났다고 확인될 때만 풀린다(2026-11-04).
+ */
 internal val ORDER_IN_FLIGHT_LIMIT: Duration = Duration.ofMinutes(3)
 
 /**

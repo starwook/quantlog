@@ -7,14 +7,18 @@ import java.math.MathContext
 
 /**
  * 보유 종목의 현재가·평가손익·평가금액. 앱 전체(포트폴리오 요약·주문 화면·리뷰·진입 판단)가 이 한 곳의 현재가를 쓴다.
- * 현재가는 실시간 틱([LatestPrices] — 화면과 상관없이 모든 틱을 기록한다)을, 틱이 없으면(앱 재시작 직후 첫 틱 전)
- * 잔고 동기화가 받은 한투 현재가(`prpr`)를 쓴다. 장 마감 후엔 마지막 틱이 종가다.
+ * 현재가는 실시간 틱([LatestPrices] — 화면과 상관없이 모든 틱을 기록한다)과 잔고 행의 현재가(잔고 동기화가 받은 한투 `prpr`, 체결 반영 때는 체결가) 중
+ * **더 최근에 받은 값**을 쓴다(2026-11-04). 틱이 없으면(앱 재시작 직후 첫 틱 전) 잔고 값. 스트림이 끊겨 틱이 멈춘 뒤 가격이 움직이면 잔고 값이 이긴다 —
+ * 예전엔 몇 시간 전 틱도 그대로 써서 화면 평가손익이 판정에 쓰는 값과 달라졌다. 새 시간 기준(N초)은 두지 않는다.
  */
 @Component
 class HoldingValuation(
     private val latestPrices: LatestPrices,
 ) {
-    fun priceOf(holding: AccountHolding): BigDecimal = latestPrices.get(holding.symbol)?.price ?: holding.currentPrice
+    fun priceOf(holding: AccountHolding): BigDecimal {
+        val live = latestPrices.get(holding.symbol) ?: return holding.currentPrice
+        return if (live.at.isBefore(holding.updatedAt)) holding.currentPrice else live.price
+    }
 
     /** 보유 종목 전체의 평가손익(금액, 퍼센트). 현재가는 [priceOf] 규칙. */
     fun unrealizedOf(held: Collection<AccountHolding>): Pair<BigDecimal, BigDecimal> {

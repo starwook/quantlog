@@ -149,4 +149,62 @@ class PendingOrdersTest {
         exits.expire(at(11), runLocked)
         assertTrue(exits.isWaiting(key, at(0)))
     }
+
+    @Test
+    fun `다시 싣기는 이미 대기 중인 주문을 덮지 않는다`() {
+        track()
+        val other = OrderReceipt("0000099999", "ok", "00950")
+
+        pending.restore(key, request, other, placedAt.minusSeconds(60))
+        pending.expire(at(11), runLocked)
+
+        // 원래 주문(orderNo)만 취소한다 — 다시 싣기가 대기를 다른 주문으로 바꾸지 않았다.
+        val canceled =
+            Mockito.mockingDetails(broker).invocations.filter {
+                it.method.name == "cancelOrder"
+            }.map { (it.arguments[0] as CancelRequest).orderNo }
+        assertEquals(listOf(orderNo), canceled)
+    }
+
+    @Test
+    fun `앱이 뜬 뒤 한 번만, 이 대기열이 낸 끝나지 않은 주문 중 종목마다 가장 최근 것을 다시 싣는다`() {
+        fun trade(
+            no: String,
+            symbol: String,
+            reason: String,
+            secondsAgo: Long,
+        ) = com.quantlog.position.Trade(
+            Market.KR, symbol, Side.BUY, 1, BigDecimal("100"), no, "ok",
+            reason = reason, executedAt = placedAt.minusSeconds(secondsAgo), branchNo = "00950",
+        )
+        val trades =
+            listOf(
+                trade("OLD", "226490", "봇", 60),
+                trade("NEW", "226490", "봇", 30),
+                trade("DONE", "005930", "봇", 30),
+                trade("MANUAL", "000660", "수동", 30),
+            )
+        Mockito.`when`(holdingSync.isOrderClosed("DONE")).thenReturn(true)
+        var reads = 0
+
+        pending.restoreOnce({
+            reads++
+            trades
+        }) { it.reason == "봇" }
+        pending.restoreOnce({
+            reads++
+            trades
+        }) { it.reason == "봇" }
+
+        assertEquals(1, reads)
+        assertTrue(pending.isWaiting(key, at(0)))
+        assertFalse(pending.isWaiting("KR:005930", at(0)))
+        assertFalse(pending.isWaiting("KR:000660", at(0)))
+        pending.expire(at(11), runLocked)
+        val canceled =
+            Mockito.mockingDetails(broker).invocations.filter {
+                it.method.name == "cancelOrder"
+            }.map { (it.arguments[0] as CancelRequest).orderNo }
+        assertEquals(listOf("NEW"), canceled)
+    }
 }

@@ -296,4 +296,43 @@ class MartingaleServiceTest {
 
         assertEquals(1, broker.orders.size)
     }
+
+    @Test
+    fun `재시작 직후 메모리 대기가 비어 있어도 DB 에 끝나지 않은 주문이 있으면 추가 매수하지 않는다`() {
+        // 재시작 전 앱이나 폴링 마틴게일(EntryScheduler)이 낸 주문이 아직 안 끝났다(2026-11-04 전체 점검 S1: 같은 단계를 또 샀다).
+        holding(2)
+        Mockito.`when`(holdingSync.hasUnfinishedOrder(Market.KR, symbol)).thenReturn(true)
+
+        tick(service())
+
+        assertTrue(broker.orders.isEmpty())
+    }
+
+    @Test
+    fun `재시작 뒤 첫 만료 점검에서 이 경로가 낸 끝나지 않은 주문만 다시 실어 취소한다`() {
+        val now = ZonedDateTime.now(ZoneId.of("Asia/Seoul"))
+        val placed = now.toInstant().minusSeconds(30)
+        val bot =
+            Trade(
+                Market.KR, symbol, Side.BUY, 2, BigDecimal("10010"), "B1", "ok",
+                reason = "${MartingaleService.REASON_PREFIX} -0.5% 법칙 2단계", executedAt = placed, branchNo = "00950",
+            )
+        val manual =
+            Trade(
+                Market.KR, "000660", Side.BUY, 1, BigDecimal("100000"), "M1", "ok",
+                reason = "수동 매수(화면): 현재 100000", executedAt = placed, branchNo = "00950",
+            )
+        Mockito.`when`(tradeService.todayOpenTrades(Market.KR)).thenReturn(listOf(bot, manual))
+        Mockito.`when`(holdingSync.isOrderClosed("B1")).thenReturn(false)
+        Mockito.`when`(holdingSync.isOrderClosed("M1")).thenReturn(false)
+        val service = service()
+
+        service.expirePending(now)
+
+        // 10초가 이미 지난 봇 주문은 바로 취소하고, 수동 주문은 건드리지 않는다.
+        assertEquals(listOf("B1"), broker.cancels.map { it.orderNo })
+        // 두 번째 점검에서 다시 싣지 않는다(이미 취소 요청한 주문을 또 취소하지 않음).
+        service.expirePending(now.plusSeconds(1))
+        assertEquals(1, broker.cancelAttempts)
+    }
 }

@@ -5,8 +5,10 @@ import com.quantlog.broker.CallPriority
 import com.quantlog.broker.CancelRequest
 import com.quantlog.broker.OrderReceipt
 import com.quantlog.broker.OrderRequest
+import com.quantlog.broker.symbolKey
 import com.quantlog.position.FillProgress
 import com.quantlog.position.OrderFills
+import com.quantlog.position.Trade
 import com.quantlog.position.TradeService
 import mu.KotlinLogging
 import java.time.Duration
@@ -51,6 +53,9 @@ class PendingOrders(
 
     private val pending = ConcurrentHashMap<String, Pending>()
 
+    /** 다시 뜬 뒤 대기열을 다시 채웠는가([restoreOnce]). */
+    @Volatile private var restored = false
+
     fun track(
         key: String,
         request: OrderRequest,
@@ -58,6 +63,25 @@ class PendingOrders(
         now: Instant,
     ) {
         pending[key] = Pending(request, receipt, now)
+    }
+
+    /**
+     * 앱이 다시 뜬 뒤, 재시작 전에 낸 주문을 대기열에 다시 싣는다(2026-11-04). 대기열은 메모리에만 있어 재시작하면 비는데,
+     * 매수 판단은 그 주문이 끝날 때까지 미루므로(DB 기준) 아무도 취소하지 않으면 그 종목 매수가 장 마감까지 멈춘다.
+     * [placedAt] 은 원래 주문 시각이라 [fillTimeout] 이 이미 지났으면 다음 [expire] 에서 바로 취소를 시도한다. 이미 대기 중인 종목은 덮지 않는다.
+     */
+    fun restore(
+        key: String,
+        request: OrderRequest,
+        receipt: OrderReceipt,
+        placedAt: Instant,
+    ) {
+        if (pending.putIfAbsent(key, Pending(request, receipt, placedAt)) == null) {
+            log.info {
+                "[$label] 다시 뜬 뒤 끝나지 않은 주문 ${receipt.orderNo}(${request.symbol} ${request.side} x${request.quantity}) 을 " +
+                    "미체결 취소 대기열에 다시 실었다"
+            }
+        }
     }
 
     /** 이 종목에 끝나지 않은 주문이 있으면 true — 판정을 건너뛰어야 한다. 끝났으면 대기를 풀고 false. [now] 는 판정 시각(날이 바뀌었는지 본다). */
@@ -84,6 +108,33 @@ class PendingOrders(
         }
         if (releaseOnCancel && order.canceled) return true
         return holdingSync.isOrderClosed(order.receipt.orderNo)
+    }
+
+    /**
+     * 앱이 뜬 뒤 처음 한 번만, 오늘 낸 주문 중 이 대기열이 낸 것([owns] — 주문 사유로 가린다)이고 아직 끝나지 않은 것을 다시 싣는다([restore]).
+     * 종목마다 가장 최근 주문 하나만 싣는다(대기는 종목당 한 건). 읽기가 실패하면 다음 호출에 다시 시도한다.
+     */
+    fun restoreOnce(
+        todayTrades: () -> List<Trade>,
+        owns: (Trade) -> Boolean,
+    ) {
+        if (restored) return
+        val trades =
+            runCatching(todayTrades)
+                .onFailure { log.warn(it) { "[$label] 다시 뜬 뒤 끝나지 않은 주문을 읽지 못했다 — 다음 주기에 다시 시도" } }
+                .getOrNull() ?: return
+        restored = true
+        trades
+            .filter { owns(it) && !holdingSync.isOrderClosed(it.orderNo) }
+            .associateBy { symbolKey(it.market, it.symbol) }
+            .forEach { (key, trade) ->
+                restore(
+                    key,
+                    OrderRequest(trade.market, trade.symbol, trade.side, trade.quantity, trade.orderPrice),
+                    OrderReceipt(trade.orderNo, trade.message, trade.branchNo ?: ""),
+                    trade.executedAt,
+                )
+            }
     }
 
     /** [keyLock] 으로 종목 판정과 겹치지 않게 [expire] 한다. */

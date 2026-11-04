@@ -35,10 +35,10 @@ class HoldingSyncFixture(
         fetchedAt: Instant = Instant.now(),
     ): List<String> = balanceSync.sync(kis, fetchedAt)
 
-    fun hasUnsyncedTrade(
+    fun hasUnfinishedOrder(
         market: Market,
         symbol: String,
-    ) = progress.hasUnsyncedTrade(market, symbol)
+    ) = progress.hasUnfinishedOrder(market, symbol)
 
     fun isOrderFilled(orderNo: String) = progress.isOrderFilled(orderNo)
 

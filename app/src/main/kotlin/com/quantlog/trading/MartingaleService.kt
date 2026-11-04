@@ -80,6 +80,9 @@ class MartingaleService(
         // 틱마다 하는 값싼 사전 비교. 호가 단위 반올림 때문에 규칙의 트리거가 평단 × (1 - n%) 보다 한두 호가 높을 수 있어 여유를 둔다.
         val dropRatio = BigDecimal.ONE.subtract(config.martingaleDropPercent.movePointLeft(2))
         if (tickPrice > holding.avgCost.multiply(dropRatio.add(PRECHECK_MARGIN))) return
+        // 메모리 대기([pending])는 이 경로가 낸 주문만, 그것도 앱이 떠 있는 동안만 안다. 재시작 직후나 폴링 경로(EntryScheduler)가 낸 주문은
+        // DB 로 본다 — 이 종목의 마지막 주문이 끝났다고 확인될 때까지 사지 않는다(2026-11-04: 재시작 직후 같은 단계를 또 사던 문제).
+        if (holdingSync.hasUnfinishedOrder(market, symbol)) return
 
         val rule = MartingaleRule(config.martingaleProperties())
         val cycle = MartingaleCycle.from(tradeService.trades(market, symbol)).withAccount(holding.quantity, holding.avgCost)
@@ -87,7 +90,7 @@ class MartingaleService(
         val quantity = rule.nextQuantity(cycle, quote) ?: return
         val average = cycle.averagePrice!!
         val reason =
-            "마틴게일 틱 판정: -${config.martingaleDropPercent.stripTrailingZeros().toPlainString()}% 법칙 " +
+            "$REASON_PREFIX -${config.martingaleDropPercent.stripTrailingZeros().toPlainString()}% 법칙 " +
                 "${cycle.stage + 1}단계 — 평단 $average 대비 ${rule.addOnTriggerPrice(average, quote)} 이하로 하락 " +
                 "(틱 $tickPrice) → 보유 ${cycle.quantity}주 기준 ${quantity}주 추가 매수 (MartingaleRule)"
         buy(market, symbol, quantity, quote, reason, key, now.toInstant())
@@ -117,11 +120,16 @@ class MartingaleService(
 
     /** 주문한 지 [EntryProperties.fillTimeout] 이 지났는데도 체결이 반영되지 않은 주문을 취소한다(주기 호출). */
     fun expirePending(now: ZonedDateTime) {
+        // 앱이 다시 뜬 뒤 처음 한 번, 재시작 전에 이 경로가 낸 끝나지 않은 주문을 다시 싣는다(2026-11-04).
+        pending.restoreOnce({ tradeService.todayOpenTrades(Market.KR) }) { it.reason?.startsWith(REASON_PREFIX) == true }
         pending.expire(now, inFlight)
     }
 
-    private companion object {
+    companion object {
+        /** 이 경로가 낸 주문의 사유 첫머리. 다시 뜬 뒤 자기 주문을 가려낼 때도 쓴다. */
+        internal const val REASON_PREFIX = "마틴게일 틱 판정:"
+
         /** 호가 단위 반올림 오차(가장 큰 호가는 가격의 약 0.2%)를 덮는 여유 0.3%. */
-        val PRECHECK_MARGIN: BigDecimal = BigDecimal("0.003")
+        private val PRECHECK_MARGIN: BigDecimal = BigDecimal("0.003")
     }
 }
