@@ -2,6 +2,7 @@ package com.quantlog.trading
 
 import com.quantlog.broker.BrokerClient
 import com.quantlog.broker.CallPriority
+import com.quantlog.broker.Market
 import com.quantlog.broker.OrderRequest
 import com.quantlog.broker.RealtimePriceFeed
 import com.quantlog.broker.Side
@@ -92,6 +93,11 @@ class EntryScheduler(
 
     /** 주문한 지 [EntryProperties.fillTimeout] 이 지났는데도 체결이 확인되지 않은 진입 주문을 취소한다(주기 호출, [EntryExpiryScheduler]). */
     fun expirePending(now: ZonedDateTime) {
+        // 앱이 다시 뜬 뒤 처음 한 번, 재시작 전에 낸 주기 재매수·폴링 마틴게일 주문 중 끝나지 않은 것을 다시 싣는다(2026-11-04).
+        // 저점 판단 진입은 미체결이어도 취소하지 않는 주문이라 싣지 않는다.
+        pending.restoreOnce({ tradeService.todayOpenTrades(Market.KR) }) { trade ->
+            trade.reason?.let { it.startsWith(REASON_REBUY) || it.startsWith(REASON_MARTINGALE) } == true
+        }
         pending.expire(now, inFlight)
     }
 
@@ -117,10 +123,10 @@ class EntryScheduler(
                     it.market == watched.market && it.symbol == watched.symbol
                 } == true
             // 국내 실시간이 커버하는 종목의 마틴게일은 틱 경로([MartingaleService])가 맡는다. 여기선 실시간 끊김 종목만 폴링하고,
-            // 체결통보가 없는 이 경로에서만 "잔고 동기화보다 늦은 주문이 있으면 보유 현황이 낡았다"며 다음 동기화까지 미룬다.
+            // 이 종목의 마지막 주문이 끝났다고 확인될 때까지 미룬다 — 시간이 지났다고 풀지 않는다(2026-11-04: 예전엔 3분 지나면 풀었다).
             val polledMartingale =
                 watched.martingale && held && !realtimeFeed.isLive(watched.market, watched.symbol) &&
-                    !holdingSync.hasUnsyncedTrade(watched.market, watched.symbol)
+                    !holdingSync.hasUnfinishedOrder(watched.market, watched.symbol)
             if (polledMartingale) {
                 runCatching { checkMartingale(watched, snapshot) }
                     .onFailure { log.warnUnlessHalted(it) { "[마틴게일] 실패: ${watched.market} ${watched.symbol}" } }
@@ -156,7 +162,7 @@ class EntryScheduler(
         val quantity = martingaleRule.nextQuantity(cycle, quote) ?: return
         val average = cycle.averagePrice!!
         val reason =
-            "진입 스케줄러: 마틴게일 -${watched.martingaleDropPercent.stripTrailingZeros().toPlainString()}% 법칙 " +
+            "$REASON_MARTINGALE -${watched.martingaleDropPercent.stripTrailingZeros().toPlainString()}% 법칙 " +
                 "${cycle.stage + 1}단계 — 평단 $average 대비 " +
                 "${martingaleRule.addOnTriggerPrice(average, quote)} 이하로 하락 → 보유 ${cycle.quantity}주 기준 ${quantity}주 " +
                 "추가 매수 (MartingaleRule)"
@@ -164,7 +170,8 @@ class EntryScheduler(
     }
 
     /**
-     * 주기 재매수: 주문 기록과 무관하게 종목 설정의 간격([SymbolStrategy.periodicRebuyIntervalMinutes], 분)마다 계속 돌면서, 그 순간 보유가 0주이면 종목 설정의 수량만큼 산다.
+     * 주기 재매수: 다른 진입 옵션과 무관하게 종목 설정의 간격([SymbolStrategy.periodicRebuyIntervalMinutes], 분)마다 계속 돌면서, 그 순간 보유가 0주이고
+     * 이 종목의 직전 주문이 끝났다고 확인됐으면 종목 설정의 수량만큼 산다(직전 주문이 안 끝났으면 끝날 때까지 미룬다, 2026-11-04).
      * 보유 중이어도 주기 시각은 흘러간다(보유 중엔 건너뛰고 다음 주기에 다시 본다). 실패해도 다음 주기까지 쉰다.
      * 단, 거래 정지로 막혔으면 이번 주기를 쓰지 않은 것으로 되돌린다 — 정지는 매시 정각 몇 초뿐이라 풀리자마자 다시 본다.
      */
@@ -179,8 +186,14 @@ class EntryScheduler(
         if (last != null && Duration.between(last, now) < interval) return
         lastRebuyCheckAt[key] = now
         if (held) return
+        // 이 종목의 직전 주문이 끝났다고 확인될 때까지 사지 않는다 — 체결통보가 빠져 보유 0주로 보이는 동안 같은 수량을 또 사지 않게(2026-11-04).
+        // 이번 주기는 쓰지 않은 것으로 되돌려, 주문이 끝나는 대로 다음 판정에서 바로 본다.
+        if (holdingSync.hasUnfinishedOrder(watched.market, watched.symbol)) {
+            if (last == null) lastRebuyCheckAt.remove(key) else lastRebuyCheckAt[key] = last
+            return
+        }
         try {
-            buy(watched, watched.periodicRebuyQuantity, "진입 스케줄러: 보유 없음 — ${watched.periodicRebuyIntervalMinutes}분 재매수")
+            buy(watched, watched.periodicRebuyQuantity, "$REASON_REBUY — ${watched.periodicRebuyIntervalMinutes}분 재매수")
         } catch (e: TradingHaltedException) {
             if (last == null) lastRebuyCheckAt.remove(key) else lastRebuyCheckAt[key] = last
             throw e
@@ -249,6 +262,12 @@ class EntryScheduler(
     }
 
     companion object {
+        /** 주기 재매수 주문의 사유 첫머리. 다시 뜬 뒤 자기 주문을 가려낼 때도 쓴다. */
+        internal const val REASON_REBUY = "진입 스케줄러: 보유 없음"
+
+        /** 폴링 마틴게일 주문의 사유 첫머리. */
+        internal const val REASON_MARTINGALE = "진입 스케줄러: 마틴게일"
+
         /** 저점 판단 진입의 매수 지정가를 현재가보다 이만큼 높여 낸다. 다른 매수는 한 호가 위다. */
         internal val BUY_OFFSET: BigDecimal = BigDecimal("0.005")
     }

@@ -187,11 +187,11 @@ class HoldingSyncServiceFillTest {
         Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "0000008775")).thenReturn(listOf(trade))
         Mockito.`when`(repository.findByMarketAndSymbol(Market.KR, symbol)).thenReturn(null)
 
-        assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
+        assertTrue(service.hasUnfinishedOrder(Market.KR, symbol))
 
         service.applyRecorded(ledger, notice(Side.BUY, 1, "277500", orderNo = "0000008775"), Instant.now())
 
-        assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
+        assertFalse(service.hasUnfinishedOrder(Market.KR, symbol))
     }
 
     @Test
@@ -213,9 +213,9 @@ class HoldingSyncServiceFillTest {
         Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "C9")).thenReturn(listOf(trade))
         service.sync(emptyList(), now.minusSeconds(60))
 
-        assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
+        assertTrue(service.hasUnfinishedOrder(Market.KR, symbol))
 
         service.fillApplier.applyInquiry(trade, com.quantlog.broker.OrderFillTotal("C9", 0, BigDecimal.ZERO, BigDecimal.ZERO, 0), now)
-        assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
+        assertFalse(service.hasUnfinishedOrder(Market.KR, symbol))
     }
 }

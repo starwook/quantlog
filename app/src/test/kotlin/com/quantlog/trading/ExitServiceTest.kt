@@ -166,6 +166,30 @@ class ExitServiceTest {
     }
 
     @Test
+    fun `재시작 전에 낸 청산 매도가 남아 있으면 다시 뜬 뒤 첫 만료 점검에서 취소한다`() {
+        // 남은 매도가 보유를 잡고 있으면 새 손절 매도가 증권사에서 거절된다(2026-11-04).
+        val tradeService = Mockito.mock(TradeService::class.java)
+        val holdingSync = Mockito.mock(FillProgress::class.java)
+        val left =
+            com.quantlog.position.Trade(
+                Market.KR, "005930", com.quantlog.broker.Side.SELL, 1, BigDecimal("269000"), "S1", "ok",
+                reason = "${ExitService.REASON_PREFIX} 손절 -1% 법칙",
+                executedAt =
+                    java.time.Instant.now().minusSeconds(
+                        30,
+                    ),
+                branchNo = "00950",
+            )
+        Mockito.`when`(tradeService.todayOpenTrades(Market.KR)).thenReturn(listOf(left))
+        Mockito.`when`(holdingSync.isOrderClosed("S1")).thenReturn(false)
+        val broker = FakeBroker(BigDecimal("272000"))
+
+        scheduler(broker, tradeService = tradeService, holdingSync = holdingSync).expirePending(ZonedDateTime.now(seoul))
+
+        assertEquals(listOf("S1"), broker.cancels.map { it.orderNo })
+    }
+
+    @Test
     fun `취소가 거부된 매도 주문은 끝남 확인 전까지 다시 팔지 않는다`() {
         val broker = FakeBroker(BigDecimal("269500"))
         broker.cancelRejection = IllegalStateException("정정/취소할 수량이 없습니다")

@@ -36,8 +36,6 @@ class HoldingSyncServiceTest {
         sym: String = symbol,
     ) = AccountHolding(Market.KR, sym, quantity, BigDecimal(avg), BigDecimal("9000"))
 
-    private fun trade(at: Instant) = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("9000"), "1", "ok", executedAt = at)
-
     @Test
     fun `KIS 잔고에만 있는 종목은 새로 저장한다`() {
         Mockito.`when`(repository.findAll()).thenReturn(emptyList())
@@ -84,21 +82,25 @@ class HoldingSyncServiceTest {
 
     @Test
     fun `첫 동기화 전에는 모든 종목이 미반영 상태다`() {
-        assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
+        assertTrue(service.hasUnfinishedOrder(Market.KR, symbol))
     }
 
     @Test
-    fun `동기화 뒤에 낸 주문만 미반영으로 본다`() {
+    fun `끝났다고 확인된 주문만 더 기다리지 않는다`() {
         Mockito.`when`(repository.findAll()).thenReturn(emptyList())
-        service.sync(emptyList(), now)
+        service.sync(emptyList(), Instant.now())
+        val placed = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("9000"), "E1", "ok", executedAt = Instant.now().minusSeconds(5))
+        Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(placed)
+        Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "E1")).thenReturn(listOf(placed))
+        // 잔고 동기화보다 먼저 낸 주문이어도, 끝났다고 확인되기 전에는 기다린다(2026-11-04: 동기화 시각 비교를 뺐다).
+        assertTrue(service.hasUnfinishedOrder(Market.KR, symbol))
 
-        Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol))
-            .thenReturn(trade(now.minusSeconds(5)))
-        assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
-
-        Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol))
-            .thenReturn(trade(now.plusSeconds(1)))
-        assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
+        service.fillApplier.applyInquiry(
+            placed,
+            com.quantlog.broker.OrderFillTotal("E1", 1, BigDecimal("9000"), BigDecimal("9000"), 0),
+            Instant.now(),
+        )
+        assertFalse(service.hasUnfinishedOrder(Market.KR, symbol))
     }
 
     @Test
@@ -107,20 +109,43 @@ class HoldingSyncServiceTest {
         service.sync(emptyList(), now)
         val recent = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("9000"), "1", "ok", executedAt = Instant.now().minusSeconds(30))
         Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(recent)
-        assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
+        assertTrue(service.hasUnfinishedOrder(Market.KR, symbol))
 
         // 취소만으로는 끝난 게 아니다 — 취소 전 일부 체결의 통보가 빠졌을 수 있어 체결조회로 확인될 때까지 기다린다(2026-10-14).
         recent.cancel()
-        assertTrue(service.hasUnsyncedTrade(Market.KR, symbol))
+        assertTrue(service.hasUnfinishedOrder(Market.KR, symbol))
     }
 
     @Test
-    fun `3분이 지난 미체결 주문은 더 기다리지 않는다`() {
+    fun `시간이 지나도 끝났다고 확인되지 않은 오늘 주문은 계속 기다린다`() {
         Mockito.`when`(repository.findAll()).thenReturn(emptyList())
         service.sync(emptyList(), Instant.now())
-        val old = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("9000"), "1", "ok", executedAt = Instant.now().minusSeconds(200))
+        // 4분 전에 낸 매수. 체결통보가 빠져 끝남 확인이 없다 — 예전엔 3분이 지나면 풀어 낡은 보유로 다음 주문이 나갈 수 있었다(2026-11-04 폐기).
+        val old = Trade(Market.KR, symbol, Side.BUY, 1, BigDecimal("9000"), "O1", "ok", executedAt = Instant.now().minusSeconds(240))
         Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(old)
+        Mockito.`when`(tradeRepository.findAllByMarketAndOrderNo(Market.KR, "O1")).thenReturn(listOf(old))
 
-        assertFalse(service.hasUnsyncedTrade(Market.KR, symbol))
+        assertTrue(service.hasUnfinishedOrder(Market.KR, symbol))
+    }
+
+    @Test
+    fun `전날 이전에 낸 주문은 끝난 것으로 보고 기다리지 않는다`() {
+        Mockito.`when`(repository.findAll()).thenReturn(emptyList())
+        service.sync(emptyList(), Instant.now())
+        // 국내 지정가 주문은 장 마감으로 소멸하고, 끝남 확인은 오늘 주문만 찾아 영영 확인될 수 없다(원칙집 "주문 후 처리" ②).
+        val yesterday =
+            Trade(
+                Market.KR,
+                symbol,
+                Side.BUY,
+                1,
+                BigDecimal("9000"),
+                "Y1",
+                "ok",
+                executedAt = Instant.now().minus(java.time.Duration.ofDays(1)),
+            )
+        Mockito.`when`(tradeRepository.findFirstByMarketAndSymbolOrderByExecutedAtDesc(Market.KR, symbol)).thenReturn(yesterday)
+
+        assertFalse(service.hasUnfinishedOrder(Market.KR, symbol))
     }
 }
