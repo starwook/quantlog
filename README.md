@@ -32,6 +32,7 @@ Gradle 멀티모듈, **서버가 둘**이다(설계·계약은 [docs/서버-분�
 - 키: `application-local.yml` 의 `quantlog.anthropic.api-key` (Anthropic 콘솔 API 키 — Claude 구독과 별개로 크레딧 결제).
 - 수동 실행: 앱을 띄운 뒤 `/review` 화면(메뉴 "리뷰")의 "지금 리뷰 실행" 버튼 (API 비용 발생). 일지·제안은 이 화면에서 날짜별로(목록 → 날짜 클릭, "더 보기"로 이전 날짜) 보고, 제안은 ⭐ 즐겨찾기해서 따로 모아 볼 수 있다. 자동: `quantlog.review.enabled=true` → 평일 15:40.
 - 선물옵션: `/futures` 화면(메뉴 "선물옵션")에서 코스피200 옵션 매물대(행사가별 미결제약정)와 선물 시세를 본다. 매물대는 평일 16:00 에 자동으로 모아 저장하고(`quantlog.futures.collect-enabled`, 한투 조회 100번 안팎·약 5분, 주문 없음) "지금 모으기" 버튼으로도 모은다. 사양·실측: `docs/kis-api/futures-options.md`.
+- 나스닥 선물: `/futures/nasdaq` 화면(분석 > 나스닥 선물)에서 나스닥100 선물(NQ) 1분봉·일봉 차트를 본다. 시세는 앱이 야후 파이낸스를 직접 조회한다(무료, 약 10분 지연, 비공식 통로 — 게이트웨이·한투와 무관). 한투 해외선물 시세는 CME 유료 신청이 필요해 쓰지 않는다. 조사·실측: `docs/kis-api/overseas-futures.md`.
 
 ## 개발
 

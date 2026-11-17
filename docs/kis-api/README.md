@@ -19,6 +19,7 @@
 
 - 응답 필드 사전·해외 실시간 WebSocket 사양(GPT 조사, 실측 전): [`field-reference.md`](field-reference.md)
 - 한투 AI 도구(코딩도우미·트레이딩 MCP, 전략빌더, 백테스터) 조사 — 우리 서비스 대체 가능성(2026-11-04): [`한투-AI도구-조사.md`](한투-AI도구-조사.md)
+- 해외선물(나스닥100 선물) 시세 — 한투는 CME 유료 시세라 미사용, 야후 사용(2026-11-17 실측): [`overseas-futures.md`](overseas-futures.md)
 - 국내 종목 마스터 파일(종목 검색용, 실파일로 검증한 레코드 형식·필드표): [`stock-master.md`](stock-master.md)
 
 ## 코드에 반영한 스펙 (모의투자)
