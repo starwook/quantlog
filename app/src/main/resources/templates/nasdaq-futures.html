@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>나스닥 선물 · quantlog</title>
+    <style>
+        :root {
+            --bg: #f2f3f5;
+            --card: #ffffff;
+            --border: #eceef1;
+            --text: #191f28;
+            --muted: #8b95a1;
+            --err: #f04452;
+            --call: #f04452;
+            --put: #3182f6;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 24px 16px 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, sans-serif;
+        }
+        main { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; }
+        h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+        .note { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+        .card { background: var(--card); border-radius: 16px; margin-bottom: 12px; padding: 16px 20px; }
+        .msg { padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-size: 14px; background: var(--card); }
+        .msg.error { color: var(--err); }
+        .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+        .tab { padding: 7px 12px; border-radius: 10px; background: var(--card); color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none; }
+        .tab.on { background: var(--text); color: #fff; }
+        #fchart { height: 420px; }
+        .quote { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+        .quote b { font-size: 22px; color: var(--text); }
+        .quote .up { color: var(--call); }
+        .quote .down { color: var(--put); }
+        .empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+    </style>
+</head>
+<body>
+<main>
+    <nav th:replace="~{fragments/nav :: menu('nasdaq')}"></nav>
+
+    <h1>나스닥 선물</h1>
+    <p class="note">
+        나스닥100 선물(CME, NQ) 차트입니다. 야후 파이낸스 시세라 <b>약 10분 늦고</b>, 야후가 막으면 조회가 안 될 수 있습니다.
+        시각은 한국 시간이고, 1분봉은 최근 이틀치라 밤·새벽 거래까지 이어서 보입니다.
+    </p>
+
+    <div class="tools">
+        <a th:href="@{/futures/nasdaq(chart='M')}" th:class="${chartUnit != 'D'} ? 'tab on' : 'tab'">1분봉</a>
+        <a th:href="@{/futures/nasdaq(chart='D')}" th:class="${chartUnit == 'D'} ? 'tab on' : 'tab'">일봉</a>
+    </div>
+
+    <div class="msg error" th:if="${chartError}" th:text="'차트 조회 실패: ' + ${chartError} + ' — 잠시 뒤 새로고침하세요.'"></div>
+    <div class="empty card" th:if="${candleChart == null and chartError == null}">받은 봉이 없습니다. 잠시 뒤 새로고침하세요.</div>
+    <div class="card" th:if="${candleChart != null}">
+        <div class="quote">
+            <b id="last">-</b>
+            <b id="pct"></b>
+            <span id="ohlc"></span>
+        </div>
+        <div id="fchart"></div>
+        <p class="note" style="margin: 8px 0 0;">휠·핀치로 확대/축소, 드래그로 이동, 마우스를 올리면 그 봉의 값이 보입니다. <span th:text="${candleChart.from}"></span> ~ <span th:text="${candleChart.to}"></span> (<span th:text="${#lists.size(candleChart.candles)}"></span>봉)<span th:if="${chartUnit != 'D'}"> · 1분마다 자동으로 갱신됩니다.</span></p>
+    </div>
+</main>
+<th:block th:if="${candleChart != null}">
+    <th:block th:replace="~{fragments/candle-chart :: script(${candleChart.points}, ${candleChart.lines}, ${baseline}, '전일 종가', ${chartUnit != 'D'} ? @{/futures/nasdaq/candles} : null, 60)}"></th:block>
+</th:block>
+</body>
+</html>
