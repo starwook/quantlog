@@ -40,6 +40,10 @@ class NightFuturesWatch(
         log.info { "[야간선물] 구독 종목을 $code 로 맞췄다" }
     }
 
+    /** 지금 구독 중인 선물 종목코드(가장 가까운 월물). 아직 정하지 못했으면 null. */
+    @Transactional(readOnly = true)
+    fun currentCode(): String? = watchSymbols.findAllByMarket(MARKET).singleOrNull()?.symbol
+
     companion object {
         const val MARKET = "NIGHT_FUTURES"
     }

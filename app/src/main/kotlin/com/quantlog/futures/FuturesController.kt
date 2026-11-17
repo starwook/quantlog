@@ -33,6 +33,7 @@ class FuturesController(
     private val store: OptionSnapshotStore,
     private val collector: OptionChainCollector,
     private val night: NightFuturesRecorder,
+    private val nightWatch: NightFuturesWatch,
     private val clock: Clock,
 ) {
     @GetMapping("/futures")
@@ -50,20 +51,21 @@ class FuturesController(
             model.addAttribute("board", board)
         }
         model.addAttribute("chartUnit", chart)
-        runCatching { client.futuresBoard() }
-            .onSuccess {
-                model.addAttribute("futures", it)
-                addChart(model, it, chart)
-                (model.getAttribute("board") as? OptionBoard)?.let { board ->
-                    val last = (model.getAttribute("candleChart") as? CandleChart)?.candles?.last()?.close
-                    model.addAttribute("levels", board.keyLevels(last))
-                    model.addAttribute("atmStrike", board.atmStrike(last))
-                }
-            }
-            .onFailure {
-                log.warn { "[선물옵션] 선물 전광판 조회 실패: ${it.message}" }
-                model.addAttribute("futuresError", it.message)
-            }
+        val futures =
+            runCatching { client.futuresBoard() }
+                .onSuccess { model.addAttribute("futures", it) }
+                .onFailure {
+                    log.warn { "[선물옵션] 선물 전광판 조회 실패: ${it.message}" }
+                    model.addAttribute("futuresError", it.message)
+                }.getOrNull()
+        // 전광판은 야간장이 끝난 뒤 정규장 전(06:00~08:45)에 빈 목록을 준다(2026-11-18 실측). 그때도 차트는 마지막으로 쌓인 봉으로 그린다.
+        val code = futures?.firstOrNull()?.get("futs_shrn_iscd")?.takeIf { it.isNotBlank() } ?: nightWatch.currentCode()
+        code?.let { addChart(model, it, chart) }
+        (model.getAttribute("board") as? OptionBoard)?.let { board ->
+            val last = (model.getAttribute("candleChart") as? CandleChart)?.candles?.last()?.close
+            model.addAttribute("levels", board.keyLevels(last))
+            model.addAttribute("atmStrike", board.atmStrike(last))
+        }
         return "futures"
     }
 
@@ -81,13 +83,12 @@ class FuturesController(
             .let { if (it.isEmpty()) emptyList() else CandleChart(it, emptyList()).points }
     }
 
-    /** 가장 가까운 월물 선물의 캔들 차트. 조회가 실패해도 화면은 그대로 열린다. */
+    /** [code] 선물(가장 가까운 월물)의 캔들 차트. 조회가 실패해도 화면은 그대로 열린다. */
     private fun addChart(
         model: Model,
-        futures: List<Map<String, String>>,
+        code: String,
         unit: String,
     ) {
-        val code = futures.firstOrNull()?.get("futs_shrn_iscd")?.takeIf { it.isNotBlank() } ?: return
         model.addAttribute("futuresCode", code)
         runCatching { candlesOf(code, unit) }
             .onSuccess { candles ->
