@@ -39,6 +39,9 @@ class FuturesControllerTest {
     @MockBean
     lateinit var night: NightFuturesRecorder
 
+    @MockBean
+    lateinit var nightWatch: NightFuturesWatch
+
     private val nov = YearMonth.of(2026, 11)
 
     @Test
@@ -113,6 +116,31 @@ class FuturesControllerTest {
             .andExpect(status().isOk)
             .andExpect(content().string(containsString("저장본이 아직 없습니다")))
             .andExpect(content().string(containsString("게이트웨이 없음")))
+    }
+
+    @Test
+    fun `전광판이 비는 장 시작 전에도 구독 중인 종목으로 차트를 그린다`() {
+        Mockito.`when`(client.futuresBoard()).thenReturn(emptyList())
+        Mockito.`when`(nightWatch.currentCode()).thenReturn("A01612")
+        Mockito.`when`(night.recent("A01612")).thenReturn(listOf(candle("20261117", "154500"), candle("20261118", "060000")))
+
+        mvc.perform(get("/futures"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(containsString("id=\"fchart\"")))
+            .andExpect(content().string(containsString(">20261118 06:00</span>")))
+            .andExpect(content().string(containsString("전광판이 비어 있습니다")))
+    }
+
+    @Test
+    fun `전광판 조회가 실패해도 구독 중인 종목으로 차트를 그린다`() {
+        Mockito.`when`(client.futuresBoard()).thenThrow(IllegalStateException("한투 오류"))
+        Mockito.`when`(nightWatch.currentCode()).thenReturn("A01612")
+        Mockito.`when`(night.recent("A01612")).thenReturn(listOf(candle("20261117", "154500")))
+
+        mvc.perform(get("/futures"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(containsString("id=\"fchart\"")))
+            .andExpect(content().string(containsString("한투 오류")))
     }
 
     @Test

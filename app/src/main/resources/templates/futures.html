@@ -158,7 +158,7 @@
 
     <h2>코스피200 선물 (지금)</h2>
     <div class="msg error" th:if="${futuresError}" th:text="'선물 조회 실패: ' + ${futuresError}"></div>
-    <div class="empty card" th:if="${futures != null and #lists.isEmpty(futures)}">선물 데이터가 없습니다.</div>
+    <div class="empty card" th:if="${futures != null and #lists.isEmpty(futures)}">지금은 한투 전광판이 비어 있습니다(야간장이 끝난 06:00 부터 정규장 08:45 전까지). 위 차트는 마지막으로 쌓인 봉입니다.</div>
     <div class="card scroll" th:if="${futures != null and !#lists.isEmpty(futures)}">
         <table>
             <thead><tr><th style="text-align:left">월물</th><th>현재가</th><th>전일대비</th><th>등락률</th><th>거래량</th><th>미결제</th><th>잔존일</th></tr></thead>
